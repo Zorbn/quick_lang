@@ -5,6 +5,7 @@ pub enum TokenKind {
     LBrace,
     RBrace,
     Comma,
+    Colon,
     Semicolon,
     Plus,
     Minus,
@@ -15,7 +16,13 @@ pub enum TokenKind {
     Val,
     Fun,
     Return,
+    Extern,
+    Int,
+    String,
     IntLiteral {
+        text: String,
+    },
+    StringLiteral {
         text: String,
     },
     Identifier {
@@ -82,6 +89,10 @@ impl Lexer {
                     self.tokens.push(TokenKind::Comma);
                     self.position += 1;
                 },
+                ':' => {
+                    self.tokens.push(TokenKind::Colon);
+                    self.position += 1;
+                },
                 ';' => {
                     self.tokens.push(TokenKind::Semicolon);
                     self.position += 1;
@@ -106,6 +117,22 @@ impl Lexer {
                     self.tokens.push(TokenKind::Equals);
                     self.position += 1;
                 },
+                '"' => {
+                    self.position += 1;
+                    let mut c = self.chars[self.position];
+                    let start = self.position;
+                    while c != '"' {
+                        if c == '\0' {
+                            panic!("Hit EOF during string literal");
+                        }
+
+                        self.position += 1;
+                        c = self.char();
+                    }
+                    self.tokens.push(TokenKind::StringLiteral { text: self.chars[start..self.position].iter().collect() });
+                    self.position += 1;
+
+                },
                 _ if self.try_consume_string("var") => {
                     self.tokens.push(TokenKind::Var);
                 },
@@ -117,6 +144,15 @@ impl Lexer {
                 },
                 _ if self.try_consume_string("return") => {
                     self.tokens.push(TokenKind::Return);
+                },
+                _ if self.try_consume_string("extern") => {
+                    self.tokens.push(TokenKind::Extern);
+                },
+                _ if self.try_consume_string("Int") => {
+                    self.tokens.push(TokenKind::Int);
+                },
+                _ if self.try_consume_string("String") => {
+                    self.tokens.push(TokenKind::String);
                 },
                 c if c.is_alphabetic() => {
                     let mut c = self.chars[self.position];

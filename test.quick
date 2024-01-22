@@ -1,14 +1,16 @@
-fun main() {
-    val a = 542 + 54578 / 3;
-    var b = a * 2;
+fun main(): Int {
+    val a: Int = 542 + 54578 / 3;
+    var b: Int = a * 2;
     b = b / 4;
+
+    val str: String = "hello world";
 
     hello(a, b);
 
     return 0;
 }
 
-fun hello(num, othernum) {
-    val sum = num + othernum;
+fun hello(num: Int, othernum: Int): Int {
+    val sum: Int = num + othernum;
     return sum;
 }

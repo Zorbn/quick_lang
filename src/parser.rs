@@ -25,6 +25,12 @@ pub struct TrailingUnary {
 }
 
 #[derive(Clone, Debug)]
+pub enum TypeKind {
+    Int,
+    String,
+}
+
+#[derive(Clone, Debug)]
 pub enum NodeKind {
     TopLevel {
         functions: Arc<Vec<usize>>,
@@ -32,10 +38,12 @@ pub enum NodeKind {
     Function {
         name: String,
         params: Arc<Vec<usize>>,
+        return_type_name: usize,
         block: usize,
     },
     Param {
         name: String,
+        type_name: usize,
     },
     Block {
         statements: Arc<Vec<usize>>,
@@ -46,6 +54,7 @@ pub enum NodeKind {
     VariableDeclaration {
         is_mutable: bool,
         name: String,
+        type_name: usize,
         expression: usize,
     },
     VariableAssignment {
@@ -79,22 +88,38 @@ pub enum NodeKind {
     },
     IntLiteral {
         text: String,
+    },
+    StringLiteral {
+        text: String,
+    },
+    TypeName {
+        type_kind: usize,
     }
 }
+
+pub const INT_INDEX: usize = 0;
+pub const STRING_INDEX: usize = 1;
 
 pub struct Parser {
     pub tokens: Vec<TokenKind>,
     pub nodes: Vec<NodeKind>,
+    pub types: Vec<TypeKind>,
     position: usize,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<TokenKind>) -> Self {
-        Self {
+        let mut parser = Self {
             tokens,
             nodes: Vec::new(),
+            types: Vec::new(),
             position: 0,
-        }
+        };
+
+        parser.add_type(TypeKind::Int);
+        parser.add_type(TypeKind::String);
+
+        parser
     }
 
     fn token(&self) -> &TokenKind {
@@ -117,6 +142,12 @@ impl Parser {
         index
     }
 
+    fn add_type(&mut self, type_kind: TypeKind) -> usize {
+        let index = self.types.len();
+        self.types.push(type_kind);
+        index
+    }
+
     pub fn parse(&mut self) -> usize {
         self.top_level()
     }
@@ -135,7 +166,7 @@ impl Parser {
         self.assert_token(TokenKind::Fun);
         self.position += 1;
 
-        let name_text = match self.token() {
+        let name = match self.token() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected function name"),
         };
@@ -160,19 +191,29 @@ impl Parser {
         self.assert_token(TokenKind::RParen);
         self.position += 1;
 
+        self.assert_token(TokenKind::Colon);
+        self.position += 1;
+
+        let return_type_name = self.type_name();
+
         let block = self.block();
 
-        self.add_node(NodeKind::Function { name: name_text, params: Arc::new(params), block })
+        self.add_node(NodeKind::Function { name, return_type_name, params: Arc::new(params), block })
     }
 
     pub fn param(&mut self) -> usize {
-        let name_text = match self.token() {
+        let name = match self.token() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected param name"),
         };
         self.position += 1;
 
-        self.add_node(NodeKind::Param { name: name_text })
+        self.assert_token(TokenKind::Colon);
+        self.position += 1;
+
+        let type_name = self.type_name();
+
+        self.add_node(NodeKind::Param { name, type_name })
     }
 
     pub fn block(&mut self) -> usize {
@@ -212,18 +253,23 @@ impl Parser {
         };
         self.position += 1;
 
-        let name_text = match self.token() {
+        let name = match self.token() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected variable name in declaration"),
         };
         self.position += 1;
+
+        self.assert_token(TokenKind::Colon);
+        self.position += 1;
+
+        let type_name = self.type_name();
 
         self.assert_token(TokenKind::Equals);
         self.position += 1;
 
         let expression = self.expression();
 
-        self.add_node(NodeKind::VariableDeclaration { is_mutable, name: name_text, expression })
+        self.add_node(NodeKind::VariableDeclaration { is_mutable, name, type_name, expression })
     }
 
     pub fn variable_assignment(&mut self) -> usize {
@@ -311,6 +357,7 @@ impl Parser {
             TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => self.function_call(),
             TokenKind::Identifier { .. } => self.variable(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
+            TokenKind::StringLiteral { .. } => self.string_literal(),
             _ => panic!("Invalid token in primary value"),
         };
 
@@ -318,17 +365,17 @@ impl Parser {
     }
 
     pub fn variable(&mut self) -> usize {
-        let name_text = match self.token() {
+        let name = match self.token() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected variable name"),
         };
         self.position += 1;
 
-        self.add_node(NodeKind::Variable { name: name_text })
+        self.add_node(NodeKind::Variable { name })
     }
 
     pub fn function_call(&mut self) -> usize {
-        let name_text = match self.token() {
+        let name = match self.token() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected function name"),
         };
@@ -353,7 +400,7 @@ impl Parser {
         self.assert_token(TokenKind::RParen);
         self.position += 1;
 
-        self.add_node(NodeKind::FunctionCall { name: name_text, args: Arc::new(args) })
+        self.add_node(NodeKind::FunctionCall { name, args: Arc::new(args) })
     }
 
     pub fn int_literal(&mut self) -> usize {
@@ -365,5 +412,27 @@ impl Parser {
 
         self.add_node(NodeKind::IntLiteral { text })
 
+    }
+
+    pub fn string_literal(&mut self) -> usize {
+        let text = match self.token() {
+            TokenKind::StringLiteral { text } => text.clone(),
+            _ => panic!("Expected string literal"),
+        };
+        self.position += 1;
+
+        self.add_node(NodeKind::StringLiteral { text })
+
+    }
+
+    pub fn type_name(&mut self) -> usize {
+        let type_kind = match self.token() {
+            TokenKind::Int => INT_INDEX,
+            TokenKind::String => STRING_INDEX,
+            _ => panic!("Expected type name"),
+        };
+        self.position += 1;
+
+        self.add_node(NodeKind::TypeName { type_kind })
     }
 }

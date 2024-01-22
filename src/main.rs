@@ -37,7 +37,7 @@ fn main() {
     //
     println!("~~ Generating ~~");
 
-    let mut code_generator = CodeGenerator::new(parser.nodes);
+    let mut code_generator = CodeGenerator::new(parser.nodes, parser.types);
     code_generator.gen(start_index);
 
     let mut output_file = fs::File::create("out/test.c").unwrap();

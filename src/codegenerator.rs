@@ -1,18 +1,20 @@
 use std::sync::Arc;
 
-use crate::{parser::{NodeKind, TrailingTerm, TrailingUnary, Op}, emitter::Emitter};
+use crate::{parser::{NodeKind, TrailingTerm, TrailingUnary, Op, TypeKind}, emitter::Emitter};
 
 pub struct CodeGenerator {
     pub nodes: Vec<NodeKind>,
+    pub types: Vec<TypeKind>,
     pub header_emitter: Emitter,
     pub prototype_emitter: Emitter,
     pub body_emitter: Emitter,
 }
 
 impl CodeGenerator {
-    pub fn new(nodes: Vec<NodeKind>) -> Self {
+    pub fn new(nodes: Vec<NodeKind>, types: Vec<TypeKind>) -> Self {
         Self {
             nodes,
+            types,
             header_emitter: Emitter::new(),
             prototype_emitter: Emitter::new(),
             body_emitter: Emitter::new(),
@@ -26,11 +28,11 @@ impl CodeGenerator {
     fn gen_node(&mut self, index: usize) {
         match self.nodes[index].clone() {
             NodeKind::TopLevel { functions } => self.top_level(functions),
-            NodeKind::Function { name, params, block } => self.function(name, params, block),
-            NodeKind::Param { name } => self.param(name),
+            NodeKind::Function { name, return_type_name, params, block } => self.function(name, return_type_name, params, block),
+            NodeKind::Param { name, type_name } => self.param(name, type_name),
             NodeKind::Block { statements } => self.block(statements),
             NodeKind::Statement { inner } => self.statement(inner),
-            NodeKind::VariableDeclaration { is_mutable, name, expression } => self.variable_declaration(is_mutable, name, expression),
+            NodeKind::VariableDeclaration { is_mutable, name, type_name, expression } => self.variable_declaration(is_mutable, name, type_name, expression),
             NodeKind::VariableAssignment { variable, expression } => self.variable_assignment(variable, expression),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
             NodeKind::Expression { term, trailing_terms } => self.expression(term, trailing_terms),
@@ -40,13 +42,16 @@ impl CodeGenerator {
             NodeKind::Variable { name } => self.variable(name),
             NodeKind::FunctionCall { name, args } => self.function_call(name, args),
             NodeKind::IntLiteral { text } => self.int_literal(text),
+            NodeKind::StringLiteral { text } => self.string_literal(text),
+            NodeKind::TypeName { type_kind } => self.type_name(type_kind),
         }
     }
 
     fn gen_node_prototype(&mut self, index: usize) {
         match self.nodes[index].clone() {
-            NodeKind::Function { name, params, block } => self.function_prototype(name, params, block),
-            NodeKind::Param { name } => self.param_prototype(name),
+            NodeKind::Function { name, return_type_name, params, block } => self.function_prototype(name, return_type_name, params, block),
+            NodeKind::Param { name, type_name } => self.param_prototype(name, type_name),
+            NodeKind::TypeName { type_kind } => self.type_name_prototype(type_kind),
             _ => panic!("Node cannot be generated as a prototype: {:?}", self.nodes[index]),
         }
     }
@@ -61,8 +66,9 @@ impl CodeGenerator {
         }
     }
 
-    fn function_prototype(&mut self, name: String, params: Arc<Vec<usize>>, _block: usize) {
-        self.prototype_emitter.emit("int ");
+    fn function_prototype(&mut self, name: String, return_type_name: usize, params: Arc<Vec<usize>>, _block: usize) {
+        self.gen_node_prototype(return_type_name);
+        self.prototype_emitter.emit(" ");
         self.prototype_emitter.emit(&name);
 
         self.prototype_emitter.emit("(");
@@ -76,13 +82,15 @@ impl CodeGenerator {
         self.prototype_emitter.emitln(");");
     }
 
-    fn param_prototype(&mut self, name: String) {
-        self.prototype_emitter.emit("int ");
+    fn param_prototype(&mut self, name: String, type_name: usize) {
+        self.gen_node_prototype(type_name);
+        self.prototype_emitter.emit(" ");
         self.prototype_emitter.emit(&name);
     }
 
-    fn function(&mut self, name: String, params: Arc<Vec<usize>>, block: usize) {
-        self.body_emitter.emit("int ");
+    fn function(&mut self, name: String, return_type_name: usize, params: Arc<Vec<usize>>, block: usize) {
+        self.gen_node(return_type_name);
+        self.body_emitter.emit(" ");
         self.body_emitter.emit(&name);
 
         self.body_emitter.emit("(");
@@ -97,11 +105,12 @@ impl CodeGenerator {
 
         self.gen_node(block);
 
-        self.function_prototype(name, params, block);
+        self.function_prototype(name, return_type_name, params, block);
     }
 
-    fn param(&mut self, name: String) {
-        self.body_emitter.emit("int ");
+    fn param(&mut self, name: String, type_name: usize) {
+        self.gen_node(type_name);
+        self.body_emitter.emit(" ");
         self.body_emitter.emit(&name);
     }
 
@@ -122,12 +131,13 @@ impl CodeGenerator {
         self.body_emitter.emitln(";");
     }
 
-    fn variable_declaration(&mut self, is_mutable: bool, name: String, expression: usize) {
+    fn variable_declaration(&mut self, is_mutable: bool, name: String, type_name: usize, expression: usize) {
         if !is_mutable {
             self.body_emitter.emit("const ");
         }
 
-        self.body_emitter.emit("int ");
+        self.gen_node(type_name);
+        self.body_emitter.emit(" ");
         self.body_emitter.emit(&name);
         self.body_emitter.emit(" = ");
         self.gen_node(expression);
@@ -207,5 +217,26 @@ impl CodeGenerator {
 
     fn int_literal(&mut self, text: String) {
         self.body_emitter.emit(&text);
+    }
+
+    fn string_literal(&mut self, text: String) {
+        self.body_emitter.emit("\"");
+        self.body_emitter.emit(&text);
+        self.body_emitter.emit("\"");
+    }
+
+    fn type_name(&mut self, type_name: usize) {
+        CodeGenerator::emit_type_name(&self.types[type_name], &mut self.body_emitter);
+    }
+
+    fn type_name_prototype(&mut self, type_name: usize) {
+        CodeGenerator::emit_type_name(&self.types[type_name], &mut self.prototype_emitter);
+    }
+
+    fn emit_type_name(type_kind: &TypeKind, emitter: &mut Emitter) {
+        match type_kind {
+            TypeKind::Int => emitter.emit("int"),
+            TypeKind::String => emitter.emit("char*"),
+        };
     }
 }
