@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, io::Write};
 
 use crate::{lexer::Lexer, parser::Parser, codegenerator::CodeGenerator};
 
@@ -40,5 +40,14 @@ fn main() {
     let mut code_generator = CodeGenerator::new(parser.nodes);
     code_generator.gen(start_index);
 
-    fs::write("out/test.c", code_generator.emitter.string).unwrap();
+    let mut output_file = fs::File::create("out/test.c").unwrap();
+    output_file.write_all(code_generator.header_emitter.string.as_bytes()).unwrap();
+    if !code_generator.header_emitter.string.is_empty() {
+        output_file.write_all("\n".as_bytes()).unwrap();
+    }
+    output_file.write_all(code_generator.prototype_emitter.string.as_bytes()).unwrap();
+    if !code_generator.prototype_emitter.string.is_empty() {
+        output_file.write_all("\n".as_bytes()).unwrap();
+    }
+    output_file.write_all(code_generator.body_emitter.string.as_bytes()).unwrap();
 }

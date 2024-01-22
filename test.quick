@@ -1,4 +1,14 @@
-main() {
-    a = 542 + 54578 / 3;
-    b = a * 2;
+fun main() {
+    val a = 542 + 54578 / 3;
+    var b = a * 2;
+    b = b / 4;
+
+    hello(a, b);
+
+    return 0;
+}
+
+fun hello(num, othernum) {
+    val sum = num + othernum;
+    return sum;
 }

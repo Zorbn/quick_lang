@@ -11,6 +11,10 @@ pub enum TokenKind {
     Asterisk,
     ForwardSlash,
     Equals,
+    Var,
+    Val,
+    Fun,
+    Return,
     IntLiteral {
         text: String,
     },
@@ -37,6 +41,22 @@ impl Lexer {
 
     fn char(&self) -> char {
         return *self.chars.get(self.position).unwrap_or(&'\0');
+    }
+
+    fn try_consume_string(&mut self, str: &str) -> bool {
+        if self.position + str.len() >= self.chars.len() {
+            return false
+        }
+
+        for (i, c) in str.chars().enumerate() {
+            if self.chars[self.position + i] != c {
+                return false
+            }
+        }
+
+        self.position += str.len();
+
+        true
     }
 
     pub fn lex(&mut self) {
@@ -85,6 +105,18 @@ impl Lexer {
                 '=' => {
                     self.tokens.push(TokenKind::Equals);
                     self.position += 1;
+                },
+                _ if self.try_consume_string("var") => {
+                    self.tokens.push(TokenKind::Var);
+                },
+                _ if self.try_consume_string("val") => {
+                    self.tokens.push(TokenKind::Val);
+                },
+                _ if self.try_consume_string("fun") => {
+                    self.tokens.push(TokenKind::Fun);
+                },
+                _ if self.try_consume_string("return") => {
+                    self.tokens.push(TokenKind::Return);
                 },
                 c if c.is_alphabetic() => {
                     let mut c = self.chars[self.position];
