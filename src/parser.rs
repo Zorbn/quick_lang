@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, collections::HashMap};
 
 use crate::lexer::TokenKind;
 
@@ -24,10 +24,21 @@ pub struct TrailingUnary {
     pub unary: usize,
 }
 
+// Used to search for the index of an array type by its layout.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct ArrayLayout {
+    element_type_kind: usize,
+    element_count: usize,
+}
+
 #[derive(Clone, Debug)]
 pub enum TypeKind {
     Int,
     String,
+    Array {
+        element_type_kind: usize,
+        element_count: usize,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -110,6 +121,7 @@ pub struct Parser {
     pub tokens: Vec<TokenKind>,
     pub nodes: Vec<NodeKind>,
     pub types: Vec<TypeKind>,
+    array_type_indices: HashMap<ArrayLayout, usize>,
     position: usize,
 }
 
@@ -119,6 +131,7 @@ impl Parser {
             tokens,
             nodes: Vec::new(),
             types: Vec::new(),
+            array_type_indices: HashMap::new(),
             position: 0,
         };
 
@@ -450,12 +463,38 @@ impl Parser {
     }
 
     pub fn type_name(&mut self) -> usize {
-        let type_kind = match self.token() {
+        let mut type_kind = match self.token() {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
             _ => panic!("Expected type name"),
         };
         self.position += 1;
+
+        if *self.token() == TokenKind::LBracket {
+            self.position += 1;
+
+            let length_string = match self.token() {
+                TokenKind::IntLiteral { text } => text,
+                _ => panic!("Expected int literal in array type"),
+            };
+            let length = length_string.parse::<usize>().unwrap();
+
+            self.assert_token(TokenKind::RBracket);
+            self.position += 1;
+
+            let array_layout = ArrayLayout {
+                element_type_kind: type_kind,
+                element_count: length,
+            };
+
+            type_kind = if let Some(index) = self.array_type_indices.get(&array_layout) {
+                *index
+            } else {
+                let index = self.add_type(TypeKind::Array { element_type_kind: type_kind, element_count: length });
+                self.array_type_indices.insert(array_layout, index);
+                index
+            };
+        };
 
         self.add_node(NodeKind::TypeName { type_kind })
     }

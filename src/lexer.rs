@@ -4,6 +4,8 @@ pub enum TokenKind {
     RParen,
     LBrace,
     RBrace,
+    LBracket,
+    RBracket,
     Comma,
     Colon,
     Semicolon,
@@ -83,6 +85,14 @@ impl Lexer {
                 },
                 '}' => {
                     self.tokens.push(TokenKind::RBrace);
+                    self.position += 1;
+                },
+                '[' => {
+                    self.tokens.push(TokenKind::LBracket);
+                    self.position += 1;
+                },
+                ']' => {
+                    self.tokens.push(TokenKind::RBracket);
                     self.position += 1;
                 },
                 ',' => {

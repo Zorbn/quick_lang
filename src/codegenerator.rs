@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, any::type_name};
 
 use crate::{parser::{NodeKind, TrailingTerm, TrailingUnary, Op, TypeKind}, emitter::Emitter};
 
@@ -235,18 +235,26 @@ impl CodeGenerator {
         self.body_emitter.emit("\"");
     }
 
-    fn type_name(&mut self, type_name: usize) {
-        CodeGenerator::emit_type_name(&self.types[type_name], &mut self.body_emitter);
+    fn type_name(&mut self, type_kind: usize) {
+        self.emit_type_name(type_kind, false);
     }
 
-    fn type_name_prototype(&mut self, type_name: usize) {
-        CodeGenerator::emit_type_name(&self.types[type_name], &mut self.prototype_emitter);
+    fn type_name_prototype(&mut self, type_kind: usize) {
+        self.emit_type_name(type_kind, true);
     }
 
-    fn emit_type_name(type_kind: &TypeKind, emitter: &mut Emitter) {
+    fn emit_type_name(&mut self, type_kind: usize, is_prototype: bool) {
+        let type_kind = &self.types[type_kind];
+        let emitter = if is_prototype {
+            &mut self.prototype_emitter
+        } else {
+            &mut self.body_emitter
+        };
+
         match type_kind {
             TypeKind::Int => emitter.emit("int"),
             TypeKind::String => emitter.emit("char*"),
+            TypeKind::Array { element_type_kind, .. } => self.emit_type_name(*element_type_kind, is_prototype),
         };
     }
 }

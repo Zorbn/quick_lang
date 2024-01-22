@@ -8,6 +8,13 @@ mod codegenerator;
 mod emitter;
 
 /*
+ * For static arrays, an array literal should be needed to initialize the variable
+ * ie: val myArray: Int[3] = [1, 5, 9];
+ * becomes:
+ *     int* myArray = {1, 5, 9};
+ * with the potential for a second syntax for initializing all elements to a certain value:
+ *     val myBigArray: Int[50] = 0[50]; or [0; 50], i'm not sure yet.
+ *
  * Stuff not attempted yet:
  * Graceful error handling (keep lexing/parsing/etc even if you hit an error)
  * Report error messages that are helpful, have file positions.
