@@ -50,4 +50,18 @@ fn main() {
         output_file.write_all("\n".as_bytes()).unwrap();
     }
     output_file.write_all(code_generator.body_emitter.string.as_bytes()).unwrap();
+
+    println!("~~~ Calling system compiler ~~~");
+    match std::process::Command::new("clang")
+        .args(["out/test.c", "-o", "out/test.exe"])
+        .output()
+    {
+        Err(_) => panic!("Couldn't compile using the system compiler!"),
+        Ok(output) => {
+            if !output.stderr.is_empty() {
+                println!("System compiler error:\n");
+                std::io::stdout().write_all(&output.stderr).unwrap();
+            }
+        },
+    }
 }

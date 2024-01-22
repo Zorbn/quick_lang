@@ -35,11 +35,17 @@ pub enum NodeKind {
     TopLevel {
         functions: Arc<Vec<usize>>,
     },
-    Function {
+    FunctionDeclaration {
         name: String,
         params: Arc<Vec<usize>>,
         return_type_name: usize,
+    },
+    Function {
+        declaration: usize,
         block: usize,
+    },
+    ExternFunction {
+        declaration: usize,
     },
     Param {
         name: String,
@@ -156,13 +162,17 @@ impl Parser {
         let mut functions = Vec::new();
 
         while *self.token() != TokenKind::Eof {
-            functions.push(self.function());
+            match *self.token() {
+                TokenKind::Fun => functions.push(self.function()),
+                TokenKind::Extern => functions.push(self.extern_function()),
+                _ => panic!("Unexpected token at top level"),
+            }
         }
 
         self.add_node(NodeKind::TopLevel { functions: Arc::new(functions) })
     }
 
-    pub fn function(&mut self) -> usize {
+    pub fn function_declaration(&mut self) -> usize {
         self.assert_token(TokenKind::Fun);
         self.position += 1;
 
@@ -196,9 +206,23 @@ impl Parser {
 
         let return_type_name = self.type_name();
 
+        self.add_node(NodeKind::FunctionDeclaration { name, return_type_name, params: Arc::new(params) })
+    }
+
+    pub fn function(&mut self) -> usize {
+        let declaration = self.function_declaration();
         let block = self.block();
 
-        self.add_node(NodeKind::Function { name, return_type_name, params: Arc::new(params), block })
+        self.add_node(NodeKind::Function { declaration, block })
+    }
+
+    pub fn extern_function(&mut self) -> usize {
+        self.assert_token(TokenKind::Extern);
+        self.position += 1;
+
+        let declaration = self.function_declaration();
+
+        self.add_node(NodeKind::ExternFunction { declaration })
     }
 
     pub fn param(&mut self) -> usize {

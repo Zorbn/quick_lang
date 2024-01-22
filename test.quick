@@ -1,9 +1,12 @@
+extern fun puts(str: String): Int
+
 fun main(): Int {
     val a: Int = 542 + 54578 / 3;
     var b: Int = a * 2;
     b = b / 4;
 
-    val str: String = "hello world";
+    var str: String = "hello world";
+    puts(str);
 
     hello(a, b);
 

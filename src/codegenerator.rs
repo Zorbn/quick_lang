@@ -28,7 +28,9 @@ impl CodeGenerator {
     fn gen_node(&mut self, index: usize) {
         match self.nodes[index].clone() {
             NodeKind::TopLevel { functions } => self.top_level(functions),
-            NodeKind::Function { name, return_type_name, params, block } => self.function(name, return_type_name, params, block),
+            NodeKind::Function { declaration, block } => self.function(declaration, block),
+            NodeKind::FunctionDeclaration { name, return_type_name, params } => self.function_declaration(name, return_type_name, params),
+            NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
             NodeKind::Param { name, type_name } => self.param(name, type_name),
             NodeKind::Block { statements } => self.block(statements),
             NodeKind::Statement { inner } => self.statement(inner),
@@ -49,7 +51,7 @@ impl CodeGenerator {
 
     fn gen_node_prototype(&mut self, index: usize) {
         match self.nodes[index].clone() {
-            NodeKind::Function { name, return_type_name, params, block } => self.function_prototype(name, return_type_name, params, block),
+            NodeKind::FunctionDeclaration { name, return_type_name, params } => self.function_declaration_prototype(name, return_type_name, params),
             NodeKind::Param { name, type_name } => self.param_prototype(name, type_name),
             NodeKind::TypeName { type_kind } => self.type_name_prototype(type_kind),
             _ => panic!("Node cannot be generated as a prototype: {:?}", self.nodes[index]),
@@ -66,7 +68,7 @@ impl CodeGenerator {
         }
     }
 
-    fn function_prototype(&mut self, name: String, return_type_name: usize, params: Arc<Vec<usize>>, _block: usize) {
+    fn function_declaration_prototype(&mut self, name: String, return_type_name: usize, params: Arc<Vec<usize>>) {
         self.gen_node_prototype(return_type_name);
         self.prototype_emitter.emit(" ");
         self.prototype_emitter.emit(&name);
@@ -88,7 +90,12 @@ impl CodeGenerator {
         self.prototype_emitter.emit(&name);
     }
 
-    fn function(&mut self, name: String, return_type_name: usize, params: Arc<Vec<usize>>, block: usize) {
+    fn function(&mut self, declaration: usize, block: usize) {
+        self.gen_node(declaration);
+        self.gen_node(block);
+    }
+
+    fn function_declaration(&mut self, name: String, return_type_name: usize, params: Arc<Vec<usize>>) {
         self.gen_node(return_type_name);
         self.body_emitter.emit(" ");
         self.body_emitter.emit(&name);
@@ -103,9 +110,12 @@ impl CodeGenerator {
         }
         self.body_emitter.emit(") ");
 
-        self.gen_node(block);
+        self.function_declaration_prototype(name, return_type_name, params);
+    }
 
-        self.function_prototype(name, return_type_name, params, block);
+    fn extern_function(&mut self, declaration: usize) {
+        self.prototype_emitter.emit("extern ");
+        self.gen_node_prototype(declaration);
     }
 
     fn param(&mut self, name: String, type_name: usize) {
