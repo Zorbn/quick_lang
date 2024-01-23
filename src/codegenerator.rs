@@ -555,7 +555,7 @@ impl CodeGenerator {
             element_count,
         } = type_kind
         {
-            self.emit_type_name_right(element_type_kind, emitter_kind, do_arrays_as_pointers);
+            self.emit_type_kind_right(element_type_kind, emitter_kind, do_arrays_as_pointers);
             if !do_arrays_as_pointers {
                 self.emitter(emitter_kind).emit("[");
                 self.emitter(emitter_kind).emit(&element_count.to_string());

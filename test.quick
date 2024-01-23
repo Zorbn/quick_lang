@@ -13,6 +13,7 @@ fun main(): Int {
     var myArrayCopy: Int[3] = takeArray(myArray);
     var otherCopy: Int[3] = myArrayCopy;
     var repeatArray: Int[400] = [1, 2, 3, 4; 100];
+    var repeatStringArray: String[400] = ["a", "bb", "ccc", "dddd"; 100];
 
     hello(a, b);
 
