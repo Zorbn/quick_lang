@@ -1,6 +1,6 @@
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
-use crate::{lexer::TokenKind, types::is_type_name_array};
+use crate::{lexer::TokenKind, types::{is_expression_array_literal, is_type_name_array}};
 
 // TODO: Should strings be refcounted strs instead?
 
@@ -308,42 +308,6 @@ impl Parser {
         self.add_node(NodeKind::Statement { inner })
     }
 
-    fn is_expression_array_literal(&self, expression: usize) -> bool {
-        let NodeKind::Expression { term, trailing_terms } = &self.nodes[expression] else {
-            return false;
-        };
-
-        if trailing_terms.len() > 0 {
-            return false;
-        }
-
-        let NodeKind::Term { unary, trailing_unaries } = &self.nodes[*term] else {
-            return false;
-        };
-
-        if trailing_unaries.len() > 0 {
-            return false;
-        }
-
-        let NodeKind::Unary { op, primary } = self.nodes[*unary] else {
-            return false;
-        };
-
-        if op.is_some() {
-            return false;
-        }
-
-        let NodeKind::Primary { inner } = self.nodes[primary] else {
-            return false;
-        };
-
-        let NodeKind::ArrayLiteral { .. } = self.nodes[inner] else {
-            return false;
-        };
-
-        true
-    }
-
     fn variable_declaration(&mut self) -> usize {
         let is_mutable = match self.token() {
             TokenKind::Var => true,
@@ -367,7 +331,7 @@ impl Parser {
         self.position += 1;
 
         let expression = self.expression();
-        let is_copy = is_type_name_array(&self.nodes, &self.types, type_name) && !self.is_expression_array_literal(expression);
+        let is_copy = is_type_name_array(&self.nodes, &self.types, type_name) && !is_expression_array_literal(&self.nodes, expression);
 
         self.add_node(NodeKind::VariableDeclaration {
             is_mutable,

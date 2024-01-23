@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    emitter::Emitter, emitter_stack::EmitterStack, parser::{NodeKind, Op, TrailingTerm, TrailingUnary, TypeKind}, types::is_type_name_array
+    emitter::Emitter, emitter_stack::EmitterStack, parser::{NodeKind, Op, TrailingTerm, TrailingUnary, TypeKind}, types::{is_expression_array_literal, is_type_name_array}
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -19,6 +19,7 @@ pub struct CodeGenerator {
     pub body_emitters: EmitterStack,
     function_declaration_indices: HashMap<String, usize>,
     current_function_return_type_name: Option<usize>,
+    function_declaration_needing_init: Option<usize>,
 }
 
 impl CodeGenerator {
@@ -35,6 +36,7 @@ impl CodeGenerator {
             body_emitters: EmitterStack::new(),
             function_declaration_indices,
             current_function_return_type_name: None,
+            function_declaration_needing_init: None,
         };
 
         code_generator.header_emitter.emitln("#include <string.h>");
@@ -166,6 +168,7 @@ impl CodeGenerator {
             panic!("Invalid function declaration");
         };
         self.current_function_return_type_name = Some(return_type_name);
+        self.function_declaration_needing_init = Some(declaration);
         self.gen_node(block);
         self.current_function_return_type_name = None;
     }
@@ -214,9 +217,47 @@ impl CodeGenerator {
         self.emit_type_name_right(type_name, EmitterKind::Body, false);
     }
 
+    fn copy_array_params(&mut self, function_declaration: usize) {
+        let NodeKind::FunctionDeclaration { params, .. } = self.nodes[function_declaration].clone() else {
+            panic!("Invalid function declaration needing init");
+        };
+
+        for param in params.iter() {
+            let NodeKind::Param { name, type_name } = self.nodes[*param].clone() else {
+                panic!("Invalid param in function declaration needing init");
+            };
+
+            if !is_type_name_array(&self.nodes, &self.types, type_name) {
+                continue;
+            }
+
+            let copy_name = format!("__{}", name);
+
+            self.emit_type_name_left(type_name, EmitterKind::Body, false);
+            self.body_emitters.top().body.emit(" ");
+            self.body_emitters.top().body.emit(&copy_name);
+            self.emit_type_name_right(type_name, EmitterKind::Body, false);
+            self.body_emitters.top().body.emitln(";");
+
+            self.emit_memmove_name_to_name(&copy_name, &name, false);
+            self.body_emitters.top().body.emitln(";");
+
+            self.body_emitters.top().body.emit(&name);
+            self.body_emitters.top().body.emit(" = ");
+            self.body_emitters.top().body.emit(&copy_name);
+            self.body_emitters.top().body.emitln(";");
+        }
+    }
+
     fn block(&mut self, statements: Arc<Vec<usize>>) {
         self.body_emitters.top().body.emitln("{");
         self.body_emitters.push();
+
+        // Make copies of any parameters that are arrays, because arrays are supposed to be passed by value.
+        if let Some(function_declaration) = self.function_declaration_needing_init {
+            self.copy_array_params(function_declaration);
+            self.function_declaration_needing_init = None;
+        }
 
         for statement in statements.iter() {
             self.gen_node(*statement);
@@ -275,15 +316,26 @@ impl CodeGenerator {
         let return_type_name = self.current_function_return_type_name.unwrap();
 
         if is_type_name_array(&self.nodes, &self.types, return_type_name) {
-            self.emit_type_name_left(return_type_name, EmitterKind::Body, false);
-            // TODO: Make sure temp names are  distinct.
-            self.body_emitters.top().body.emit(" __temp");
-            self.emit_type_name_right(return_type_name, EmitterKind::Body, false);
-            self.body_emitters.top().body.emit(" = ");
-            self.gen_node(expression);
-            self.body_emitters.top().body.emitln(";");
+            if is_expression_array_literal(&self.nodes, expression) {
+                self.emit_type_name_left(return_type_name, EmitterKind::Body, false);
+                // TODO: Make sure temp names are  distinct.
+                self.body_emitters.top().body.emit(" __temp");
+                self.emit_type_name_right(return_type_name, EmitterKind::Body, false);
+                self.body_emitters.top().body.emit(" = ");
+                self.gen_node(expression);
+                self.body_emitters.top().body.emitln(";");
+            } else {
+                self.emit_type_name_left(return_type_name, EmitterKind::Body, false);
+                // TODO: Make sure temp names are  distinct.
+                self.body_emitters.top().body.emit(" __temp");
+                self.emit_type_name_right(return_type_name, EmitterKind::Body, false);
+                self.body_emitters.top().body.emitln(";");
 
-            self.emit_memmove_name_to_name("__return", "__temp");
+                self.emit_memmove_expression_to_name("__temp", expression);
+                self.body_emitters.top().body.emitln(";");
+            }
+
+            self.emit_memmove_name_to_name("__return", "__temp", true);
             self.body_emitters.top().body.emitln(";");
 
             self.body_emitters.top().body.emit("return __return");
@@ -421,14 +473,18 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("))");
     }
 
-    fn emit_memmove_name_to_name(&mut self, destination: &str, source: &str) {
+    fn emit_memmove_name_to_name(&mut self, destination: &str, source: &str, use_source_size: bool) {
         self.body_emitters.top().body.emit("memmove(");
         self.body_emitters.top().body.emit(destination);
         self.body_emitters.top().body.emit(", ");
         self.body_emitters.top().body.emit(source);
         self.body_emitters.top().body.emit(", ");
         self.body_emitters.top().body.emit("sizeof(");
-        self.body_emitters.top().body.emit(source);
+        self.body_emitters.top().body.emit(if use_source_size {
+            source
+        } else {
+            destination
+        });
         self.body_emitters.top().body.emit("))");
     }
 
