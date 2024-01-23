@@ -81,7 +81,9 @@ impl TypeChecker {
             } => self.term(unary, trailing_unaries),
             NodeKind::Unary { op, primary } => self.unary(op, primary),
             NodeKind::Primary { inner } => self.primary(inner),
-            NodeKind::Variable { name } => self.variable(name),
+            NodeKind::Variable { inner } => self.variable(inner),
+            NodeKind::VariableName { name } => self.variable_name(name),
+            NodeKind::VariableIndex { parent, expression } => self.variable_index(parent, expression),
             NodeKind::FunctionCall { name, args } => self.function_call(name, args),
             NodeKind::IntLiteral { text } => self.int_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
@@ -200,8 +202,25 @@ impl TypeChecker {
         self.check_node(inner)
     }
 
-    fn variable(&mut self, name: String) -> Option<usize> {
+    fn variable(&mut self, inner: usize) -> Option<usize> {
+        self.check_node(inner)
+    }
+
+    fn variable_name(&mut self, name: String) -> Option<usize> {
         self.environment.get(&name)
+    }
+
+    fn variable_index(&mut self, parent: usize, expression: usize) -> Option<usize> {
+        let parent_type = self.check_node(parent).unwrap();
+        let element_type_kind = if let TypeKind::Array { element_type_kind, .. } = &self.types[parent_type] {
+            *element_type_kind
+        } else {
+            panic!("Indexing is only allowed on arrays");
+        };
+        
+        self.check_node(expression);
+
+        Some(element_type_kind)
     }
 
     fn function_call(&mut self, name: String, args: Arc<Vec<usize>>) -> Option<usize> {

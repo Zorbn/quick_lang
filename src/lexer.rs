@@ -9,6 +9,7 @@ pub enum TokenKind {
     Comma,
     Colon,
     Semicolon,
+    Period,
     Plus,
     Minus,
     Asterisk,
@@ -99,6 +100,10 @@ impl Lexer {
                 }
                 ';' => {
                     self.tokens.push(TokenKind::Semicolon);
+                    self.position += 1;
+                }
+                '.' => {
+                    self.tokens.push(TokenKind::Period);
                     self.position += 1;
                 }
                 '+' => {

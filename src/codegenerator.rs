@@ -84,7 +84,9 @@ impl CodeGenerator {
             }, type_kind } => self.term(unary, trailing_unaries, type_kind),
             TypedNode { node_kind: NodeKind::Unary { op, primary }, type_kind } => self.unary(op, primary, type_kind),
             TypedNode { node_kind: NodeKind::Primary { inner }, type_kind } => self.primary(inner, type_kind),
-            TypedNode { node_kind: NodeKind::Variable { name }, type_kind } => self.variable(name, type_kind),
+            TypedNode { node_kind: NodeKind::Variable { inner }, type_kind } => self.variable(inner, type_kind),
+            TypedNode { node_kind: NodeKind::VariableName { name }, type_kind } => self.variable_name(name, type_kind),
+            TypedNode { node_kind: NodeKind::VariableIndex { parent, expression }, type_kind } => self.variable_index(parent, expression, type_kind),
             TypedNode { node_kind: NodeKind::FunctionCall { name, args }, type_kind } => self.function_call(name, args, type_kind),
             TypedNode { node_kind: NodeKind::IntLiteral { text }, type_kind } => self.int_literal(text, type_kind),
             TypedNode { node_kind: NodeKind::StringLiteral { text }, type_kind } => self.string_literal(text, type_kind),
@@ -379,8 +381,19 @@ impl CodeGenerator {
         self.gen_node(inner);
     }
 
-    fn variable(&mut self, name: String, _type_kind: Option<usize>) {
+    fn variable(&mut self, inner: usize, _type_kind: Option<usize>) {
+        self.gen_node(inner);
+    }
+
+    fn variable_name(&mut self, name: String, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&name);
+    }
+
+    fn variable_index(&mut self, parent: usize, expression: usize, _type_kind: Option<usize>) {
+        self.gen_node(parent);
+        self.body_emitters.top().body.emit("[");
+        self.gen_node(expression);
+        self.body_emitters.top().body.emit("]");
     }
 
     fn function_call(&mut self, name: String, args: Arc<Vec<usize>>, type_kind: Option<usize>) {

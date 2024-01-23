@@ -97,8 +97,19 @@ pub enum NodeKind {
         inner: usize,
     },
     Variable {
+        inner: usize,
+    },
+    VariableName {
         name: String,
     },
+    VariableIndex {
+        parent: usize,
+        expression: usize,
+    },
+    // VariableField {
+    //     parent: usize,
+    //     name: String,
+    // },
     FunctionCall {
         name: String,
         args: Arc<Vec<usize>>,
@@ -295,11 +306,11 @@ impl Parser {
     fn statement(&mut self) -> usize {
         let inner = match self.token() {
             TokenKind::Var | TokenKind::Val => self.variable_declaration(),
-            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::Equals => {
-                self.variable_assignment()
+            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => {
+                self.function_call()
             }
             TokenKind::Return => self.return_statement(),
-            _ => self.expression(),
+            _ => self.variable_assignment(),
         };
 
         self.assert_token(TokenKind::Semicolon);
@@ -449,8 +460,37 @@ impl Parser {
             _ => panic!("Expected variable name"),
         };
         self.position += 1;
+        
+        let mut inner = self.add_node(NodeKind::VariableName { name });
+        
+        loop {
+            if *self.token() == TokenKind::LBracket {
+                self.position += 1;
+                let expression = self.expression();
+                self.assert_token(TokenKind::RBracket);
+                self.position += 1;
+                
+                inner = self.add_node(NodeKind::VariableIndex { parent: inner, expression });
+                continue;
+            }
 
-        self.add_node(NodeKind::Variable { name })
+            // if *self.token() == TokenKind::Period {
+            //     self.position += 1;
+
+            //     let field_name = match self.token() {
+            //         TokenKind::Identifier { text } => text.clone(),
+            //         _ => panic!("Expected field name"),
+            //     };
+            //     self.position += 1;
+
+            //     inner = self.add_node(NodeKind::VariableField { parent: inner, name: field_name });
+            //     continue;
+            // }
+            
+            break;
+        }
+
+        self.add_node(NodeKind::Variable { inner })
     }
 
     fn function_call(&mut self) -> usize {
@@ -525,7 +565,6 @@ impl Parser {
         let mut repeat_count = 1;
 
         if *self.token() == TokenKind::Semicolon {
-            self.assert_token(TokenKind::Semicolon);
             self.position += 1;
 
             let repeat_count_string = match self.token() {
