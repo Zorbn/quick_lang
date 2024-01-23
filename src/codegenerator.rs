@@ -1,7 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
-    emitter::Emitter, emitter_stack::EmitterStack, parser::{NodeKind, Op, TrailingTerm, TrailingUnary, TypeKind}, types::{is_expression_array_literal, is_type_name_array}
+    emitter::Emitter,
+    emitter_stack::EmitterStack,
+    parser::{NodeKind, Op, TrailingTerm, TrailingUnary, TypeKind},
+    type_checker::TypedNode,
+    types::{is_type_kind_array, is_typed_expression_array_literal},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -12,30 +16,25 @@ enum EmitterKind {
 }
 
 pub struct CodeGenerator {
-    pub nodes: Vec<NodeKind>,
+    pub typed_nodes: Vec<TypedNode>,
     pub types: Vec<TypeKind>,
     pub header_emitter: Emitter,
     pub prototype_emitter: Emitter,
     pub body_emitters: EmitterStack,
-    function_declaration_indices: HashMap<String, usize>,
-    current_function_return_type_name: Option<usize>,
     function_declaration_needing_init: Option<usize>,
 }
 
 impl CodeGenerator {
     pub fn new(
-        nodes: Vec<NodeKind>,
+        typed_nodes: Vec<TypedNode>,
         types: Vec<TypeKind>,
-        function_declaration_indices: HashMap<String, usize>,
     ) -> Self {
         let mut code_generator = Self {
-            nodes,
+            typed_nodes,
             types,
             header_emitter: Emitter::new(0),
             prototype_emitter: Emitter::new(0),
             body_emitters: EmitterStack::new(),
-            function_declaration_indices,
-            current_function_return_type_name: None,
             function_declaration_needing_init: None,
         };
 
@@ -50,68 +49,65 @@ impl CodeGenerator {
     }
 
     fn gen_node(&mut self, index: usize) {
-        match self.nodes[index].clone() {
-            NodeKind::TopLevel { functions } => self.top_level(functions),
-            NodeKind::Function { declaration, block } => self.function(declaration, block),
-            NodeKind::FunctionDeclaration {
+        match self.typed_nodes[index].clone() {
+            TypedNode { node_kind: NodeKind::TopLevel { functions }, type_kind } => self.top_level(functions, type_kind),
+            TypedNode { node_kind: NodeKind::Function { declaration, block }, type_kind } => self.function(declaration, block, type_kind),
+            TypedNode { node_kind: NodeKind::FunctionDeclaration {
                 name,
                 return_type_name,
                 params,
-            } => self.function_declaration(name, return_type_name, params),
-            NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
-            NodeKind::Param { name, type_name } => self.param(name, type_name),
-            NodeKind::Block { statements } => self.block(statements),
-            NodeKind::Statement { inner } => self.statement(inner),
-            NodeKind::VariableDeclaration {
+            }, type_kind } => self.function_declaration(name, return_type_name, params, type_kind),
+            TypedNode { node_kind: NodeKind::ExternFunction { declaration }, type_kind } => self.extern_function(declaration, type_kind),
+            TypedNode { node_kind: NodeKind::Param { name, type_name }, type_kind } => self.param(name, type_name, type_kind),
+            TypedNode { node_kind: NodeKind::Block { statements }, type_kind } => self.block(statements, type_kind),
+            TypedNode { node_kind: NodeKind::Statement { inner }, type_kind } => self.statement(inner, type_kind),
+            TypedNode { node_kind: NodeKind::VariableDeclaration {
                 is_mutable,
-                is_copy,
                 name,
                 type_name,
                 expression,
-            } => self.variable_declaration(is_mutable, is_copy, name, type_name, expression),
-            NodeKind::VariableAssignment {
-                is_copy,
+            }, type_kind } => self.variable_declaration(is_mutable, name, type_name, expression, type_kind),
+            TypedNode { node_kind: NodeKind::VariableAssignment {
                 variable,
                 expression,
-            } => self.variable_assignment(is_copy, variable, expression),
-            NodeKind::ReturnStatement { expression } => self.return_statement(expression),
-            NodeKind::Expression {
+            }, type_kind } => self.variable_assignment(variable, expression, type_kind),
+            TypedNode { node_kind: NodeKind::ReturnStatement { expression }, type_kind } => self.return_statement(expression, type_kind),
+            TypedNode { node_kind: NodeKind::Expression {
                 term,
                 trailing_terms,
-            } => self.expression(term, trailing_terms),
-            NodeKind::Term {
+            }, type_kind } => self.expression(term, trailing_terms, type_kind),
+            TypedNode { node_kind: NodeKind::Term {
                 unary,
                 trailing_unaries,
-            } => self.term(unary, trailing_unaries),
-            NodeKind::Unary { op, primary } => self.unary(op, primary),
-            NodeKind::Primary { inner } => self.primary(inner),
-            NodeKind::Variable { name } => self.variable(name),
-            NodeKind::FunctionCall { name, args } => self.function_call(name, args),
-            NodeKind::IntLiteral { text } => self.int_literal(text),
-            NodeKind::StringLiteral { text } => self.string_literal(text),
-            NodeKind::ArrayLiteral { elements } => self.array_literal(elements),
-            // NodeKind::TypeName { type_kind } => self.type_name(type_kind),
-            NodeKind::TypeName { .. } => panic!("Cannot generate type name with gen_node"),
+            }, type_kind } => self.term(unary, trailing_unaries, type_kind),
+            TypedNode { node_kind: NodeKind::Unary { op, primary }, type_kind } => self.unary(op, primary, type_kind),
+            TypedNode { node_kind: NodeKind::Primary { inner }, type_kind } => self.primary(inner, type_kind),
+            TypedNode { node_kind: NodeKind::Variable { name }, type_kind } => self.variable(name, type_kind),
+            TypedNode { node_kind: NodeKind::FunctionCall { name, args }, type_kind } => self.function_call(name, args, type_kind),
+            TypedNode { node_kind: NodeKind::IntLiteral { text }, type_kind } => self.int_literal(text, type_kind),
+            TypedNode { node_kind: NodeKind::StringLiteral { text }, type_kind } => self.string_literal(text, type_kind),
+            TypedNode { node_kind: NodeKind::ArrayLiteral { elements }, type_kind } => self.array_literal(elements, type_kind),
+            TypedNode { node_kind: NodeKind::TypeName { .. }, .. } => panic!("Cannot generate type name with gen_node"),
         }
     }
 
     fn gen_node_prototype(&mut self, index: usize) {
-        match self.nodes[index].clone() {
-            NodeKind::FunctionDeclaration {
+        match self.typed_nodes[index].clone() {
+            TypedNode { node_kind: NodeKind::FunctionDeclaration {
                 name,
                 return_type_name,
                 params,
-            } => self.function_declaration_prototype(name, return_type_name, params),
-            NodeKind::Param { name, type_name } => self.param_prototype(name, type_name),
+            }, type_kind } => self.function_declaration_prototype(name, return_type_name, params, type_kind),
+            TypedNode { node_kind: NodeKind::Param { name, type_name }, type_kind } => self.param_prototype(name, type_name, type_kind),
             // NodeKind::TypeName { type_kind } => self.type_name_prototype(type_kind),
             _ => panic!(
                 "Node cannot be generated as a prototype: {:?}",
-                self.nodes[index]
+                self.typed_nodes[index]
             ),
         }
     }
 
-    fn top_level(&mut self, functions: Arc<Vec<usize>>) {
+    fn top_level(&mut self, functions: Arc<Vec<usize>>, _type_kind: Option<usize>) {
         for (i, function) in functions.iter().enumerate() {
             if i > 0 {
                 self.body_emitters.top().body.newline();
@@ -126,6 +122,7 @@ impl CodeGenerator {
         name: String,
         return_type_name: usize,
         params: Arc<Vec<usize>>,
+        type_kind: Option<usize>,
     ) {
         // TODO: Need special case for functions that return arrays, since that's not allowed in C.
         // TODO: The return value should be a pointer to the "fake return" arg that was passed in,
@@ -145,32 +142,27 @@ impl CodeGenerator {
             self.gen_node_prototype(*param);
         }
 
-        if is_type_name_array(&self.nodes, &self.types, return_type_name) {
+        if is_type_kind_array(&self.types, type_kind.unwrap()) {
             if params.len() > 0 {
                 self.prototype_emitter.emit(", ");
             }
 
-            self.param_prototype("__return".into(), return_type_name);
+            self.param_prototype("__return".into(), return_type_name, type_kind);
         }
         self.prototype_emitter.emitln(");");
     }
 
-    fn param_prototype(&mut self, name: String, type_name: usize) {
+    fn param_prototype(&mut self, name: String, type_name: usize, _type_kind: Option<usize>) {
         self.emit_type_name_left(type_name, EmitterKind::Prototype, false);
         self.prototype_emitter.emit(" ");
         self.prototype_emitter.emit(&name);
         self.emit_type_name_right(type_name, EmitterKind::Prototype, false);
     }
 
-    fn function(&mut self, declaration: usize, block: usize) {
+    fn function(&mut self, declaration: usize, block: usize, _type_kind: Option<usize>) {
         self.gen_node(declaration);
-        let NodeKind::FunctionDeclaration { return_type_name, .. } = self.nodes[declaration] else {
-            panic!("Invalid function declaration");
-        };
-        self.current_function_return_type_name = Some(return_type_name);
         self.function_declaration_needing_init = Some(declaration);
         self.gen_node(block);
-        self.current_function_return_type_name = None;
     }
 
     fn function_declaration(
@@ -178,6 +170,7 @@ impl CodeGenerator {
         name: String,
         return_type_name: usize,
         params: Arc<Vec<usize>>,
+        type_kind: Option<usize>,
     ) {
         self.emit_type_name_left(return_type_name, EmitterKind::Body, true);
         self.emit_type_name_right(return_type_name, EmitterKind::Body, true);
@@ -193,24 +186,24 @@ impl CodeGenerator {
             self.gen_node(*param);
         }
 
-        if is_type_name_array(&self.nodes, &self.types, return_type_name) {
+        if is_type_kind_array(&self.types, type_kind.unwrap()) {
             if params.len() > 0 {
                 self.body_emitters.top().body.emit(", ");
             }
 
-            self.param("__return".into(), return_type_name);
+            self.param("__return".into(), return_type_name, type_kind);
         }
         self.body_emitters.top().body.emit(") ");
 
-        self.function_declaration_prototype(name, return_type_name, params);
+        self.function_declaration_prototype(name, return_type_name, params, type_kind);
     }
 
-    fn extern_function(&mut self, declaration: usize) {
+    fn extern_function(&mut self, declaration: usize, _type_kind: Option<usize>) {
         self.prototype_emitter.emit("extern ");
         self.gen_node_prototype(declaration);
     }
 
-    fn param(&mut self, name: String, type_name: usize) {
+    fn param(&mut self, name: String, type_name: usize, _type_kind: Option<usize>) {
         self.emit_type_name_left(type_name, EmitterKind::Body, false);
         self.body_emitters.top().body.emit(" ");
         self.body_emitters.top().body.emit(&name);
@@ -218,16 +211,17 @@ impl CodeGenerator {
     }
 
     fn copy_array_params(&mut self, function_declaration: usize) {
-        let NodeKind::FunctionDeclaration { params, .. } = self.nodes[function_declaration].clone() else {
+        let TypedNode { node_kind: NodeKind::FunctionDeclaration { params, .. }, .. } = self.typed_nodes[function_declaration].clone()
+        else {
             panic!("Invalid function declaration needing init");
         };
 
         for param in params.iter() {
-            let NodeKind::Param { name, type_name } = self.nodes[*param].clone() else {
+            let TypedNode { node_kind: NodeKind::Param { name, type_name }, type_kind } = self.typed_nodes[*param].clone() else {
                 panic!("Invalid param in function declaration needing init");
             };
 
-            if !is_type_name_array(&self.nodes, &self.types, type_name) {
+            if !is_type_kind_array(&self.types, type_kind.unwrap()) {
                 continue;
             }
 
@@ -249,7 +243,7 @@ impl CodeGenerator {
         }
     }
 
-    fn block(&mut self, statements: Arc<Vec<usize>>) {
+    fn block(&mut self, statements: Arc<Vec<usize>>, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emitln("{");
         self.body_emitters.push();
 
@@ -267,7 +261,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emitln("}");
     }
 
-    fn statement(&mut self, inner: usize) {
+    fn statement(&mut self, inner: usize, _type_kind: Option<usize>) {
         self.gen_node(inner);
         self.body_emitters.top().body.emitln(";");
     }
@@ -275,16 +269,18 @@ impl CodeGenerator {
     fn variable_declaration(
         &mut self,
         is_mutable: bool,
-        is_copy: bool,
         name: String,
         type_name: usize,
         expression: usize,
+        type_kind: Option<usize>,
     ) {
-        if !is_mutable && !is_copy {
+        let is_array = is_type_kind_array(&self.types, type_kind.unwrap());
+
+        if !is_mutable && !is_array {
             self.body_emitters.top().body.emit("const ");
         }
 
-        if is_copy {
+        if is_array {
             self.emit_type_name_left(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" ");
             self.body_emitters.top().body.emit(&name);
@@ -302,8 +298,10 @@ impl CodeGenerator {
         }
     }
 
-    fn variable_assignment(&mut self, is_copy: bool, variable: usize, expression: usize) {
-        if is_copy {
+    fn variable_assignment(&mut self, variable: usize, expression: usize, type_kind: Option<usize>) {
+        let is_array = is_type_kind_array(&self.types, type_kind.unwrap());
+
+        if is_array {
             self.emit_memmove_expression_to_variable(variable, expression);
         } else {
             self.gen_node(variable);
@@ -312,23 +310,21 @@ impl CodeGenerator {
         }
     }
 
-    fn return_statement(&mut self, expression: usize) {
-        let return_type_name = self.current_function_return_type_name.unwrap();
-
-        if is_type_name_array(&self.nodes, &self.types, return_type_name) {
-            if is_expression_array_literal(&self.nodes, expression) {
-                self.emit_type_name_left(return_type_name, EmitterKind::Body, false);
+    fn return_statement(&mut self, expression: usize, type_kind: Option<usize>) {
+        if is_type_kind_array(&self.types, type_kind.unwrap()) {
+            if is_typed_expression_array_literal(&self.typed_nodes, expression) {
+                self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Body, false);
                 // TODO: Make sure temp names are  distinct.
                 self.body_emitters.top().body.emit(" __temp");
-                self.emit_type_name_right(return_type_name, EmitterKind::Body, false);
+                self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Body, false);
                 self.body_emitters.top().body.emit(" = ");
                 self.gen_node(expression);
                 self.body_emitters.top().body.emitln(";");
             } else {
-                self.emit_type_name_left(return_type_name, EmitterKind::Body, false);
+                self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Body, false);
                 // TODO: Make sure temp names are  distinct.
                 self.body_emitters.top().body.emit(" __temp");
-                self.emit_type_name_right(return_type_name, EmitterKind::Body, false);
+                self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Body, false);
                 self.body_emitters.top().body.emitln(";");
 
                 self.emit_memmove_expression_to_name("__temp", expression);
@@ -345,7 +341,7 @@ impl CodeGenerator {
         }
     }
 
-    fn expression(&mut self, term: usize, trailing_terms: Arc<Vec<TrailingTerm>>) {
+    fn expression(&mut self, term: usize, trailing_terms: Arc<Vec<TrailingTerm>>, _type_kind: Option<usize>) {
         self.gen_node(term);
 
         for trailing_term in trailing_terms.iter() {
@@ -359,7 +355,7 @@ impl CodeGenerator {
         }
     }
 
-    fn term(&mut self, unary: usize, trailing_unaries: Arc<Vec<TrailingUnary>>) {
+    fn term(&mut self, unary: usize, trailing_unaries: Arc<Vec<TrailingUnary>>, _type_kind: Option<usize>) {
         self.gen_node(unary);
 
         for trailing_unary in trailing_unaries.iter() {
@@ -373,7 +369,7 @@ impl CodeGenerator {
         }
     }
 
-    fn unary(&mut self, op: Option<Op>, primary: usize) {
+    fn unary(&mut self, op: Option<Op>, primary: usize, _type_kind: Option<usize>) {
         match op {
             Some(Op::Add) => self.body_emitters.top().body.emit(" + "),
             Some(Op::Subtract) => self.body_emitters.top().body.emit(" - "),
@@ -384,22 +380,15 @@ impl CodeGenerator {
         self.gen_node(primary);
     }
 
-    fn primary(&mut self, inner: usize) {
+    fn primary(&mut self, inner: usize, _type_kind: Option<usize>) {
         self.gen_node(inner);
     }
 
-    fn variable(&mut self, name: String) {
+    fn variable(&mut self, name: String, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&name);
     }
 
-    fn function_call(&mut self, name: String, args: Arc<Vec<usize>>) {
-        let NodeKind::FunctionDeclaration {
-            return_type_name,
-            ..
-        } = self.nodes[self.function_declaration_indices[&name]].clone() else {
-            panic!("Function call to nonexistant function");
-        };
-
+    fn function_call(&mut self, name: String, args: Arc<Vec<usize>>, type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&name);
 
         self.body_emitters.top().body.emit("(");
@@ -411,16 +400,16 @@ impl CodeGenerator {
             self.gen_node(*arg);
         }
 
-        if is_type_name_array(&self.nodes, &self.types, return_type_name) {
+        if is_type_kind_array(&self.types, type_kind.unwrap()) {
             if args.len() > 0 {
                 self.body_emitters.top().body.emit(", ");
             }
 
-            self.emit_type_name_left(return_type_name, EmitterKind::Top, false);
+            self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Top, false);
             // TODO: Make this name different each time it is generated.
             self.body_emitters.top().top.emit(" ");
             self.body_emitters.top().top.emit("__return_array");
-            self.emit_type_name_right(return_type_name, EmitterKind::Top, false);
+            self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Top, false);
             self.body_emitters.top().top.emitln(";");
 
             // TODO: Make this name different each time it is generated.
@@ -429,17 +418,17 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn int_literal(&mut self, text: String) {
+    fn int_literal(&mut self, text: String, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&text);
     }
 
-    fn string_literal(&mut self, text: String) {
+    fn string_literal(&mut self, text: String, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("\"");
         self.body_emitters.top().body.emit(&text);
         self.body_emitters.top().body.emit("\"");
     }
 
-    fn array_literal(&mut self, elements: Arc<Vec<usize>>) {
+    fn array_literal(&mut self, elements: Arc<Vec<usize>>, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("{");
         for (i, element) in elements.iter().enumerate() {
             if i > 0 {
@@ -473,18 +462,22 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("))");
     }
 
-    fn emit_memmove_name_to_name(&mut self, destination: &str, source: &str, use_source_size: bool) {
+    fn emit_memmove_name_to_name(
+        &mut self,
+        destination: &str,
+        source: &str,
+        use_source_size: bool,
+    ) {
         self.body_emitters.top().body.emit("memmove(");
         self.body_emitters.top().body.emit(destination);
         self.body_emitters.top().body.emit(", ");
         self.body_emitters.top().body.emit(source);
         self.body_emitters.top().body.emit(", ");
         self.body_emitters.top().body.emit("sizeof(");
-        self.body_emitters.top().body.emit(if use_source_size {
-            source
-        } else {
-            destination
-        });
+        self.body_emitters
+            .top()
+            .body
+            .emit(if use_source_size { source } else { destination });
         self.body_emitters.top().body.emit("))");
     }
 
@@ -522,7 +515,7 @@ impl CodeGenerator {
         emitter_kind: EmitterKind,
         do_arrays_as_pointers: bool,
     ) {
-        let NodeKind::TypeName { type_kind } = self.nodes[type_name] else {
+        let TypedNode { node_kind: NodeKind::TypeName { type_kind }, .. } = self.typed_nodes[type_name] else {
             panic!("Tried to emit node that wasn't a type name");
         };
         self.emit_type_kind_left(type_kind, emitter_kind, do_arrays_as_pointers);
@@ -534,7 +527,7 @@ impl CodeGenerator {
         emitter_kind: EmitterKind,
         do_arrays_as_pointers: bool,
     ) {
-        let NodeKind::TypeName { type_kind } = self.nodes[type_name] else {
+        let TypedNode { node_kind: NodeKind::TypeName { type_kind }, .. } = self.typed_nodes[type_name] else {
             panic!("Tried to emit node that wasn't a type name");
         };
         self.emit_type_kind_right(type_kind, emitter_kind, do_arrays_as_pointers);
@@ -571,7 +564,8 @@ impl CodeGenerator {
         let type_kind = self.types[type_kind].clone();
 
         if let TypeKind::Array {
-            element_type_kind, element_count
+            element_type_kind,
+            element_count,
         } = type_kind
         {
             self.emit_type_name_right(element_type_kind, emitter_kind, do_arrays_as_pointers);

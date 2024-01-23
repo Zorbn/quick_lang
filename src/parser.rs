@@ -1,6 +1,6 @@
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
-use crate::{lexer::TokenKind, types::{is_expression_array_literal, is_type_name_array}};
+use crate::lexer::TokenKind;
 
 // TODO: Should strings be refcounted strs instead?
 
@@ -26,9 +26,9 @@ pub struct TrailingUnary {
 
 // Used to search for the index of an array type by its layout.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct ArrayLayout {
-    element_type_kind: usize,
-    element_count: usize,
+pub struct ArrayLayout {
+    pub element_type_kind: usize,
+    pub element_count: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -70,13 +70,11 @@ pub enum NodeKind {
     },
     VariableDeclaration {
         is_mutable: bool,
-        is_copy: bool,
         name: String,
         type_name: usize,
         expression: usize,
     },
     VariableAssignment {
-        is_copy: bool,
         variable: usize,
         expression: usize,
     },
@@ -127,7 +125,7 @@ pub struct Parser {
     pub nodes: Vec<NodeKind>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: HashMap<String, usize>,
-    array_type_indices: HashMap<ArrayLayout, usize>,
+    pub array_type_kinds: HashMap<ArrayLayout, usize>,
     position: usize,
 }
 
@@ -137,7 +135,7 @@ impl Parser {
             tokens,
             nodes: Vec::new(),
             types: Vec::new(),
-            array_type_indices: HashMap::new(),
+            array_type_kinds: HashMap::new(),
             function_declaration_indices: HashMap::new(),
             position: 0,
         };
@@ -331,11 +329,9 @@ impl Parser {
         self.position += 1;
 
         let expression = self.expression();
-        let is_copy = is_type_name_array(&self.nodes, &self.types, type_name) && !is_expression_array_literal(&self.nodes, expression);
 
         self.add_node(NodeKind::VariableDeclaration {
             is_mutable,
-            is_copy,
             name,
             type_name,
             expression,
@@ -349,12 +345,8 @@ impl Parser {
         self.position += 1;
 
         let expression = self.expression();
-        let is_copy = false;
-        // TODO: Set is_copy correctly once we track type information for variables.
-        // is_type_name_array(&self.nodes, &self.types, type_name) && !self.is_expression_array_literal(expression);
 
         self.add_node(NodeKind::VariableAssignment {
-            is_copy,
             variable,
             expression,
         })
@@ -563,14 +555,14 @@ impl Parser {
                 element_count: length,
             };
 
-            type_kind = if let Some(index) = self.array_type_indices.get(&array_layout) {
+            type_kind = if let Some(index) = self.array_type_kinds.get(&array_layout) {
                 *index
             } else {
                 let index = self.add_type(TypeKind::Array {
                     element_type_kind: type_kind,
                     element_count: length,
                 });
-                self.array_type_indices.insert(array_layout, index);
+                self.array_type_kinds.insert(array_layout, index);
                 index
             };
         };

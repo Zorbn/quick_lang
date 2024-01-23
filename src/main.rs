@@ -1,6 +1,6 @@
 use std::{fs, io::Write};
 
-use crate::{codegenerator::CodeGenerator, lexer::Lexer, parser::Parser};
+use crate::{codegenerator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker};
 
 mod codegenerator;
 mod emitter;
@@ -8,8 +8,13 @@ mod emitter_stack;
 mod lexer;
 mod parser;
 mod types;
+mod type_checker;
+mod environment;
 
 /*
+ * TODO: The parser node that is currently called expression should become "binary" and expression should be a series of comparisons between binaries.
+ * This will allow for boolean expressions, if, while, etc.
+ *
  * TODO: For static arrays, copying doesn't work on assignment yet because we don't have the type information to tell if an assignment is to an array.
  * For static arrays, an array literal should be needed to initialize the variable
  * ie: val myArray: Int[3] = [1, 5, 9];
@@ -55,13 +60,19 @@ fn main() {
     // for node in &parser.nodes {
     //     println!("{:?}", *node);
     // }
-    //
+
+    println!("~~ Checking ~~");
+
+    let mut type_checker = TypeChecker::new(parser.nodes, parser.types, parser.function_declaration_indices, parser.array_type_kinds);
+    type_checker.check(start_index);
+
+    let typed_nodes = type_checker.typed_nodes.iter().map(|n| n.clone().unwrap()).collect();
+
     println!("~~ Generating ~~");
 
     let mut code_generator = CodeGenerator::new(
-        parser.nodes,
-        parser.types,
-        parser.function_declaration_indices,
+        typed_nodes,
+        type_checker.types,
     );
     code_generator.gen(start_index);
 

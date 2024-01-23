@@ -1,16 +1,13 @@
-use crate::parser::{NodeKind, TypeKind};
+use crate::{parser::{NodeKind, TypeKind}, type_checker::TypedNode};
 
-pub fn is_type_name_array(nodes: &[NodeKind], types: &[TypeKind], type_name: usize) -> bool {
-    let NodeKind::TypeName { type_kind } = nodes[type_name] else {
-        panic!("Tried to emit node that wasn't a type name");
-    };
+pub fn is_type_kind_array(types: &[TypeKind], type_kind: usize) -> bool {
     let type_kind = &types[type_kind];
 
     matches!(type_kind, TypeKind::Array { .. })
 }
 
-pub fn is_expression_array_literal(nodes: &Vec<NodeKind>, expression: usize) -> bool {
-    let NodeKind::Expression { term, trailing_terms } = &nodes[expression] else {
+pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: usize) -> bool {
+    let TypedNode { node_kind: NodeKind::Expression { term, trailing_terms }, .. } = &typed_nodes[expression] else {
         return false;
     };
 
@@ -18,7 +15,7 @@ pub fn is_expression_array_literal(nodes: &Vec<NodeKind>, expression: usize) -> 
         return false;
     }
 
-    let NodeKind::Term { unary, trailing_unaries } = &nodes[*term] else {
+    let TypedNode { node_kind: NodeKind::Term { unary, trailing_unaries }, .. } = &typed_nodes[*term] else {
         return false;
     };
 
@@ -26,7 +23,7 @@ pub fn is_expression_array_literal(nodes: &Vec<NodeKind>, expression: usize) -> 
         return false;
     }
 
-    let NodeKind::Unary { op, primary } = nodes[*unary] else {
+    let TypedNode { node_kind: NodeKind::Unary { op, primary }, .. } = typed_nodes[*unary] else {
         return false;
     };
 
@@ -34,11 +31,11 @@ pub fn is_expression_array_literal(nodes: &Vec<NodeKind>, expression: usize) -> 
         return false;
     }
 
-    let NodeKind::Primary { inner } = nodes[primary] else {
+    let TypedNode { node_kind: NodeKind::Primary { inner }, .. } = typed_nodes[primary] else {
         return false;
     };
 
-    let NodeKind::ArrayLiteral { .. } = nodes[inner] else {
+    let TypedNode { node_kind: NodeKind::ArrayLiteral { .. }, .. } = typed_nodes[inner] else {
         return false;
     };
 
