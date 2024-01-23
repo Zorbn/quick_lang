@@ -85,7 +85,7 @@ impl TypeChecker {
             NodeKind::FunctionCall { name, args } => self.function_call(name, args),
             NodeKind::IntLiteral { text } => self.int_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
-            NodeKind::ArrayLiteral { elements } => self.array_literal(elements),
+            NodeKind::ArrayLiteral { elements, repeat_count } => self.array_literal(elements, repeat_count),
             NodeKind::TypeName { type_kind } => self.type_name(type_kind),
         };
 
@@ -224,7 +224,7 @@ impl TypeChecker {
         Some(STRING_INDEX)
     }
 
-    fn array_literal(&mut self, elements: Arc<Vec<usize>>) -> Option<usize> {
+    fn array_literal(&mut self, elements: Arc<Vec<usize>>, repeat_count: usize) -> Option<usize> {
         for element in elements.iter() {
             self.check_node(*element);
         }
@@ -232,7 +232,7 @@ impl TypeChecker {
         let node_type = self.check_node(*elements.first()?)?;
         self.array_type_kinds.get(&ArrayLayout {
             element_type_kind: node_type,
-            element_count: elements.len(),
+            element_count: elements.len() * repeat_count,
         }).copied()
     }
 

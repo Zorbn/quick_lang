@@ -12,6 +12,7 @@ fun main(): Int {
     var myArray: Int[3] = makeArray(1, 777, 3);
     var myArrayCopy: Int[3] = takeArray(myArray);
     var otherCopy: Int[3] = myArrayCopy;
+    var repeatArray: Int[400] = [1, 2, 3, 4; 100];
 
     hello(a, b);
 

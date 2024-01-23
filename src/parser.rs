@@ -111,6 +111,7 @@ pub enum NodeKind {
     },
     ArrayLiteral {
         elements: Arc<Vec<usize>>,
+        repeat_count: usize,
     },
     TypeName {
         type_kind: usize,
@@ -520,12 +521,27 @@ impl Parser {
             self.assert_token(TokenKind::Comma);
             self.position += 1;
         }
+        
+        let mut repeat_count = 1;
+
+        if *self.token() == TokenKind::Semicolon {
+            self.assert_token(TokenKind::Semicolon);
+            self.position += 1;
+
+            let repeat_count_string = match self.token() {
+                TokenKind::IntLiteral { text } => text,
+                _ => panic!("Expected int literal for array repeat count"),
+            };
+            repeat_count = repeat_count_string.parse::<usize>().unwrap();
+            self.position += 1;
+        }
 
         self.assert_token(TokenKind::RBracket);
         self.position += 1;
 
         self.add_node(NodeKind::ArrayLiteral {
             elements: Arc::new(elements),
+            repeat_count,
         })
     }
 

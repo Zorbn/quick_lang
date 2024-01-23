@@ -15,13 +15,6 @@ mod environment;
  * TODO: The parser node that is currently called expression should become "binary" and expression should be a series of comparisons between binaries.
  * This will allow for boolean expressions, if, while, etc.
  *
- * For static arrays, an array literal should be needed to initialize the variable
- * ie: val myArray: Int[3] = [1, 5, 9];
- * becomes:
- *     int* myArray = {1, 5, 9};
- * with the potential for a second syntax for initializing all elements to a certain value:
- *     val myBigArray: Int[50] = [0; 50]
- *
  * Stuff not attempted yet:
  * Graceful error handling (keep lexing/parsing/etc even if you hit an error)
  * Report error messages that are helpful, have file positions.

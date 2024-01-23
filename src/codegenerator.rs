@@ -88,7 +88,7 @@ impl CodeGenerator {
             TypedNode { node_kind: NodeKind::FunctionCall { name, args }, type_kind } => self.function_call(name, args, type_kind),
             TypedNode { node_kind: NodeKind::IntLiteral { text }, type_kind } => self.int_literal(text, type_kind),
             TypedNode { node_kind: NodeKind::StringLiteral { text }, type_kind } => self.string_literal(text, type_kind),
-            TypedNode { node_kind: NodeKind::ArrayLiteral { elements }, type_kind } => self.array_literal(elements, type_kind),
+            TypedNode { node_kind: NodeKind::ArrayLiteral { elements, repeat_count }, type_kind } => self.array_literal(elements, repeat_count, type_kind),
             TypedNode { node_kind: NodeKind::TypeName { .. }, .. } => panic!("Cannot generate type name with gen_node"),
         }
     }
@@ -423,14 +423,19 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("\"");
     }
 
-    fn array_literal(&mut self, elements: Arc<Vec<usize>>, _type_kind: Option<usize>) {
+    fn array_literal(&mut self, elements: Arc<Vec<usize>>, repeat_count: usize, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("{");
-        for (i, element) in elements.iter().enumerate() {
-            if i > 0 {
-                self.body_emitters.top().body.emit(", ");
-            }
+        let mut i = 0;
+        for _ in 0..repeat_count {
+            for element in elements.iter() {
+                if i > 0 {
+                    self.body_emitters.top().body.emit(", ");
+                }
 
-            self.gen_node(*element);
+                self.gen_node(*element);
+                
+                i += 1;
+            }
         }
         self.body_emitters.top().body.emit("}");
     }
