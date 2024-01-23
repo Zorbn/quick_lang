@@ -22,6 +22,7 @@ pub struct CodeGenerator {
     pub prototype_emitter: Emitter,
     pub body_emitters: EmitterStack,
     function_declaration_needing_init: Option<usize>,
+    temp_variable_count: usize,
 }
 
 impl CodeGenerator {
@@ -36,6 +37,7 @@ impl CodeGenerator {
             prototype_emitter: Emitter::new(0),
             body_emitters: EmitterStack::new(),
             function_declaration_needing_init: None,
+            temp_variable_count: 0,
         };
 
         code_generator.header_emitter.emitln("#include <string.h>");
@@ -124,9 +126,6 @@ impl CodeGenerator {
         params: Arc<Vec<usize>>,
         type_kind: Option<usize>,
     ) {
-        // TODO: Need special case for functions that return arrays, since that's not allowed in C.
-        // TODO: The return value should be a pointer to the "fake return" arg that was passed in,
-        // with an extra argument for returning the array, then returning should memcpy to the destination if it isn't null.
         self.emit_type_name_left(return_type_name, EmitterKind::Prototype, true);
         self.emit_type_name_right(return_type_name, EmitterKind::Prototype, true);
 
@@ -233,7 +232,7 @@ impl CodeGenerator {
             self.emit_type_name_right(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emitln(";");
 
-            self.emit_memmove_name_to_name(&copy_name, &name, false);
+            self.emit_memmove_name_to_name(&copy_name, &name, type_kind.unwrap());
             self.body_emitters.top().body.emitln(";");
 
             self.body_emitters.top().body.emit(&name);
@@ -280,14 +279,14 @@ impl CodeGenerator {
             self.body_emitters.top().body.emit("const ");
         }
 
-        if is_array {
+        if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
             self.emit_type_name_left(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" ");
             self.body_emitters.top().body.emit(&name);
             self.emit_type_name_right(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emitln(";");
 
-            self.emit_memmove_expression_to_name(&name, expression);
+            self.emit_memmove_expression_to_name(&name, expression, type_kind.unwrap());
         } else {
             self.emit_type_name_left(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" ");
@@ -301,8 +300,8 @@ impl CodeGenerator {
     fn variable_assignment(&mut self, variable: usize, expression: usize, type_kind: Option<usize>) {
         let is_array = is_type_kind_array(&self.types, type_kind.unwrap());
 
-        if is_array {
-            self.emit_memmove_expression_to_variable(variable, expression);
+        if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
+            self.emit_memmove_expression_to_variable(variable, expression, type_kind.unwrap());
         } else {
             self.gen_node(variable);
             self.body_emitters.top().body.emit(" = ");
@@ -313,26 +312,22 @@ impl CodeGenerator {
     fn return_statement(&mut self, expression: usize, type_kind: Option<usize>) {
         if is_type_kind_array(&self.types, type_kind.unwrap()) {
             if is_typed_expression_array_literal(&self.typed_nodes, expression) {
+                let temp_name = self.temp_variable_name("temp");
+
                 self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Body, false);
-                // TODO: Make sure temp names are  distinct.
-                self.body_emitters.top().body.emit(" __temp");
+                self.body_emitters.top().body.emit(" ");
+                self.body_emitters.top().body.emit(&temp_name);
                 self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Body, false);
                 self.body_emitters.top().body.emit(" = ");
                 self.gen_node(expression);
                 self.body_emitters.top().body.emitln(";");
-            } else {
-                self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Body, false);
-                // TODO: Make sure temp names are  distinct.
-                self.body_emitters.top().body.emit(" __temp");
-                self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Body, false);
-                self.body_emitters.top().body.emitln(";");
 
-                self.emit_memmove_expression_to_name("__temp", expression);
+                self.emit_memmove_name_to_name("__return", &temp_name, type_kind.unwrap());
+                self.body_emitters.top().body.emitln(";");
+            } else {
+                self.emit_memmove_expression_to_name("__return", expression, type_kind.unwrap());
                 self.body_emitters.top().body.emitln(";");
             }
-
-            self.emit_memmove_name_to_name("__return", "__temp", true);
-            self.body_emitters.top().body.emitln(";");
 
             self.body_emitters.top().body.emit("return __return");
         } else {
@@ -405,15 +400,15 @@ impl CodeGenerator {
                 self.body_emitters.top().body.emit(", ");
             }
 
+            let return_array_name = self.temp_variable_name("returnArray");
+
             self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Top, false);
-            // TODO: Make this name different each time it is generated.
             self.body_emitters.top().top.emit(" ");
-            self.body_emitters.top().top.emit("__return_array");
+            self.body_emitters.top().top.emit(&return_array_name);
             self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Top, false);
             self.body_emitters.top().top.emitln(";");
 
-            // TODO: Make this name different each time it is generated.
-            self.body_emitters.top().body.emit("__return_array");
+            self.body_emitters.top().body.emit(&return_array_name);
         }
         self.body_emitters.top().body.emit(")");
     }
@@ -440,25 +435,25 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn emit_memmove_expression_to_variable(&mut self, destination: usize, source: usize) {
+    fn emit_memmove_expression_to_variable(&mut self, destination: usize, source: usize, type_kind: usize) {
         self.body_emitters.top().body.emit("memmove(");
         self.gen_node(destination);
         self.body_emitters.top().body.emit(", ");
         self.gen_node(source);
         self.body_emitters.top().body.emit(", ");
         self.body_emitters.top().body.emit("sizeof(");
-        self.gen_node(destination);
+        self.emit_type_size(type_kind);
         self.body_emitters.top().body.emit("))");
     }
 
-    fn emit_memmove_expression_to_name(&mut self, destination: &str, source: usize) {
+    fn emit_memmove_expression_to_name(&mut self, destination: &str, source: usize, type_kind: usize) {
         self.body_emitters.top().body.emit("memmove(");
         self.body_emitters.top().body.emit(destination);
         self.body_emitters.top().body.emit(", ");
         self.gen_node(source);
         self.body_emitters.top().body.emit(", ");
         self.body_emitters.top().body.emit("sizeof(");
-        self.body_emitters.top().body.emit(destination);
+        self.emit_type_size(type_kind);
         self.body_emitters.top().body.emit("))");
     }
 
@@ -466,7 +461,7 @@ impl CodeGenerator {
         &mut self,
         destination: &str,
         source: &str,
-        use_source_size: bool,
+        type_kind: usize,
     ) {
         self.body_emitters.top().body.emit("memmove(");
         self.body_emitters.top().body.emit(destination);
@@ -474,40 +469,27 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(source);
         self.body_emitters.top().body.emit(", ");
         self.body_emitters.top().body.emit("sizeof(");
-        self.body_emitters
-            .top()
-            .body
-            .emit(if use_source_size { source } else { destination });
+        self.emit_type_size(type_kind);
         self.body_emitters.top().body.emit("))");
     }
 
-    // fn emit_memmove(&mut self, destination: &str, source: usize, type_kind: usize) {
-    //     self.body_emitters.top().body.emit("memcpy(");
-    //     self.body_emitters.top().body.emit(destination);
-    //     self.body_emitters.top().body.emit(", ");
-    //     self.gen_node(source);
-    //     self.body_emitters.top().body.emit(", ");
-    //     self.emit_type_size(type_kind);
-    //     self.body_emitters.top().body.emit(")");
-    // }
-
-    // fn emit_type_size(&mut self, type_kind: usize) {
-    //     match self.types[type_kind] {
-    //         TypeKind::Array {
-    //             element_type_kind, element_count,
-    //         } => {
-    //             self.emit_type_size(element_type_kind);
-    //             self.body_emitters.top().body.emit(" * ");
-    //             self.body_emitters.top().body.emit(&element_count.to_string());
-    //         },
-    //         _ => {
-    //             self.body_emitters.top().body.emit("sizeof(");
-    //             self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
-    //             self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
-    //             self.body_emitters.top().body.emit(")");
-    //         }
-    //     };
-    // }
+    fn emit_type_size(&mut self, type_kind: usize) {
+        match self.types[type_kind] {
+            TypeKind::Array {
+                element_type_kind, element_count,
+            } => {
+                self.emit_type_size(element_type_kind);
+                self.body_emitters.top().body.emit(" * ");
+                self.body_emitters.top().body.emit(&element_count.to_string());
+            },
+            _ => {
+                self.body_emitters.top().body.emit("sizeof(");
+                self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
+                self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
+                self.body_emitters.top().body.emit(")");
+            }
+        };
+    }
 
     fn emit_type_name_left(
         &mut self,
@@ -583,5 +565,12 @@ impl CodeGenerator {
             EmitterKind::Body => &mut self.body_emitters.top().body,
             EmitterKind::Top => &mut self.body_emitters.top().top,
         }
+    }
+
+    fn temp_variable_name(&mut self, prefix: &str) -> String {
+        let temp_variable_index = self.temp_variable_count;
+        self.temp_variable_count += 1;
+
+        format!("__{}{}", prefix, temp_variable_index)
     }
 }

@@ -15,6 +15,7 @@ pub struct TypeChecker {
     pub function_declaration_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     environment: Environment,
+    has_function_opened_block: bool,
 }
 
 impl TypeChecker {
@@ -33,6 +34,7 @@ impl TypeChecker {
             function_declaration_indices,
             array_type_kinds: array_type_indices,
             environment: Environment::new(),
+            has_function_opened_block: false,
         };
 
         type_checker.typed_nodes.resize(node_count, None);
@@ -101,6 +103,8 @@ impl TypeChecker {
     }
 
     fn function(&mut self, declaration: usize, block: usize) -> Option<usize> {
+        self.environment.push();
+        self.has_function_opened_block = true;
         let type_kind = self.check_node(declaration);
         self.check_node(block);
 
@@ -119,12 +123,19 @@ impl TypeChecker {
         self.check_node(declaration)
     }
 
-    fn param(&mut self, _name: String, type_name: usize) -> Option<usize> {
-        self.check_node(type_name)
+    fn param(&mut self, name: String, type_name: usize) -> Option<usize> {
+        let type_kind = self.check_node(type_name);
+        self.environment.insert(name, type_kind.unwrap());
+
+        type_kind
     }
 
     fn block(&mut self, statements: Arc<Vec<usize>>) -> Option<usize> {
-        self.environment.push();
+        if !self.has_function_opened_block {
+            self.environment.push();
+        } else {
+            self.has_function_opened_block = false;
+        }
 
         for statement in statements.iter() {
             self.check_node(*statement);

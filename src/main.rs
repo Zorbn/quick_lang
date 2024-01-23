@@ -15,7 +15,6 @@ mod environment;
  * TODO: The parser node that is currently called expression should become "binary" and expression should be a series of comparisons between binaries.
  * This will allow for boolean expressions, if, while, etc.
  *
- * TODO: For static arrays, copying doesn't work on assignment yet because we don't have the type information to tell if an assignment is to an array.
  * For static arrays, an array literal should be needed to initialize the variable
  * ie: val myArray: Int[3] = [1, 5, 9];
  * becomes:
