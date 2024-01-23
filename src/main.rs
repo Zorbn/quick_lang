@@ -29,6 +29,9 @@ mod environment;
  * *a = 5;
  * which isn't an expression, and wouldn't be helpful as an expression anyway, because there are very few times
  * you want to allocate and then not immediately assign the resulting pointer to a variable.
+ * 
+ * There should be const versions of pointer types that you can't free, 
+ * including strings, ie: const String = "hello"; String = ... some allocation ...
  *
  */
 
