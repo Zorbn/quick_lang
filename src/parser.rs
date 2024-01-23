@@ -1,6 +1,6 @@
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
-use crate::lexer::TokenKind;
+use crate::{lexer::TokenKind, types::is_type_name_array};
 
 // TODO: Should strings be refcounted strs instead?
 
@@ -184,7 +184,7 @@ impl Parser {
         self.top_level()
     }
 
-    pub fn top_level(&mut self) -> usize {
+    fn top_level(&mut self) -> usize {
         let mut functions = Vec::new();
 
         while *self.token() != TokenKind::Eof {
@@ -200,7 +200,7 @@ impl Parser {
         })
     }
 
-    pub fn function_declaration(&mut self) -> usize {
+    fn function_declaration(&mut self) -> usize {
         self.assert_token(TokenKind::Fun);
         self.position += 1;
 
@@ -244,14 +244,14 @@ impl Parser {
         index
     }
 
-    pub fn function(&mut self) -> usize {
+    fn function(&mut self) -> usize {
         let declaration = self.function_declaration();
         let block = self.block();
 
         self.add_node(NodeKind::Function { declaration, block })
     }
 
-    pub fn extern_function(&mut self) -> usize {
+    fn extern_function(&mut self) -> usize {
         self.assert_token(TokenKind::Extern);
         self.position += 1;
 
@@ -260,7 +260,7 @@ impl Parser {
         self.add_node(NodeKind::ExternFunction { declaration })
     }
 
-    pub fn param(&mut self) -> usize {
+    fn param(&mut self) -> usize {
         let name = match self.token() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected param name"),
@@ -275,7 +275,7 @@ impl Parser {
         self.add_node(NodeKind::Param { name, type_name })
     }
 
-    pub fn block(&mut self) -> usize {
+    fn block(&mut self) -> usize {
         self.assert_token(TokenKind::LBrace);
         self.position += 1;
 
@@ -293,7 +293,7 @@ impl Parser {
         })
     }
 
-    pub fn statement(&mut self) -> usize {
+    fn statement(&mut self) -> usize {
         let inner = match self.token() {
             TokenKind::Var | TokenKind::Val => self.variable_declaration(),
             TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::Equals => {
@@ -308,7 +308,43 @@ impl Parser {
         self.add_node(NodeKind::Statement { inner })
     }
 
-    pub fn variable_declaration(&mut self) -> usize {
+    fn is_expression_array_literal(&self, expression: usize) -> bool {
+        let NodeKind::Expression { term, trailing_terms } = &self.nodes[expression] else {
+            return false;
+        };
+
+        if trailing_terms.len() > 0 {
+            return false;
+        }
+
+        let NodeKind::Term { unary, trailing_unaries } = &self.nodes[*term] else {
+            return false;
+        };
+
+        if trailing_unaries.len() > 0 {
+            return false;
+        }
+
+        let NodeKind::Unary { op, primary } = self.nodes[*unary] else {
+            return false;
+        };
+
+        if op.is_some() {
+            return false;
+        }
+
+        let NodeKind::Primary { inner } = self.nodes[primary] else {
+            return false;
+        };
+
+        let NodeKind::ArrayLiteral { .. } = self.nodes[inner] else {
+            return false;
+        };
+
+        true
+    }
+
+    fn variable_declaration(&mut self) -> usize {
         let is_mutable = match self.token() {
             TokenKind::Var => true,
             TokenKind::Val => false,
@@ -331,30 +367,36 @@ impl Parser {
         self.position += 1;
 
         let expression = self.expression();
+        let is_copy = is_type_name_array(&self.nodes, &self.types, type_name) && !self.is_expression_array_literal(expression);
 
         self.add_node(NodeKind::VariableDeclaration {
             is_mutable,
+            is_copy,
             name,
             type_name,
             expression,
         })
     }
 
-    pub fn variable_assignment(&mut self) -> usize {
+    fn variable_assignment(&mut self) -> usize {
         let variable = self.variable();
 
         self.assert_token(TokenKind::Equals);
         self.position += 1;
 
         let expression = self.expression();
+        let is_copy = false;
+        // TODO: Set is_copy correctly once we track type information for variables.
+        // is_type_name_array(&self.nodes, &self.types, type_name) && !self.is_expression_array_literal(expression);
 
         self.add_node(NodeKind::VariableAssignment {
+            is_copy,
             variable,
             expression,
         })
     }
 
-    pub fn return_statement(&mut self) -> usize {
+    fn return_statement(&mut self) -> usize {
         self.assert_token(TokenKind::Return);
         self.position += 1;
 
@@ -363,7 +405,7 @@ impl Parser {
         self.add_node(NodeKind::ReturnStatement { expression })
     }
 
-    pub fn expression(&mut self) -> usize {
+    fn expression(&mut self) -> usize {
         let term = self.term();
         let mut trailing_terms = Vec::new();
 
@@ -387,7 +429,7 @@ impl Parser {
         })
     }
 
-    pub fn term(&mut self) -> usize {
+    fn term(&mut self) -> usize {
         let unary = self.unary();
         let mut trailing_unaries = Vec::new();
 
@@ -411,7 +453,7 @@ impl Parser {
         })
     }
 
-    pub fn unary(&mut self) -> usize {
+    fn unary(&mut self) -> usize {
         let op = match *self.token() {
             TokenKind::Plus => {
                 self.position += 1;
@@ -429,7 +471,7 @@ impl Parser {
         self.add_node(NodeKind::Unary { op, primary })
     }
 
-    pub fn primary(&mut self) -> usize {
+    fn primary(&mut self) -> usize {
         let inner = match *self.token() {
             TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => {
                 self.function_call()
@@ -444,7 +486,7 @@ impl Parser {
         self.add_node(NodeKind::Primary { inner })
     }
 
-    pub fn variable(&mut self) -> usize {
+    fn variable(&mut self) -> usize {
         let name = match self.token() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected variable name"),
@@ -454,7 +496,7 @@ impl Parser {
         self.add_node(NodeKind::Variable { name })
     }
 
-    pub fn function_call(&mut self) -> usize {
+    fn function_call(&mut self) -> usize {
         let name = match self.token() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected function name"),
@@ -486,7 +528,7 @@ impl Parser {
         })
     }
 
-    pub fn int_literal(&mut self) -> usize {
+    fn int_literal(&mut self) -> usize {
         let text = match self.token() {
             TokenKind::IntLiteral { text } => text.clone(),
             _ => panic!("Expected int literal"),
@@ -496,7 +538,7 @@ impl Parser {
         self.add_node(NodeKind::IntLiteral { text })
     }
 
-    pub fn string_literal(&mut self) -> usize {
+    fn string_literal(&mut self) -> usize {
         let text = match self.token() {
             TokenKind::StringLiteral { text } => text.clone(),
             _ => panic!("Expected string literal"),
@@ -506,7 +548,7 @@ impl Parser {
         self.add_node(NodeKind::StringLiteral { text })
     }
 
-    pub fn array_literal(&mut self) -> usize {
+    fn array_literal(&mut self) -> usize {
         self.assert_token(TokenKind::LBracket);
         self.position += 1;
 
@@ -531,7 +573,7 @@ impl Parser {
         })
     }
 
-    pub fn type_name(&mut self) -> usize {
+    fn type_name(&mut self) -> usize {
         let mut type_kind = match self.token() {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,

@@ -7,14 +7,16 @@ mod emitter;
 mod emitter_stack;
 mod lexer;
 mod parser;
+mod types;
 
 /*
+ * TODO: For static arrays, copying doesn't work on assignment yet because we don't have the type information to tell if an assignment is to an array.
  * For static arrays, an array literal should be needed to initialize the variable
  * ie: val myArray: Int[3] = [1, 5, 9];
  * becomes:
  *     int* myArray = {1, 5, 9};
  * with the potential for a second syntax for initializing all elements to a certain value:
- *     val myBigArray: Int[50] = 0[50]; or [0; 50], i'm not sure yet.
+ *     val myBigArray: Int[50] = [0; 50]
  *
  * Stuff not attempted yet:
  * Graceful error handling (keep lexing/parsing/etc even if you hit an error)
@@ -31,7 +33,6 @@ mod parser;
  * which isn't an expression, and wouldn't be helpful as an expression anyway, because there are very few times
  * you want to allocate and then not immediately assign the resulting pointer to a variable.
  *
- * TODO: Turn array assignment/declaration into memcpy unless source is an array literal.
  */
 
 fn main() {

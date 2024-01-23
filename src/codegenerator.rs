@@ -1,9 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    emitter::Emitter,
-    emitter_stack::EmitterStack,
-    parser::{NodeKind, Op, TrailingTerm, TrailingUnary, TypeKind},
+    emitter::Emitter, emitter_stack::EmitterStack, parser::{NodeKind, Op, TrailingTerm, TrailingUnary, TypeKind}, types::is_type_name_array
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -64,14 +62,16 @@ impl CodeGenerator {
             NodeKind::Statement { inner } => self.statement(inner),
             NodeKind::VariableDeclaration {
                 is_mutable,
+                is_copy,
                 name,
                 type_name,
                 expression,
-            } => self.variable_declaration(is_mutable, name, type_name, expression),
+            } => self.variable_declaration(is_mutable, is_copy, name, type_name, expression),
             NodeKind::VariableAssignment {
+                is_copy,
                 variable,
                 expression,
-            } => self.variable_assignment(variable, expression),
+            } => self.variable_assignment(is_copy, variable, expression),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
             NodeKind::Expression {
                 term,
@@ -143,7 +143,7 @@ impl CodeGenerator {
             self.gen_node_prototype(*param);
         }
 
-        if self.is_type_name_array(return_type_name) {
+        if is_type_name_array(&self.nodes, &self.types, return_type_name) {
             if params.len() > 0 {
                 self.prototype_emitter.emit(", ");
             }
@@ -190,7 +190,7 @@ impl CodeGenerator {
             self.gen_node(*param);
         }
 
-        if self.is_type_name_array(return_type_name) {
+        if is_type_name_array(&self.nodes, &self.types, return_type_name) {
             if params.len() > 0 {
                 self.body_emitters.top().body.emit(", ");
             }
@@ -234,36 +234,47 @@ impl CodeGenerator {
     fn variable_declaration(
         &mut self,
         is_mutable: bool,
+        is_copy: bool,
         name: String,
         type_name: usize,
         expression: usize,
     ) {
-        if !is_mutable {
+        if !is_mutable && !is_copy {
             self.body_emitters.top().body.emit("const ");
         }
 
-        self.emit_type_name_left(type_name, EmitterKind::Body, false);
-        self.body_emitters.top().body.emit(" ");
-        self.body_emitters.top().body.emit(&name);
-        self.emit_type_name_right(type_name, EmitterKind::Body, false);
-        self.body_emitters.top().body.emit(" = ");
-        self.gen_node(expression);
+        if is_copy {
+            self.emit_type_name_left(type_name, EmitterKind::Body, false);
+            self.body_emitters.top().body.emit(" ");
+            self.body_emitters.top().body.emit(&name);
+            self.emit_type_name_right(type_name, EmitterKind::Body, false);
+            self.body_emitters.top().body.emitln(";");
+
+            self.emit_memmove_expression_to_name(&name, expression);
+        } else {
+            self.emit_type_name_left(type_name, EmitterKind::Body, false);
+            self.body_emitters.top().body.emit(" ");
+            self.body_emitters.top().body.emit(&name);
+            self.emit_type_name_right(type_name, EmitterKind::Body, false);
+            self.body_emitters.top().body.emit(" = ");
+            self.gen_node(expression);
+        }
     }
 
-    fn variable_assignment(&mut self, variable: usize, expression: usize) {
-        self.gen_node(variable);
-        self.body_emitters.top().body.emit(" = ");
-        self.gen_node(expression);
+    fn variable_assignment(&mut self, is_copy: bool, variable: usize, expression: usize) {
+        if is_copy {
+            self.emit_memmove_expression_to_variable(variable, expression);
+        } else {
+            self.gen_node(variable);
+            self.body_emitters.top().body.emit(" = ");
+            self.gen_node(expression);
+        }
     }
 
     fn return_statement(&mut self, expression: usize) {
-
         let return_type_name = self.current_function_return_type_name.unwrap();
-        if self.is_type_name_array(return_type_name) {
-            let NodeKind::TypeName { type_kind } = self.nodes[return_type_name] else {
-                panic!("Tried to emit node that wasn't a type name");
-            };
 
+        if is_type_name_array(&self.nodes, &self.types, return_type_name) {
             self.emit_type_name_left(return_type_name, EmitterKind::Body, false);
             // TODO: Make sure temp names are  distinct.
             self.body_emitters.top().body.emit(" __temp");
@@ -272,9 +283,8 @@ impl CodeGenerator {
             self.gen_node(expression);
             self.body_emitters.top().body.emitln(";");
 
-            self.body_emitters.top().body.emit("memmove(__return, __temp, ");
-            self.emit_type_size(type_kind);
-            self.body_emitters.top().body.emitln(");");
+            self.emit_memmove_name_to_name("__return", "__temp");
+            self.body_emitters.top().body.emitln(";");
 
             self.body_emitters.top().body.emit("return __return");
         } else {
@@ -349,7 +359,7 @@ impl CodeGenerator {
             self.gen_node(*arg);
         }
 
-        if self.is_type_name_array(return_type_name) {
+        if is_type_name_array(&self.nodes, &self.types, return_type_name) {
             if args.len() > 0 {
                 self.body_emitters.top().body.emit(", ");
             }
@@ -389,32 +399,66 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn is_type_name_array(&mut self, type_name: usize) -> bool {
-        let NodeKind::TypeName { type_kind } = self.nodes[type_name] else {
-            panic!("Tried to emit node that wasn't a type name");
-        };
-        let type_kind = &self.types[type_kind];
-
-        matches!(type_kind, TypeKind::Array { .. })
+    fn emit_memmove_expression_to_variable(&mut self, destination: usize, source: usize) {
+        self.body_emitters.top().body.emit("memmove(");
+        self.gen_node(destination);
+        self.body_emitters.top().body.emit(", ");
+        self.gen_node(source);
+        self.body_emitters.top().body.emit(", ");
+        self.body_emitters.top().body.emit("sizeof(");
+        self.gen_node(destination);
+        self.body_emitters.top().body.emit("))");
     }
 
-    fn emit_type_size(&mut self, type_kind: usize) {
-        match self.types[type_kind] {
-            TypeKind::Array {
-                element_type_kind, element_count,
-            } => {
-                self.emit_type_size(element_type_kind);
-                self.body_emitters.top().body.emit(" * ");
-                self.body_emitters.top().body.emit(&element_count.to_string());
-            },
-            _ => {
-                self.body_emitters.top().body.emit("sizeof(");
-                self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
-                self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
-                self.body_emitters.top().body.emit(")");
-            }
-        };
+    fn emit_memmove_expression_to_name(&mut self, destination: &str, source: usize) {
+        self.body_emitters.top().body.emit("memmove(");
+        self.body_emitters.top().body.emit(destination);
+        self.body_emitters.top().body.emit(", ");
+        self.gen_node(source);
+        self.body_emitters.top().body.emit(", ");
+        self.body_emitters.top().body.emit("sizeof(");
+        self.body_emitters.top().body.emit(destination);
+        self.body_emitters.top().body.emit("))");
     }
+
+    fn emit_memmove_name_to_name(&mut self, destination: &str, source: &str) {
+        self.body_emitters.top().body.emit("memmove(");
+        self.body_emitters.top().body.emit(destination);
+        self.body_emitters.top().body.emit(", ");
+        self.body_emitters.top().body.emit(source);
+        self.body_emitters.top().body.emit(", ");
+        self.body_emitters.top().body.emit("sizeof(");
+        self.body_emitters.top().body.emit(source);
+        self.body_emitters.top().body.emit("))");
+    }
+
+    // fn emit_memmove(&mut self, destination: &str, source: usize, type_kind: usize) {
+    //     self.body_emitters.top().body.emit("memcpy(");
+    //     self.body_emitters.top().body.emit(destination);
+    //     self.body_emitters.top().body.emit(", ");
+    //     self.gen_node(source);
+    //     self.body_emitters.top().body.emit(", ");
+    //     self.emit_type_size(type_kind);
+    //     self.body_emitters.top().body.emit(")");
+    // }
+
+    // fn emit_type_size(&mut self, type_kind: usize) {
+    //     match self.types[type_kind] {
+    //         TypeKind::Array {
+    //             element_type_kind, element_count,
+    //         } => {
+    //             self.emit_type_size(element_type_kind);
+    //             self.body_emitters.top().body.emit(" * ");
+    //             self.body_emitters.top().body.emit(&element_count.to_string());
+    //         },
+    //         _ => {
+    //             self.body_emitters.top().body.emit("sizeof(");
+    //             self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
+    //             self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
+    //             self.body_emitters.top().body.emit(")");
+    //         }
+    //     };
+    // }
 
     fn emit_type_name_left(
         &mut self,
