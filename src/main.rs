@@ -1,11 +1,12 @@
 use std::{fs, io::Write};
 
-use crate::{lexer::Lexer, parser::Parser, codegenerator::CodeGenerator};
+use crate::{codegenerator::CodeGenerator, lexer::Lexer, parser::Parser};
 
-mod lexer;
-mod parser;
 mod codegenerator;
 mod emitter;
+mod emitter_stack;
+mod lexer;
+mod parser;
 
 /*
  * For static arrays, an array literal should be needed to initialize the variable
@@ -19,6 +20,18 @@ mod emitter;
  * Graceful error handling (keep lexing/parsing/etc even if you hit an error)
  * Report error messages that are helpful, have file positions.
  * Generics, etc.
+ *
+ * Create special statements for alloc and free:
+ * var a: Int* = alloc 5;
+ * free a;
+ *
+ * note that these both must be STATEMENT, alloc 5 cannot be an expression because it needs to be codegen'ed to:
+ * int* a = malloc(sizeof(int));
+ * *a = 5;
+ * which isn't an expression, and wouldn't be helpful as an expression anyway, because there are very few times
+ * you want to allocate and then not immediately assign the resulting pointer to a variable.
+ *
+ * TODO: Turn array assignment/declaration into memcpy unless source is an array literal.
  */
 
 fn main() {
@@ -44,19 +57,29 @@ fn main() {
     //
     println!("~~ Generating ~~");
 
-    let mut code_generator = CodeGenerator::new(parser.nodes, parser.types);
+    let mut code_generator = CodeGenerator::new(
+        parser.nodes,
+        parser.types,
+        parser.function_declaration_indices,
+    );
     code_generator.gen(start_index);
 
     let mut output_file = fs::File::create("out/test.c").unwrap();
-    output_file.write_all(code_generator.header_emitter.string.as_bytes()).unwrap();
+    output_file
+        .write_all(code_generator.header_emitter.string.as_bytes())
+        .unwrap();
     if !code_generator.header_emitter.string.is_empty() {
         output_file.write_all("\n".as_bytes()).unwrap();
     }
-    output_file.write_all(code_generator.prototype_emitter.string.as_bytes()).unwrap();
+    output_file
+        .write_all(code_generator.prototype_emitter.string.as_bytes())
+        .unwrap();
     if !code_generator.prototype_emitter.string.is_empty() {
         output_file.write_all("\n".as_bytes()).unwrap();
     }
-    output_file.write_all(code_generator.body_emitter.string.as_bytes()).unwrap();
+    output_file
+        .write_all(code_generator.body_emitters.string().as_bytes())
+        .unwrap();
 
     println!("~~~ Calling system compiler ~~~");
     match std::process::Command::new("clang")
@@ -69,6 +92,6 @@ fn main() {
                 println!("System compiler error:\n");
                 std::io::stdout().write_all(&output.stderr).unwrap();
             }
-        },
+        }
     }
 }

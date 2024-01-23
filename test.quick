@@ -8,6 +8,9 @@ fun main(): Int {
     var str: String = "hello world";
     puts(str);
 
+    var twoD: Int[2] = [1, 5];
+    var myArray: Int[3] = makeArray(1, 777, 3);
+
     hello(a, b);
 
     return 0;
@@ -16,4 +19,8 @@ fun main(): Int {
 fun hello(num: Int, othernum: Int): Int {
     val sum: Int = num + othernum;
     return sum;
+}
+
+fun makeArray(a: Int, b: Int, c: Int): Int[3] {
+    return [a, b, c];
 }

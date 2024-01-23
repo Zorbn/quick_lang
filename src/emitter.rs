@@ -5,10 +5,10 @@ pub struct Emitter {
 }
 
 impl Emitter {
-    pub fn new() -> Self {
+    pub fn new(indent_count: usize) -> Self {
         Self {
             string: String::new(),
-            indent_count: 0,
+            indent_count,
             is_on_newline: true,
         }
     }
@@ -35,11 +35,7 @@ impl Emitter {
         self.newline();
     }
 
-    pub fn indent(&mut self) {
-        self.indent_count += 1;
-    }
-
-    pub fn unindent(&mut self) {
-        self.indent_count -= 1;
+    pub fn indent_count(&self) -> usize {
+        self.indent_count
     }
 }

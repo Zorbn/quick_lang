@@ -1,4 +1,4 @@
-use std::{sync::Arc, collections::HashMap};
+use std::{collections::HashMap, hash::Hash, sync::Arc};
 
 use crate::lexer::TokenKind;
 
@@ -70,11 +70,13 @@ pub enum NodeKind {
     },
     VariableDeclaration {
         is_mutable: bool,
+        is_copy: bool,
         name: String,
         type_name: usize,
         expression: usize,
     },
     VariableAssignment {
+        is_copy: bool,
         variable: usize,
         expression: usize,
     },
@@ -109,9 +111,12 @@ pub enum NodeKind {
     StringLiteral {
         text: String,
     },
+    ArrayLiteral {
+        elements: Arc<Vec<usize>>,
+    },
     TypeName {
         type_kind: usize,
-    }
+    },
 }
 
 pub const INT_INDEX: usize = 0;
@@ -121,6 +126,7 @@ pub struct Parser {
     pub tokens: Vec<TokenKind>,
     pub nodes: Vec<NodeKind>,
     pub types: Vec<TypeKind>,
+    pub function_declaration_indices: HashMap<String, usize>,
     array_type_indices: HashMap<ArrayLayout, usize>,
     position: usize,
 }
@@ -132,6 +138,7 @@ impl Parser {
             nodes: Vec::new(),
             types: Vec::new(),
             array_type_indices: HashMap::new(),
+            function_declaration_indices: HashMap::new(),
             position: 0,
         };
 
@@ -146,12 +153,18 @@ impl Parser {
     }
 
     fn peek_token(&self) -> &TokenKind {
-        self.tokens.get(self.position + 1).unwrap_or(&TokenKind::Eof)
+        self.tokens
+            .get(self.position + 1)
+            .unwrap_or(&TokenKind::Eof)
     }
 
     fn assert_token(&self, token: TokenKind) {
         if *self.token() != token {
-            panic!("Expected token {:?} but got token {:?}", token, self.token());
+            panic!(
+                "Expected token {:?} but got token {:?}",
+                token,
+                self.token()
+            );
         }
     }
 
@@ -182,7 +195,9 @@ impl Parser {
             }
         }
 
-        self.add_node(NodeKind::TopLevel { functions: Arc::new(functions) })
+        self.add_node(NodeKind::TopLevel {
+            functions: Arc::new(functions),
+        })
     }
 
     pub fn function_declaration(&mut self) -> usize {
@@ -219,7 +234,14 @@ impl Parser {
 
         let return_type_name = self.type_name();
 
-        self.add_node(NodeKind::FunctionDeclaration { name, return_type_name, params: Arc::new(params) })
+        let index = self.add_node(NodeKind::FunctionDeclaration {
+            name: name.clone(),
+            return_type_name,
+            params: Arc::new(params),
+        });
+        self.function_declaration_indices.insert(name, index);
+
+        index
     }
 
     pub fn function(&mut self) -> usize {
@@ -266,13 +288,17 @@ impl Parser {
         self.assert_token(TokenKind::RBrace);
         self.position += 1;
 
-        self.add_node(NodeKind::Block { statements: Arc::new(statements) })
+        self.add_node(NodeKind::Block {
+            statements: Arc::new(statements),
+        })
     }
 
     pub fn statement(&mut self) -> usize {
         let inner = match self.token() {
             TokenKind::Var | TokenKind::Val => self.variable_declaration(),
-            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::Equals => self.variable_assignment(),
+            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::Equals => {
+                self.variable_assignment()
+            }
             TokenKind::Return => self.return_statement(),
             _ => self.expression(),
         };
@@ -306,7 +332,12 @@ impl Parser {
 
         let expression = self.expression();
 
-        self.add_node(NodeKind::VariableDeclaration { is_mutable, name, type_name, expression })
+        self.add_node(NodeKind::VariableDeclaration {
+            is_mutable,
+            name,
+            type_name,
+            expression,
+        })
     }
 
     pub fn variable_assignment(&mut self) -> usize {
@@ -317,7 +348,10 @@ impl Parser {
 
         let expression = self.expression();
 
-        self.add_node(NodeKind::VariableAssignment { variable, expression })
+        self.add_node(NodeKind::VariableAssignment {
+            variable,
+            expression,
+        })
     }
 
     pub fn return_statement(&mut self) -> usize {
@@ -347,7 +381,10 @@ impl Parser {
             });
         }
 
-        self.add_node(NodeKind::Expression { term, trailing_terms: Arc::new(trailing_terms) })
+        self.add_node(NodeKind::Expression {
+            term,
+            trailing_terms: Arc::new(trailing_terms),
+        })
     }
 
     pub fn term(&mut self) -> usize {
@@ -368,7 +405,10 @@ impl Parser {
             });
         }
 
-        self.add_node(NodeKind::Term { unary, trailing_unaries: Arc::new(trailing_unaries) })
+        self.add_node(NodeKind::Term {
+            unary,
+            trailing_unaries: Arc::new(trailing_unaries),
+        })
     }
 
     pub fn unary(&mut self) -> usize {
@@ -376,11 +416,11 @@ impl Parser {
             TokenKind::Plus => {
                 self.position += 1;
                 Some(Op::Add)
-            },
+            }
             TokenKind::Minus => {
                 self.position += 1;
                 Some(Op::Divide)
-            },
+            }
             _ => None,
         };
 
@@ -391,10 +431,13 @@ impl Parser {
 
     pub fn primary(&mut self) -> usize {
         let inner = match *self.token() {
-            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => self.function_call(),
+            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => {
+                self.function_call()
+            }
             TokenKind::Identifier { .. } => self.variable(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
             TokenKind::StringLiteral { .. } => self.string_literal(),
+            TokenKind::LBracket { .. } => self.array_literal(),
             _ => panic!("Invalid token in primary value"),
         };
 
@@ -437,7 +480,10 @@ impl Parser {
         self.assert_token(TokenKind::RParen);
         self.position += 1;
 
-        self.add_node(NodeKind::FunctionCall { name, args: Arc::new(args) })
+        self.add_node(NodeKind::FunctionCall {
+            name,
+            args: Arc::new(args),
+        })
     }
 
     pub fn int_literal(&mut self) -> usize {
@@ -448,7 +494,6 @@ impl Parser {
         self.position += 1;
 
         self.add_node(NodeKind::IntLiteral { text })
-
     }
 
     pub fn string_literal(&mut self) -> usize {
@@ -459,7 +504,31 @@ impl Parser {
         self.position += 1;
 
         self.add_node(NodeKind::StringLiteral { text })
+    }
 
+    pub fn array_literal(&mut self) -> usize {
+        self.assert_token(TokenKind::LBracket);
+        self.position += 1;
+
+        let mut elements = Vec::new();
+
+        while *self.token() != TokenKind::RParen {
+            elements.push(self.expression());
+
+            if *self.token() != TokenKind::Comma {
+                break;
+            }
+
+            self.assert_token(TokenKind::Comma);
+            self.position += 1;
+        }
+
+        self.assert_token(TokenKind::RBracket);
+        self.position += 1;
+
+        self.add_node(NodeKind::ArrayLiteral {
+            elements: Arc::new(elements),
+        })
     }
 
     pub fn type_name(&mut self) -> usize {
@@ -478,6 +547,7 @@ impl Parser {
                 _ => panic!("Expected int literal in array type"),
             };
             let length = length_string.parse::<usize>().unwrap();
+            self.position += 1;
 
             self.assert_token(TokenKind::RBracket);
             self.position += 1;
@@ -490,7 +560,10 @@ impl Parser {
             type_kind = if let Some(index) = self.array_type_indices.get(&array_layout) {
                 *index
             } else {
-                let index = self.add_type(TypeKind::Array { element_type_kind: type_kind, element_count: length });
+                let index = self.add_type(TypeKind::Array {
+                    element_type_kind: type_kind,
+                    element_count: length,
+                });
                 self.array_type_indices.insert(array_layout, index);
                 index
             };

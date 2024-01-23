@@ -21,15 +21,9 @@ pub enum TokenKind {
     Extern,
     Int,
     String,
-    IntLiteral {
-        text: String,
-    },
-    StringLiteral {
-        text: String,
-    },
-    Identifier {
-        text: String,
-    },
+    IntLiteral { text: String },
+    StringLiteral { text: String },
+    Identifier { text: String },
     Eof,
 }
 
@@ -54,12 +48,12 @@ impl Lexer {
 
     fn try_consume_string(&mut self, str: &str) -> bool {
         if self.position + str.len() >= self.chars.len() {
-            return false
+            return false;
         }
 
         for (i, c) in str.chars().enumerate() {
             if self.chars[self.position + i] != c {
-                return false
+                return false;
             }
         }
 
@@ -74,59 +68,59 @@ impl Lexer {
                 '(' => {
                     self.tokens.push(TokenKind::LParen);
                     self.position += 1;
-                },
+                }
                 ')' => {
                     self.tokens.push(TokenKind::RParen);
                     self.position += 1;
-                },
+                }
                 '{' => {
                     self.tokens.push(TokenKind::LBrace);
                     self.position += 1;
-                },
+                }
                 '}' => {
                     self.tokens.push(TokenKind::RBrace);
                     self.position += 1;
-                },
+                }
                 '[' => {
                     self.tokens.push(TokenKind::LBracket);
                     self.position += 1;
-                },
+                }
                 ']' => {
                     self.tokens.push(TokenKind::RBracket);
                     self.position += 1;
-                },
+                }
                 ',' => {
                     self.tokens.push(TokenKind::Comma);
                     self.position += 1;
-                },
+                }
                 ':' => {
                     self.tokens.push(TokenKind::Colon);
                     self.position += 1;
-                },
+                }
                 ';' => {
                     self.tokens.push(TokenKind::Semicolon);
                     self.position += 1;
-                },
+                }
                 '+' => {
                     self.tokens.push(TokenKind::Plus);
                     self.position += 1;
-                },
+                }
                 '-' => {
                     self.tokens.push(TokenKind::Minus);
                     self.position += 1;
-                },
+                }
                 '*' => {
                     self.tokens.push(TokenKind::Asterisk);
                     self.position += 1;
-                },
+                }
                 '/' => {
                     self.tokens.push(TokenKind::ForwardSlash);
                     self.position += 1;
-                },
+                }
                 '=' => {
                     self.tokens.push(TokenKind::Equals);
                     self.position += 1;
-                },
+                }
                 '"' => {
                     self.position += 1;
                     let mut c = self.chars[self.position];
@@ -139,31 +133,32 @@ impl Lexer {
                         self.position += 1;
                         c = self.char();
                     }
-                    self.tokens.push(TokenKind::StringLiteral { text: self.chars[start..self.position].iter().collect() });
+                    self.tokens.push(TokenKind::StringLiteral {
+                        text: self.chars[start..self.position].iter().collect(),
+                    });
                     self.position += 1;
-
-                },
+                }
                 _ if self.try_consume_string("var") => {
                     self.tokens.push(TokenKind::Var);
-                },
+                }
                 _ if self.try_consume_string("val") => {
                     self.tokens.push(TokenKind::Val);
-                },
+                }
                 _ if self.try_consume_string("fun") => {
                     self.tokens.push(TokenKind::Fun);
-                },
+                }
                 _ if self.try_consume_string("return") => {
                     self.tokens.push(TokenKind::Return);
-                },
+                }
                 _ if self.try_consume_string("extern") => {
                     self.tokens.push(TokenKind::Extern);
-                },
+                }
                 _ if self.try_consume_string("Int") => {
                     self.tokens.push(TokenKind::Int);
-                },
+                }
                 _ if self.try_consume_string("String") => {
                     self.tokens.push(TokenKind::String);
-                },
+                }
                 c if c.is_alphabetic() => {
                     let mut c = self.chars[self.position];
                     let start = self.position;
@@ -171,8 +166,10 @@ impl Lexer {
                         self.position += 1;
                         c = self.char();
                     }
-                    self.tokens.push(TokenKind::Identifier { text: self.chars[start..self.position].iter().collect() });
-                },
+                    self.tokens.push(TokenKind::Identifier {
+                        text: self.chars[start..self.position].iter().collect(),
+                    });
+                }
                 c if c.is_numeric() => {
                     let mut c = self.chars[self.position];
                     let start = self.position;
@@ -180,12 +177,17 @@ impl Lexer {
                         self.position += 1;
                         c = self.char();
                     }
-                    self.tokens.push(TokenKind::IntLiteral { text: self.chars[start..self.position].iter().collect() });
-                },
+                    self.tokens.push(TokenKind::IntLiteral {
+                        text: self.chars[start..self.position].iter().collect(),
+                    });
+                }
                 c if c.is_whitespace() => {
                     self.position += 1;
-                },
-                _ => panic!("Error while parsing at {}, {}", self.chars[self.position], self.position),
+                }
+                _ => panic!(
+                    "Error while parsing at {}, {}",
+                    self.chars[self.position], self.position
+                ),
             }
         }
     }
