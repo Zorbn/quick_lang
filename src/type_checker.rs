@@ -86,6 +86,7 @@ impl TypeChecker {
             NodeKind::Variable { inner } => self.variable(inner),
             NodeKind::VariableName { name } => self.variable_name(name),
             NodeKind::VariableIndex { parent, expression } => self.variable_index(parent, expression),
+            NodeKind::VariableField { parent, name } => self.variable_field(parent, name),
             NodeKind::FunctionCall { name, args } => self.function_call(name, args),
             NodeKind::IntLiteral { text } => self.int_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
@@ -239,6 +240,21 @@ impl TypeChecker {
         self.check_node(expression);
 
         Some(element_type_kind)
+    }
+
+    fn variable_field(&mut self, parent: usize, name: String) -> Option<usize> {
+        let parent_type = self.check_node(parent).unwrap();
+        let TypeKind::Struct { fields_kinds, .. } = &self.types[parent_type] else {
+            panic!("Field access is only allowed on structs");
+        };
+        
+        for (field_name, field_kind) in fields_kinds.iter() {
+            if *field_name == name {
+                return Some(*field_kind);
+            }
+        }
+
+        panic!("Field doesn't exist in struct");
     }
 
     fn function_call(&mut self, name: String, args: Arc<Vec<usize>>) -> Option<usize> {

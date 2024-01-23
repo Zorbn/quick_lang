@@ -41,7 +41,7 @@ pub enum TypeKind {
     },
     Struct {
         name: String,
-        fields_kinds: Arc<Vec<usize>>,
+        fields_kinds: Arc<HashMap<String, usize>>,
     },
 }
 
@@ -120,10 +120,10 @@ pub enum NodeKind {
         parent: usize,
         expression: usize,
     },
-    // VariableField {
-    //     parent: usize,
-    //     name: String,
-    // },
+    VariableField {
+        parent: usize,
+        name: String,
+    },
     FunctionCall {
         name: String,
         args: Arc<Vec<usize>>,
@@ -258,10 +258,10 @@ impl Parser {
         self.assert_token(TokenKind::RBrace);
         self.position += 1;
         
-        let mut field_kinds = Vec::new();
+        let mut field_kinds = HashMap::new();
         
         for field in &fields {
-            let NodeKind::Field { type_name, .. } = &self.nodes[*field] else {
+            let NodeKind::Field { name, type_name } = &self.nodes[*field] else {
                 panic!("Invalid struct field");
             };
 
@@ -269,7 +269,7 @@ impl Parser {
                 panic!("Invalid struct field type name");
             };
             
-            field_kinds.push(*type_kind);
+            field_kinds.insert(name.clone(), *type_kind);
         }
         
         let type_kind = self.add_type(TypeKind::Struct { name: name.clone(), fields_kinds: Arc::new(field_kinds) });
@@ -556,18 +556,18 @@ impl Parser {
                 continue;
             }
 
-            // if *self.token() == TokenKind::Period {
-            //     self.position += 1;
+            if *self.token() == TokenKind::Period {
+                self.position += 1;
 
-            //     let field_name = match self.token() {
-            //         TokenKind::Identifier { text } => text.clone(),
-            //         _ => panic!("Expected field name"),
-            //     };
-            //     self.position += 1;
+                let field_name = match self.token() {
+                    TokenKind::Identifier { text } => text.clone(),
+                    _ => panic!("Expected field name"),
+                };
+                self.position += 1;
 
-            //     inner = self.add_node(NodeKind::VariableField { parent: inner, name: field_name });
-            //     continue;
-            // }
+                inner = self.add_node(NodeKind::VariableField { parent: inner, name: field_name });
+                continue;
+            }
             
             break;
         }

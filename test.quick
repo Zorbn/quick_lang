@@ -25,7 +25,7 @@ fun main(): Int {
     var multiA: String[3][2] = [["a", "b", "ccc"], ["d", "e", "f"]];
     var multiB: String[3][2] = multiA;
     puts(multiA[1][2]);
-
+    
     hello(a, b);
 
     return 0;

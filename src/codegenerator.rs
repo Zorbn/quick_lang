@@ -89,6 +89,7 @@ impl CodeGenerator {
             TypedNode { node_kind: NodeKind::Variable { inner }, type_kind } => self.variable(inner, type_kind),
             TypedNode { node_kind: NodeKind::VariableName { name }, type_kind } => self.variable_name(name, type_kind),
             TypedNode { node_kind: NodeKind::VariableIndex { parent, expression }, type_kind } => self.variable_index(parent, expression, type_kind),
+            TypedNode { node_kind: NodeKind::VariableField { parent, name }, type_kind } => self.variable_field(parent, name, type_kind),
             TypedNode { node_kind: NodeKind::FunctionCall { name, args }, type_kind } => self.function_call(name, args, type_kind),
             TypedNode { node_kind: NodeKind::IntLiteral { text }, type_kind } => self.int_literal(text, type_kind),
             TypedNode { node_kind: NodeKind::StringLiteral { text }, type_kind } => self.string_literal(text, type_kind),
@@ -428,6 +429,12 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("[");
         self.gen_node(expression);
         self.body_emitters.top().body.emit("]");
+    }
+
+    fn variable_field(&mut self, parent: usize, name: String, _type_kind: Option<usize>) {
+        self.gen_node(parent);
+        self.body_emitters.top().body.emit(".");
+        self.body_emitters.top().body.emit(&name);
     }
 
     fn function_call(&mut self, name: String, args: Arc<Vec<usize>>, type_kind: Option<usize>) {
