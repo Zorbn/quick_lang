@@ -16,6 +16,10 @@ fun main(): Int {
     var repeatStringArray: String[400] = ["a", "bb", "ccc", "dddd"; 100];
     repeatStringArray[0] = "hello";
     puts(repeatStringArray[377]);
+    
+    var multiA: String[3][2] = [["a", "b", "ccc"], ["d", "e", "f"]];
+    var multiB: String[3][2] = multiA;
+    puts(multiA[1][2]);
 
     hello(a, b);
 

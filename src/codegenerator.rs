@@ -459,9 +459,8 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(", ");
         self.gen_node(source);
         self.body_emitters.top().body.emit(", ");
-        self.body_emitters.top().body.emit("sizeof(");
         self.emit_type_size(type_kind);
-        self.body_emitters.top().body.emit("))");
+        self.body_emitters.top().body.emit(")");
     }
 
     fn emit_memmove_expression_to_name(&mut self, destination: &str, source: usize, type_kind: usize) {
@@ -470,9 +469,8 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(", ");
         self.gen_node(source);
         self.body_emitters.top().body.emit(", ");
-        self.body_emitters.top().body.emit("sizeof(");
         self.emit_type_size(type_kind);
-        self.body_emitters.top().body.emit("))");
+        self.body_emitters.top().body.emit(")");
     }
 
     fn emit_memmove_name_to_name(
@@ -486,9 +484,8 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(", ");
         self.body_emitters.top().body.emit(source);
         self.body_emitters.top().body.emit(", ");
-        self.body_emitters.top().body.emit("sizeof(");
         self.emit_type_size(type_kind);
-        self.body_emitters.top().body.emit("))");
+        self.body_emitters.top().body.emit(")");
     }
 
     fn emit_type_size(&mut self, type_kind: usize) {
@@ -568,12 +565,12 @@ impl CodeGenerator {
             element_count,
         } = type_kind
         {
-            self.emit_type_kind_right(element_type_kind, emitter_kind, do_arrays_as_pointers);
             if !do_arrays_as_pointers {
                 self.emitter(emitter_kind).emit("[");
                 self.emitter(emitter_kind).emit(&element_count.to_string());
                 self.emitter(emitter_kind).emit("]");
             }
+            self.emit_type_kind_right(element_type_kind, emitter_kind, do_arrays_as_pointers);
         };
     }
 

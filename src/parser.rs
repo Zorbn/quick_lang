@@ -592,35 +592,41 @@ impl Parser {
         };
         self.position += 1;
 
-        if *self.token() == TokenKind::LBracket {
-            self.position += 1;
+        loop {
+            if *self.token() == TokenKind::LBracket {
+                self.position += 1;
 
-            let length_string = match self.token() {
-                TokenKind::IntLiteral { text } => text,
-                _ => panic!("Expected int literal in array type"),
-            };
-            let length = length_string.parse::<usize>().unwrap();
-            self.position += 1;
+                let length_string = match self.token() {
+                    TokenKind::IntLiteral { text } => text,
+                    _ => panic!("Expected int literal in array type"),
+                };
+                let length = length_string.parse::<usize>().unwrap();
+                self.position += 1;
 
-            self.assert_token(TokenKind::RBracket);
-            self.position += 1;
+                self.assert_token(TokenKind::RBracket);
+                self.position += 1;
 
-            let array_layout = ArrayLayout {
-                element_type_kind: type_kind,
-                element_count: length,
-            };
-
-            type_kind = if let Some(index) = self.array_type_kinds.get(&array_layout) {
-                *index
-            } else {
-                let index = self.add_type(TypeKind::Array {
+                let array_layout = ArrayLayout {
                     element_type_kind: type_kind,
                     element_count: length,
-                });
-                self.array_type_kinds.insert(array_layout, index);
-                index
-            };
-        };
+                };
+
+                type_kind = if let Some(index) = self.array_type_kinds.get(&array_layout) {
+                    *index
+                } else {
+                    let index = self.add_type(TypeKind::Array {
+                        element_type_kind: type_kind,
+                        element_count: length,
+                    });
+                    self.array_type_kinds.insert(array_layout, index);
+                    index
+                };
+
+                continue;
+            }
+
+            break;
+        }
 
         self.add_node(NodeKind::TypeName { type_kind })
     }
