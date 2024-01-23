@@ -18,6 +18,7 @@ pub enum TokenKind {
     Var,
     Val,
     Fun,
+    Struct,
     Return,
     Extern,
     Int,
@@ -151,6 +152,9 @@ impl Lexer {
                 }
                 _ if self.try_consume_string("fun") => {
                     self.tokens.push(TokenKind::Fun);
+                }
+                _ if self.try_consume_string("struct") => {
+                    self.tokens.push(TokenKind::Struct);
                 }
                 _ if self.try_consume_string("return") => {
                     self.tokens.push(TokenKind::Return);

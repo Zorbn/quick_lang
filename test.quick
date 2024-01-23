@@ -1,5 +1,10 @@
 extern fun puts(str: String): Int
 
+struct Point {
+    x: Int,
+    y: Int,
+}
+
 fun main(): Int {
     val a: Int = 542 + 54578 / 3;
     var b: Int = a * 2;

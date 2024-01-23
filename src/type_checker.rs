@@ -49,7 +49,9 @@ impl TypeChecker {
 
     fn check_node(&mut self, index: usize) -> Option<usize> {
         let type_kind = match self.nodes[index].clone() {
-            NodeKind::TopLevel { functions } => self.top_level(functions),
+            NodeKind::TopLevel { functions, structs } => self.top_level(functions, structs),
+            NodeKind::StructDefinition { name, fields, type_kind } => self.struct_definition(name, fields, type_kind),
+            NodeKind::Field { name, type_name } => self.field(name, type_name),
             NodeKind::Function { declaration, block } => self.function(declaration, block),
             NodeKind::FunctionDeclaration {
                 name,
@@ -96,12 +98,28 @@ impl TypeChecker {
         type_kind
     }
 
-    fn top_level(&mut self, functions: Arc<Vec<usize>>) -> Option<usize> {
+    fn top_level(&mut self, functions: Arc<Vec<usize>>, structs: Arc<Vec<usize>>) -> Option<usize> {
+        for struct_definition in structs.iter() {
+            self.check_node(*struct_definition);
+        }
+
         for function in functions.iter() {
             self.check_node(*function);
         }
 
         None
+    }
+
+    fn struct_definition(&mut self, _name: String, fields: Arc<Vec<usize>>, type_kind: usize) -> Option<usize> {
+        for field in fields.iter() {
+            self.check_node(*field);
+        }
+
+        Some(type_kind)
+    }
+    
+    fn field(&mut self, _name: String, type_name: usize) -> Option<usize> {
+        self.check_node(type_name)
     }
 
     fn function(&mut self, declaration: usize, block: usize) -> Option<usize> {

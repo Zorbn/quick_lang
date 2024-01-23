@@ -52,7 +52,9 @@ impl CodeGenerator {
 
     fn gen_node(&mut self, index: usize) {
         match self.typed_nodes[index].clone() {
-            TypedNode { node_kind: NodeKind::TopLevel { functions }, type_kind } => self.top_level(functions, type_kind),
+            TypedNode { node_kind: NodeKind::TopLevel { functions, structs }, type_kind } => self.top_level(functions, structs, type_kind),
+            TypedNode { node_kind: NodeKind::StructDefinition { name, fields, .. }, type_kind } => self.struct_definition(name, fields, type_kind),
+            TypedNode { node_kind: NodeKind::Field { name, type_name }, type_kind } => self.field(name, type_name, type_kind),
             TypedNode { node_kind: NodeKind::Function { declaration, block }, type_kind } => self.function(declaration, block, type_kind),
             TypedNode { node_kind: NodeKind::FunctionDeclaration {
                 name,
@@ -111,14 +113,46 @@ impl CodeGenerator {
         }
     }
 
-    fn top_level(&mut self, functions: Arc<Vec<usize>>, _type_kind: Option<usize>) {
-        for (i, function) in functions.iter().enumerate() {
+    fn top_level(&mut self, struct_definitions: Arc<Vec<usize>>, structs: Arc<Vec<usize>>, _type_kind: Option<usize>) {
+        for (i, struct_definition) in structs.iter().enumerate() {
+            if i > 0 {
+                self.body_emitters.top().body.newline();
+            }
+
+            self.gen_node(*struct_definition);
+        }
+
+        for (i, function) in struct_definitions.iter().enumerate() {
             if i > 0 {
                 self.body_emitters.top().body.newline();
             }
 
             self.gen_node(*function);
         }
+    }
+    
+    fn struct_definition(&mut self, name: String, fields: Arc<Vec<usize>>, _type_kind: Option<usize>) {
+        self.prototype_emitter.emit("typedef struct ");
+        self.prototype_emitter.emit(&name);
+        self.prototype_emitter.emitln(" {");
+        self.prototype_emitter.indent();
+        
+        for field in fields.iter() {
+            self.gen_node(*field);
+        }
+
+        self.prototype_emitter.unindent();
+        self.prototype_emitter.emit("} ");
+        self.prototype_emitter.emit(&name);
+        self.prototype_emitter.emitln(";");
+    }
+    
+    fn field(&mut self, name: String, _type_name: usize, type_kind: Option<usize>) {
+        self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Prototype, false);
+        self.prototype_emitter.emit(" ");
+        self.prototype_emitter.emit(&name);
+        self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Prototype, false);
+        self.prototype_emitter.emitln(";");
     }
 
     fn function_declaration_prototype(
@@ -538,13 +572,14 @@ impl CodeGenerator {
     ) {
         let type_kind = &self.types[type_kind];
 
-        match type_kind {
+        match type_kind.clone() {
             TypeKind::Int => self.emitter(emitter_kind).emit("int"),
             TypeKind::String => self.emitter(emitter_kind).emit("char*"),
+            TypeKind::Struct { name, .. } => self.emitter(emitter_kind).emit(&name),
             TypeKind::Array {
                 element_type_kind, ..
             } => {
-                self.emit_type_kind_left(*element_type_kind, emitter_kind, do_arrays_as_pointers);
+                self.emit_type_kind_left(element_type_kind, emitter_kind, do_arrays_as_pointers);
                 if do_arrays_as_pointers {
                     self.emitter(emitter_kind).emit("*");
                 }

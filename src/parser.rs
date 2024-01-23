@@ -39,12 +39,26 @@ pub enum TypeKind {
         element_type_kind: usize,
         element_count: usize,
     },
+    Struct {
+        name: String,
+        fields_kinds: Arc<Vec<usize>>,
+    },
 }
 
 #[derive(Clone, Debug)]
 pub enum NodeKind {
     TopLevel {
         functions: Arc<Vec<usize>>,
+        structs: Arc<Vec<usize>>,
+    },
+    StructDefinition {
+        name: String,
+        fields: Arc<Vec<usize>>,
+        type_kind: usize,
+    },
+    Field {
+        name: String,
+        type_name: usize,
     },
     FunctionDeclaration {
         name: String,
@@ -137,6 +151,7 @@ pub struct Parser {
     pub nodes: Vec<NodeKind>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: HashMap<String, usize>,
+    pub struct_definition_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     position: usize,
 }
@@ -149,6 +164,7 @@ impl Parser {
             types: Vec::new(),
             array_type_kinds: HashMap::new(),
             function_declaration_indices: HashMap::new(),
+            struct_definition_indices: HashMap::new(),
             position: 0,
         };
 
@@ -196,18 +212,84 @@ impl Parser {
 
     fn top_level(&mut self) -> usize {
         let mut functions = Vec::new();
+        let mut structs = Vec::new();
 
         while *self.token() != TokenKind::Eof {
             match *self.token() {
                 TokenKind::Fun => functions.push(self.function()),
                 TokenKind::Extern => functions.push(self.extern_function()),
+                TokenKind::Struct => structs.push(self.struct_definition()),
                 _ => panic!("Unexpected token at top level"),
             }
         }
 
         self.add_node(NodeKind::TopLevel {
             functions: Arc::new(functions),
+            structs: Arc::new(structs),
         })
+    }
+
+    fn struct_definition(&mut self) -> usize {
+        self.assert_token(TokenKind::Struct);
+        self.position += 1;
+
+        let name = match self.token() {
+            TokenKind::Identifier { text } => text.clone(),
+            _ => panic!("Expected struct name"),
+        };
+        self.position += 1;
+
+        self.assert_token(TokenKind::LBrace);
+        self.position += 1;
+
+        let mut fields = Vec::new();
+
+        while *self.token() != TokenKind::RBrace {
+            fields.push(self.field());
+
+            if *self.token() != TokenKind::Comma {
+                break;
+            }
+
+            self.assert_token(TokenKind::Comma);
+            self.position += 1;
+        }
+
+        self.assert_token(TokenKind::RBrace);
+        self.position += 1;
+        
+        let mut field_kinds = Vec::new();
+        
+        for field in &fields {
+            let NodeKind::Field { type_name, .. } = &self.nodes[*field] else {
+                panic!("Invalid struct field");
+            };
+
+            let NodeKind::TypeName { type_kind } = &self.nodes[*type_name] else {
+                panic!("Invalid struct field type name");
+            };
+            
+            field_kinds.push(*type_kind);
+        }
+        
+        let type_kind = self.add_type(TypeKind::Struct { name: name.clone(), fields_kinds: Arc::new(field_kinds) });
+        
+        self.add_node(NodeKind::StructDefinition { name, fields: Arc::new(fields), type_kind })
+    }
+
+    fn field(&mut self) -> usize {
+        let name = match self.token() {
+            TokenKind::Identifier { text } => text.clone(),
+            _ => panic!("Expected field name"),
+        };
+        self.position += 1;
+
+        self.assert_token(TokenKind::Colon);
+        self.position += 1;
+
+        let type_name = self.type_name();
+
+        self.add_node(NodeKind::Field { name, type_name })
     }
 
     fn function_declaration(&mut self) -> usize {

@@ -15,10 +15,17 @@ mod environment;
  * TODO: The parser node that is currently called expression should become "binary" and expression should be a series of comparisons between binaries.
  * This will allow for boolean expressions, if, while, etc.
  *
- * Stuff not attempted yet:
+ * BIG TODOS:
  * Graceful error handling (keep lexing/parsing/etc even if you hit an error)
  * Report error messages that are helpful, have file positions.
- * Generics, etc.
+ * Complete type checking.
+ * Simple type inference.
+ * Structs
+ * If/While
+ * For
+ * Pointers.
+ * Generics.
+ * Variadic Arguments.
  *
  * Create special statements for alloc and free:
  * var a: Int* = alloc 5;

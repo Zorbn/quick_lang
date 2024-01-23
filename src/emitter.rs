@@ -38,4 +38,12 @@ impl Emitter {
     pub fn indent_count(&self) -> usize {
         self.indent_count
     }
+
+    pub fn indent(&mut self) {
+        self.indent_count += 1;
+    }
+
+    pub fn unindent(&mut self) {
+        self.indent_count -= 1;
+    }
 }
