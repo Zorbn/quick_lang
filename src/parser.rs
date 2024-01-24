@@ -24,6 +24,12 @@ pub struct TrailingUnary {
     pub unary: usize,
 }
 
+#[derive(Debug)]
+pub struct Field {
+    pub name: String,
+    pub type_kind: usize,
+}
+
 // Used to search for the index of an array type by its layout.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ArrayLayout {
@@ -41,7 +47,7 @@ pub enum TypeKind {
     },
     Struct {
         name: String,
-        fields_kinds: Arc<HashMap<String, usize>>,
+        fields_kinds: Arc<Vec<Field>>,
     },
 }
 
@@ -137,6 +143,14 @@ pub enum NodeKind {
     ArrayLiteral {
         elements: Arc<Vec<usize>>,
         repeat_count: usize,
+    },
+    StructLiteral {
+        name: String,
+        fields: Arc<Vec<usize>>,
+    },
+    FieldLiteral {
+        name: String,
+        expression: usize,
     },
     TypeName {
         type_kind: usize,
@@ -258,7 +272,7 @@ impl Parser {
         self.assert_token(TokenKind::RBrace);
         self.position += 1;
         
-        let mut field_kinds = HashMap::new();
+        let mut field_kinds = Vec::new();
         
         for field in &fields {
             let NodeKind::Field { name, type_name } = &self.nodes[*field] else {
@@ -269,12 +283,17 @@ impl Parser {
                 panic!("Invalid struct field type name");
             };
             
-            field_kinds.insert(name.clone(), *type_kind);
+            field_kinds.push(Field {
+                name: name.clone(),
+                type_kind: *type_kind,
+            });
         }
         
         let type_kind = self.add_type(TypeKind::Struct { name: name.clone(), fields_kinds: Arc::new(field_kinds) });
-        
-        self.add_node(NodeKind::StructDefinition { name, fields: Arc::new(fields), type_kind })
+        let index = self.add_node(NodeKind::StructDefinition { name: name.clone(), fields: Arc::new(fields), type_kind });
+        self.struct_definition_indices.insert(name, index);
+            
+        index
     }
 
     fn field(&mut self) -> usize {
@@ -526,6 +545,9 @@ impl Parser {
             TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => {
                 self.function_call()
             }
+            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LBrace => {
+                self.struct_literal()
+            }
             TokenKind::Identifier { .. } => self.variable(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
             TokenKind::StringLiteral { .. } => self.string_literal(),
@@ -666,10 +688,61 @@ impl Parser {
         })
     }
 
+    fn struct_literal(&mut self) -> usize {
+        let name = match self.token() {
+            TokenKind::Identifier { text } => text.clone(),
+            _ => panic!("Expected struct name"),
+        };
+        self.position += 1;
+
+        self.assert_token(TokenKind::LBrace);
+        self.position += 1;
+
+        let mut fields = Vec::new();
+
+        while *self.token() != TokenKind::RBrace {
+            fields.push(self.field_literal());
+
+            if *self.token() != TokenKind::Comma {
+                break;
+            }
+
+            self.assert_token(TokenKind::Comma);
+            self.position += 1;
+        }
+
+        self.assert_token(TokenKind::RBrace);
+        self.position += 1;
+        
+        self.add_node(NodeKind::StructLiteral { name, fields: Arc::new(fields) })
+    }
+
+    fn field_literal(&mut self) -> usize {
+        let name = match self.token() {
+            TokenKind::Identifier { text } => text.clone(),
+            _ => panic!("Expected field name"),
+        };
+        self.position += 1;
+
+        self.assert_token(TokenKind::Colon);
+        self.position += 1;
+
+        let expression = self.expression();
+
+        self.add_node(NodeKind::FieldLiteral { name, expression })
+    }
+
     fn type_name(&mut self) -> usize {
         let mut type_kind = match self.token() {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
+            TokenKind::Identifier { text } => {
+                if let NodeKind::StructDefinition { type_kind, .. } = self.nodes[self.struct_definition_indices[text]] {
+                    type_kind
+                } else {
+                    panic!("Expected struct name");
+                }
+            },
             _ => panic!("Expected type name"),
         };
         self.position += 1;

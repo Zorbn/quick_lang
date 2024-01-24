@@ -94,6 +94,8 @@ impl CodeGenerator {
             TypedNode { node_kind: NodeKind::IntLiteral { text }, type_kind } => self.int_literal(text, type_kind),
             TypedNode { node_kind: NodeKind::StringLiteral { text }, type_kind } => self.string_literal(text, type_kind),
             TypedNode { node_kind: NodeKind::ArrayLiteral { elements, repeat_count }, type_kind } => self.array_literal(elements, repeat_count, type_kind),
+            TypedNode { node_kind: NodeKind::StructLiteral { name, fields }, type_kind } => self.struct_literal(name, fields, type_kind),
+            TypedNode { node_kind: NodeKind::FieldLiteral { name, expression }, type_kind } => self.field_literal(name, expression, type_kind),
             TypedNode { node_kind: NodeKind::TypeName { .. }, .. } => panic!("Cannot generate type name with gen_node"),
         }
     }
@@ -492,6 +494,23 @@ impl CodeGenerator {
             }
         }
         self.body_emitters.top().body.emit("}");
+    }
+
+    fn struct_literal(&mut self, _name: String, fields: Arc<Vec<usize>>, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emitln("{");
+        self.body_emitters.top().body.indent();
+
+        for field in fields.iter() {
+            self.gen_node(*field);
+            self.body_emitters.top().body.emitln(",");
+        }
+
+        self.body_emitters.top().body.unindent();
+        self.body_emitters.top().body.emit("}");
+    }
+
+    fn field_literal(&mut self, _name: String, expression: usize, _type_kind: Option<usize>) {
+        self.gen_node(expression);
     }
 
     fn emit_memmove_expression_to_variable(&mut self, destination: usize, source: usize, type_kind: usize) {

@@ -1,19 +1,22 @@
 use std::{fs, io::Write};
 
-use crate::{codegenerator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker};
+use crate::{
+    codegenerator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker,
+};
 
 mod codegenerator;
 mod emitter;
 mod emitter_stack;
+mod environment;
 mod lexer;
 mod parser;
-mod types;
 mod type_checker;
-mod environment;
+mod types;
 
 /*
  * TODO: The parser node that is currently called expression should become "binary" and expression should be a series of comparisons between binaries.
  * This will allow for boolean expressions, if, while, etc.
+ * TODO: Make sure the order of struct definitions/usages doesn't matter.
  *
  * BIG TODOS:
  * Graceful error handling (keep lexing/parsing/etc even if you hit an error)
@@ -36,8 +39,8 @@ mod environment;
  * *a = 5;
  * which isn't an expression, and wouldn't be helpful as an expression anyway, because there are very few times
  * you want to allocate and then not immediately assign the resulting pointer to a variable.
- * 
- * There should be const versions of pointer types that you can't free, 
+ *
+ * There should be const versions of pointer types that you can't free,
  * including strings, ie: const String = "hello"; String = ... some allocation ...
  *
  */
@@ -65,17 +68,24 @@ fn main() {
 
     println!("~~ Checking ~~");
 
-    let mut type_checker = TypeChecker::new(parser.nodes, parser.types, parser.function_declaration_indices, parser.array_type_kinds);
+    let mut type_checker = TypeChecker::new(
+        parser.nodes,
+        parser.types,
+        parser.function_declaration_indices,
+        parser.struct_definition_indices,
+        parser.array_type_kinds,
+    );
     type_checker.check(start_index);
 
-    let typed_nodes = type_checker.typed_nodes.iter().map(|n| n.clone().unwrap()).collect();
+    let typed_nodes = type_checker
+        .typed_nodes
+        .iter()
+        .map(|n| n.clone().unwrap())
+        .collect();
 
     println!("~~ Generating ~~");
 
-    let mut code_generator = CodeGenerator::new(
-        typed_nodes,
-        type_checker.types,
-    );
+    let mut code_generator = CodeGenerator::new(typed_nodes, type_checker.types);
     code_generator.gen(start_index);
 
     let mut output_file = fs::File::create("out/test.c").unwrap();

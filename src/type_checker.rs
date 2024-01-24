@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{environment::Environment, parser::{ArrayLayout, NodeKind, Op, TypeKind, INT_INDEX, STRING_INDEX}};
+use crate::{environment::Environment, parser::{ArrayLayout, Field, NodeKind, Op, TypeKind, INT_INDEX, STRING_INDEX}};
 
 #[derive(Clone, Debug)]
 pub struct TypedNode {
@@ -13,6 +13,7 @@ pub struct TypeChecker {
     pub nodes: Vec<NodeKind>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: HashMap<String, usize>,
+    pub struct_definition_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     environment: Environment,
     has_function_opened_block: bool,
@@ -23,6 +24,7 @@ impl TypeChecker {
         nodes: Vec<NodeKind>,
         types: Vec<TypeKind>,
         function_declaration_indices: HashMap<String, usize>,
+        struct_declaration_indices: HashMap<String, usize>,
         array_type_indices: HashMap<ArrayLayout, usize>,
     ) -> Self {
         let node_count = nodes.len();
@@ -32,6 +34,7 @@ impl TypeChecker {
             nodes,
             types,
             function_declaration_indices,
+            struct_definition_indices: struct_declaration_indices,
             array_type_kinds: array_type_indices,
             environment: Environment::new(),
             has_function_opened_block: false,
@@ -91,6 +94,8 @@ impl TypeChecker {
             NodeKind::IntLiteral { text } => self.int_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
             NodeKind::ArrayLiteral { elements, repeat_count } => self.array_literal(elements, repeat_count),
+            NodeKind::StructLiteral { name, fields } => self.struct_literal(name, fields),
+            NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
             NodeKind::TypeName { type_kind } => self.type_name(type_kind),
         };
 
@@ -248,7 +253,7 @@ impl TypeChecker {
             panic!("Field access is only allowed on structs");
         };
         
-        for (field_name, field_kind) in fields_kinds.iter() {
+        for Field { name: field_name, type_kind: field_kind } in fields_kinds.iter() {
             if *field_name == name {
                 return Some(*field_kind);
             }
@@ -287,6 +292,22 @@ impl TypeChecker {
             element_type_kind: node_type,
             element_count: elements.len() * repeat_count,
         }).copied()
+    }
+
+    fn struct_literal(&mut self, name: String, fields: Arc<Vec<usize>>) -> Option<usize> {
+        for field in fields.iter() {
+            self.check_node(*field);
+        }
+
+        if let NodeKind::StructDefinition { type_kind, .. } = self.nodes[self.struct_definition_indices[&name]] {
+            Some(type_kind)
+        } else {
+            return None;
+        }
+    }
+
+    fn field_literal(&mut self, _name: String, expression: usize) -> Option<usize> {
+        self.check_node(expression)
     }
 
     fn type_name(&mut self, type_kind: usize) -> Option<usize> {

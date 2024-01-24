@@ -26,6 +26,14 @@ fun main(): Int {
     var multiB: String[3][2] = multiA;
     puts(multiA[1][2]);
     
+    var xy: Point[1] = [ Point {
+        x: 5,
+        y: 7,
+    } ];
+    
+    var x: Int = xy[0].x;
+    var y: Int = xy[0].y;
+    
     hello(a, b);
 
     return 0;
