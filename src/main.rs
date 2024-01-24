@@ -1,10 +1,10 @@
 use std::{fs, io::Write};
 
 use crate::{
-    codegenerator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker,
+    code_generator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker,
 };
 
-mod codegenerator;
+mod code_generator;
 mod emitter;
 mod emitter_stack;
 mod environment;
@@ -18,6 +18,10 @@ mod types;
  * This will allow for boolean expressions, if, while, etc.
  * TODO: Make sure the order of struct definitions/usages doesn't matter. Maybe defer resolution of type name's type kinds until after everything else?
  * Also structs may contain other structs as fields
+ *
+ * Instead of generating a list of types, the parser should generate a list of partial types.
+ * The type checker can generate the full types into a new list, where each full type has the same index as their partial type in the old list.
+ * ^ this type expansion should happen before going over the AST in the type-checker.
  *
  * BIG TODOS:
  * Graceful error handling (keep lexing/parsing/etc even if you hit an error)

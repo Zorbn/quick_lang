@@ -24,7 +24,11 @@ impl Environment {
     }
 
     pub fn insert(&mut self, name: String, type_kind: usize) {
-        self.stack.last_mut().unwrap().variable_type_kinds.insert(name, type_kind);
+        self.stack
+            .last_mut()
+            .unwrap()
+            .variable_type_kinds
+            .insert(name, type_kind);
     }
 
     pub fn get(&self, name: &str) -> Option<usize> {

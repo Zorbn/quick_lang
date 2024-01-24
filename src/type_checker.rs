@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{environment::Environment, parser::{ArrayLayout, Field, NodeKind, Op, TypeKind, INT_INDEX, STRING_INDEX}};
+use crate::{
+    environment::Environment,
+    parser::{ArrayLayout, Field, NodeKind, Op, TypeKind, INT_INDEX, STRING_INDEX},
+};
 
 #[derive(Clone, Debug)]
 pub struct TypedNode {
@@ -53,7 +56,11 @@ impl TypeChecker {
     fn check_node(&mut self, index: usize) -> Option<usize> {
         let type_kind = match self.nodes[index].clone() {
             NodeKind::TopLevel { functions, structs } => self.top_level(functions, structs),
-            NodeKind::StructDefinition { name, fields, type_kind } => self.struct_definition(name, fields, type_kind),
+            NodeKind::StructDefinition {
+                name,
+                fields,
+                type_kind,
+            } => self.struct_definition(name, fields, type_kind),
             NodeKind::Field { name, type_name } => self.field(name, type_name),
             NodeKind::Function { declaration, block } => self.function(declaration, block),
             NodeKind::FunctionDeclaration {
@@ -88,18 +95,26 @@ impl TypeChecker {
             NodeKind::Primary { inner } => self.primary(inner),
             NodeKind::Variable { inner } => self.variable(inner),
             NodeKind::VariableName { name } => self.variable_name(name),
-            NodeKind::VariableIndex { parent, expression } => self.variable_index(parent, expression),
+            NodeKind::VariableIndex { parent, expression } => {
+                self.variable_index(parent, expression)
+            }
             NodeKind::VariableField { parent, name } => self.variable_field(parent, name),
             NodeKind::FunctionCall { name, args } => self.function_call(name, args),
             NodeKind::IntLiteral { text } => self.int_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
-            NodeKind::ArrayLiteral { elements, repeat_count } => self.array_literal(elements, repeat_count),
+            NodeKind::ArrayLiteral {
+                elements,
+                repeat_count,
+            } => self.array_literal(elements, repeat_count),
             NodeKind::StructLiteral { name, fields } => self.struct_literal(name, fields),
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
             NodeKind::TypeName { type_kind } => self.type_name(type_kind),
         };
 
-        self.typed_nodes[index] = Some(TypedNode { node_kind: self.nodes[index].clone(), type_kind });
+        self.typed_nodes[index] = Some(TypedNode {
+            node_kind: self.nodes[index].clone(),
+            type_kind,
+        });
 
         type_kind
     }
@@ -116,14 +131,19 @@ impl TypeChecker {
         None
     }
 
-    fn struct_definition(&mut self, _name: String, fields: Arc<Vec<usize>>, type_kind: usize) -> Option<usize> {
+    fn struct_definition(
+        &mut self,
+        _name: String,
+        fields: Arc<Vec<usize>>,
+        type_kind: usize,
+    ) -> Option<usize> {
         for field in fields.iter() {
             self.check_node(*field);
         }
 
         Some(type_kind)
     }
-    
+
     fn field(&mut self, _name: String, type_name: usize) -> Option<usize> {
         self.check_node(type_name)
     }
@@ -137,7 +157,12 @@ impl TypeChecker {
         type_kind
     }
 
-    fn function_declaration(&mut self, _name: String, return_type_name: usize, params: Arc<Vec<usize>>) -> Option<usize> {
+    fn function_declaration(
+        &mut self,
+        _name: String,
+        return_type_name: usize,
+        params: Arc<Vec<usize>>,
+    ) -> Option<usize> {
         for param in params.iter() {
             self.check_node(*param);
         }
@@ -178,7 +203,13 @@ impl TypeChecker {
         None
     }
 
-    fn variable_declaration(&mut self, _is_mutable: bool, name: String, type_name: usize, expression: usize) -> Option<usize> {
+    fn variable_declaration(
+        &mut self,
+        _is_mutable: bool,
+        name: String,
+        type_name: usize,
+        expression: usize,
+    ) -> Option<usize> {
         let type_kind = self.check_node(type_name);
         self.check_node(expression);
 
@@ -198,7 +229,11 @@ impl TypeChecker {
         self.check_node(expression)
     }
 
-    fn expression(&mut self, term: usize, trailing_terms: Arc<Vec<crate::parser::TrailingTerm>>) -> Option<usize> {
+    fn expression(
+        &mut self,
+        term: usize,
+        trailing_terms: Arc<Vec<crate::parser::TrailingTerm>>,
+    ) -> Option<usize> {
         let type_kind = self.check_node(term);
 
         for trailing_term in trailing_terms.iter() {
@@ -208,7 +243,11 @@ impl TypeChecker {
         type_kind
     }
 
-    fn term(&mut self, unary: usize, trailing_unaries: Arc<Vec<crate::parser::TrailingUnary>>) -> Option<usize> {
+    fn term(
+        &mut self,
+        unary: usize,
+        trailing_unaries: Arc<Vec<crate::parser::TrailingUnary>>,
+    ) -> Option<usize> {
         let type_kind = self.check_node(unary);
 
         for trailing_unary in trailing_unaries.iter() {
@@ -236,12 +275,15 @@ impl TypeChecker {
 
     fn variable_index(&mut self, parent: usize, expression: usize) -> Option<usize> {
         let parent_type = self.check_node(parent).unwrap();
-        let element_type_kind = if let TypeKind::Array { element_type_kind, .. } = &self.types[parent_type] {
+        let element_type_kind = if let TypeKind::Array {
+            element_type_kind, ..
+        } = &self.types[parent_type]
+        {
             *element_type_kind
         } else {
             panic!("Indexing is only allowed on arrays");
         };
-        
+
         self.check_node(expression);
 
         Some(element_type_kind)
@@ -252,8 +294,12 @@ impl TypeChecker {
         let TypeKind::Struct { fields_kinds, .. } = &self.types[parent_type] else {
             panic!("Field access is only allowed on structs");
         };
-        
-        for Field { name: field_name, type_kind: field_kind } in fields_kinds.iter() {
+
+        for Field {
+            name: field_name,
+            type_kind: field_kind,
+        } in fields_kinds.iter()
+        {
             if *field_name == name {
                 return Some(*field_kind);
             }
@@ -267,7 +313,10 @@ impl TypeChecker {
             self.check_node(*arg);
         }
 
-        let NodeKind::FunctionDeclaration { return_type_name, .. } = self.nodes[self.function_declaration_indices[&name]] else {
+        let NodeKind::FunctionDeclaration {
+            return_type_name, ..
+        } = self.nodes[self.function_declaration_indices[&name]]
+        else {
             return None;
         };
 
@@ -288,10 +337,12 @@ impl TypeChecker {
         }
 
         let node_type = self.check_node(*elements.first()?)?;
-        self.array_type_kinds.get(&ArrayLayout {
-            element_type_kind: node_type,
-            element_count: elements.len() * repeat_count,
-        }).copied()
+        self.array_type_kinds
+            .get(&ArrayLayout {
+                element_type_kind: node_type,
+                element_count: elements.len() * repeat_count,
+            })
+            .copied()
     }
 
     fn struct_literal(&mut self, name: String, fields: Arc<Vec<usize>>) -> Option<usize> {
@@ -299,10 +350,12 @@ impl TypeChecker {
             self.check_node(*field);
         }
 
-        if let NodeKind::StructDefinition { type_kind, .. } = self.nodes[self.struct_definition_indices[&name]] {
+        if let NodeKind::StructDefinition { type_kind, .. } =
+            self.nodes[self.struct_definition_indices[&name]]
+        {
             Some(type_kind)
         } else {
-            return None;
+            None
         }
     }
 

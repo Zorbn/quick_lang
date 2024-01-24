@@ -1,4 +1,7 @@
-use crate::{parser::{NodeKind, TypeKind}, type_checker::TypedNode};
+use crate::{
+    parser::{NodeKind, TypeKind},
+    type_checker::TypedNode,
+};
 
 pub fn is_type_kind_array(types: &[TypeKind], type_kind: usize) -> bool {
     let type_kind = &types[type_kind];
@@ -7,7 +10,14 @@ pub fn is_type_kind_array(types: &[TypeKind], type_kind: usize) -> bool {
 }
 
 pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: usize) -> bool {
-    let TypedNode { node_kind: NodeKind::Expression { term, trailing_terms }, .. } = &typed_nodes[expression] else {
+    let TypedNode {
+        node_kind: NodeKind::Expression {
+            term,
+            trailing_terms,
+        },
+        ..
+    } = &typed_nodes[expression]
+    else {
         return false;
     };
 
@@ -15,7 +25,14 @@ pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: 
         return false;
     }
 
-    let TypedNode { node_kind: NodeKind::Term { unary, trailing_unaries }, .. } = &typed_nodes[*term] else {
+    let TypedNode {
+        node_kind: NodeKind::Term {
+            unary,
+            trailing_unaries,
+        },
+        ..
+    } = &typed_nodes[*term]
+    else {
         return false;
     };
 
@@ -23,7 +40,11 @@ pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: 
         return false;
     }
 
-    let TypedNode { node_kind: NodeKind::Unary { op, primary }, .. } = typed_nodes[*unary] else {
+    let TypedNode {
+        node_kind: NodeKind::Unary { op, primary },
+        ..
+    } = typed_nodes[*unary]
+    else {
         return false;
     };
 
@@ -31,11 +52,19 @@ pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: 
         return false;
     }
 
-    let TypedNode { node_kind: NodeKind::Primary { inner }, .. } = typed_nodes[primary] else {
+    let TypedNode {
+        node_kind: NodeKind::Primary { inner },
+        ..
+    } = typed_nodes[primary]
+    else {
         return false;
     };
 
-    let TypedNode { node_kind: NodeKind::ArrayLiteral { .. }, .. } = typed_nodes[inner] else {
+    let TypedNode {
+        node_kind: NodeKind::ArrayLiteral { .. },
+        ..
+    } = typed_nodes[inner]
+    else {
         return false;
     };
 

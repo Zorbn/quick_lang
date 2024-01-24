@@ -271,9 +271,9 @@ impl Parser {
 
         self.assert_token(TokenKind::RBrace);
         self.position += 1;
-        
+
         let mut field_kinds = Vec::new();
-        
+
         for field in &fields {
             let NodeKind::Field { name, type_name } = &self.nodes[*field] else {
                 panic!("Invalid struct field");
@@ -282,17 +282,24 @@ impl Parser {
             let NodeKind::TypeName { type_kind } = &self.nodes[*type_name] else {
                 panic!("Invalid struct field type name");
             };
-            
+
             field_kinds.push(Field {
                 name: name.clone(),
                 type_kind: *type_kind,
             });
         }
-        
-        let type_kind = self.add_type(TypeKind::Struct { name: name.clone(), fields_kinds: Arc::new(field_kinds) });
-        let index = self.add_node(NodeKind::StructDefinition { name: name.clone(), fields: Arc::new(fields), type_kind });
+
+        let type_kind = self.add_type(TypeKind::Struct {
+            name: name.clone(),
+            fields_kinds: Arc::new(field_kinds),
+        });
+        let index = self.add_node(NodeKind::StructDefinition {
+            name: name.clone(),
+            fields: Arc::new(fields),
+            type_kind,
+        });
         self.struct_definition_indices.insert(name, index);
-            
+
         index
     }
 
@@ -564,17 +571,20 @@ impl Parser {
             _ => panic!("Expected variable name"),
         };
         self.position += 1;
-        
+
         let mut inner = self.add_node(NodeKind::VariableName { name });
-        
+
         loop {
             if *self.token() == TokenKind::LBracket {
                 self.position += 1;
                 let expression = self.expression();
                 self.assert_token(TokenKind::RBracket);
                 self.position += 1;
-                
-                inner = self.add_node(NodeKind::VariableIndex { parent: inner, expression });
+
+                inner = self.add_node(NodeKind::VariableIndex {
+                    parent: inner,
+                    expression,
+                });
                 continue;
             }
 
@@ -587,10 +597,13 @@ impl Parser {
                 };
                 self.position += 1;
 
-                inner = self.add_node(NodeKind::VariableField { parent: inner, name: field_name });
+                inner = self.add_node(NodeKind::VariableField {
+                    parent: inner,
+                    name: field_name,
+                });
                 continue;
             }
-            
+
             break;
         }
 
@@ -665,7 +678,7 @@ impl Parser {
             self.assert_token(TokenKind::Comma);
             self.position += 1;
         }
-        
+
         let mut repeat_count = 1;
 
         if *self.token() == TokenKind::Semicolon {
@@ -713,8 +726,11 @@ impl Parser {
 
         self.assert_token(TokenKind::RBrace);
         self.position += 1;
-        
-        self.add_node(NodeKind::StructLiteral { name, fields: Arc::new(fields) })
+
+        self.add_node(NodeKind::StructLiteral {
+            name,
+            fields: Arc::new(fields),
+        })
     }
 
     fn field_literal(&mut self) -> usize {
@@ -737,12 +753,14 @@ impl Parser {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
             TokenKind::Identifier { text } => {
-                if let NodeKind::StructDefinition { type_kind, .. } = self.nodes[self.struct_definition_indices[text]] {
+                if let NodeKind::StructDefinition { type_kind, .. } =
+                    self.nodes[self.struct_definition_indices[text]]
+                {
                     type_kind
                 } else {
                     panic!("Expected struct name");
                 }
-            },
+            }
             _ => panic!("Expected type name"),
         };
         self.position += 1;
