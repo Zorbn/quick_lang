@@ -16,7 +16,7 @@ mod types;
 /*
  * TODO: The parser node that is currently called expression should become "binary" and expression should be a series of comparisons between binaries.
  * This will allow for boolean expressions, if, while, etc.
- * TODO: Make sure the order of struct definitions/usages doesn't matter.
+ * TODO: Make sure the order of struct definitions/usages doesn't matter. Maybe defer resolution of type name's type kinds until after everything else?
  *
  * BIG TODOS:
  * Graceful error handling (keep lexing/parsing/etc even if you hit an error)

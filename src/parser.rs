@@ -655,7 +655,7 @@ impl Parser {
 
         let mut elements = Vec::new();
 
-        while *self.token() != TokenKind::RParen {
+        while *self.token() != TokenKind::RBracket {
             elements.push(self.expression());
 
             if *self.token() != TokenKind::Comma {

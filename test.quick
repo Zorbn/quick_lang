@@ -1,10 +1,5 @@
 extern fun puts(str: String): Int
 
-struct Point {
-    x: Int,
-    y: Int,
-}
-
 fun main(): Int {
     val a: Int = 542 + 54578 / 3;
     var b: Int = a * 2;
@@ -26,10 +21,16 @@ fun main(): Int {
     var multiB: String[3][2] = multiA;
     puts(multiA[1][2]);
     
-    var xy: Point[1] = [ Point {
-        x: 5,
-        y: 7,
-    } ];
+    var xy: Point[2] = [
+        Point {
+            x: 5,
+            y: 7,
+        },
+        Point {
+            x: 5,
+            y: 7,
+        },
+    ];
     
     var x: Int = xy[0].x;
     var y: Int = xy[0].y;
@@ -37,6 +38,11 @@ fun main(): Int {
     hello(a, b);
 
     return 0;
+}
+
+struct Point {
+    x: Int,
+    y: Int,
 }
 
 fun hello(num: Int, othernum: Int): Int {
