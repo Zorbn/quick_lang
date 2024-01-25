@@ -49,6 +49,7 @@ pub enum TypeKind {
         name: String,
         fields_kinds: Arc<Vec<Field>>,
     },
+    PartialStruct,
 }
 
 #[derive(Clone, Debug)]
@@ -167,6 +168,7 @@ pub struct Parser {
     pub function_declaration_indices: HashMap<String, usize>,
     pub struct_definition_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
+    pub struct_type_kinds: HashMap<String, usize>,
     position: usize,
 }
 
@@ -176,9 +178,10 @@ impl Parser {
             tokens,
             nodes: Vec::new(),
             types: Vec::new(),
-            array_type_kinds: HashMap::new(),
             function_declaration_indices: HashMap::new(),
             struct_definition_indices: HashMap::new(),
+            array_type_kinds: HashMap::new(),
+            struct_type_kinds: HashMap::new(),
             position: 0,
         };
 
@@ -289,10 +292,20 @@ impl Parser {
             });
         }
 
-        let type_kind = self.add_type(TypeKind::Struct {
+        let type_kind_struct = TypeKind::Struct {
             name: name.clone(),
             fields_kinds: Arc::new(field_kinds),
-        });
+        };
+
+        let type_kind = if let Some(type_kind) = self.struct_type_kinds.get(&name) {
+            self.types[*type_kind] = type_kind_struct;
+            *type_kind
+        } else {
+            let type_kind = self.add_type(type_kind_struct);
+            self.struct_type_kinds.insert(name.clone(), type_kind);
+            type_kind
+        };
+
         let index = self.add_node(NodeKind::StructDefinition {
             name: name.clone(),
             fields: Arc::new(fields),
@@ -749,16 +762,16 @@ impl Parser {
     }
 
     fn type_name(&mut self) -> usize {
-        let mut type_kind = match self.token() {
+        let mut type_kind = match self.token().clone() {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
             TokenKind::Identifier { text } => {
-                if let NodeKind::StructDefinition { type_kind, .. } =
-                    self.nodes[self.struct_definition_indices[text]]
-                {
-                    type_kind
+                if let Some(type_kind) = self.struct_type_kinds.get(&text) {
+                    *type_kind
                 } else {
-                    panic!("Expected struct name");
+                    let type_kind = self.add_type(TypeKind::PartialStruct);
+                    self.struct_type_kinds.insert(text.clone(), type_kind);
+                    type_kind
                 }
             }
             _ => panic!("Expected type name"),

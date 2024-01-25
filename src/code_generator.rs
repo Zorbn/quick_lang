@@ -763,6 +763,7 @@ impl CodeGenerator {
                     self.emitter(emitter_kind).emit("*");
                 }
             }
+            TypeKind::PartialStruct { .. } => panic!("Can't emit partial struct")
         };
     }
 

@@ -16,12 +16,6 @@ mod types;
 /*
  * TODO: The parser node that is currently called expression should become "binary" and expression should be a series of comparisons between binaries.
  * This will allow for boolean expressions, if, while, etc.
- * TODO: Make sure the order of struct definitions/usages doesn't matter. Maybe defer resolution of type name's type kinds until after everything else?
- * Also structs may contain other structs as fields
- *
- * Instead of generating a list of types, the parser should generate a list of partial types.
- * The type checker can generate the full types into a new list, where each full type has the same index as their partial type in the old list.
- * ^ this type expansion should happen before going over the AST in the type-checker.
  *
  * BIG TODOS:
  * Graceful error handling (keep lexing/parsing/etc even if you hit an error)
@@ -46,6 +40,7 @@ mod types;
  *
  * There should be const versions of pointer types that you can't free,
  * including strings, ie: const String = "hello"; String = ... some allocation ...
+ * or maybe String should be the const version of a character pointer?
  *
  */
 
