@@ -577,6 +577,7 @@ impl Parser {
             TokenKind::Identifier { .. } => self.variable(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
             TokenKind::StringLiteral { .. } => self.string_literal(),
+            TokenKind::True | TokenKind::False => self.bool_literal(),
             TokenKind::LBracket { .. } => self.array_literal(),
             _ => panic!("Invalid token in primary value"),
         };

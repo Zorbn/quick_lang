@@ -165,6 +165,10 @@ impl CodeGenerator {
                 type_kind,
             } => self.string_literal(text, type_kind),
             TypedNode {
+                node_kind: NodeKind::BoolLiteral { value },
+                type_kind,
+            } => self.bool_literal(value, type_kind),
+            TypedNode {
                 node_kind:
                     NodeKind::ArrayLiteral {
                         elements,
@@ -605,6 +609,14 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("\"");
     }
 
+    fn bool_literal(&mut self, value: bool, _type_kind: Option<usize>) {
+        if value {
+            self.body_emitters.top().body.emit("1");
+        } else {
+            self.body_emitters.top().body.emit("0");
+        }
+    }
+
     fn array_literal(
         &mut self,
         elements: Arc<Vec<usize>>,
@@ -754,6 +766,7 @@ impl CodeGenerator {
         match type_kind.clone() {
             TypeKind::Int => self.emitter(emitter_kind).emit("int"),
             TypeKind::String => self.emitter(emitter_kind).emit("char*"),
+            TypeKind::Bool => self.emitter(emitter_kind).emit("int"),
             TypeKind::Struct { name, .. } => self.emitter(emitter_kind).emit(&name),
             TypeKind::Array {
                 element_type_kind, ..

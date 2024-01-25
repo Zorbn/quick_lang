@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     environment::Environment,
-    parser::{ArrayLayout, Field, NodeKind, Op, TypeKind, INT_INDEX, STRING_INDEX},
+    parser::{ArrayLayout, Field, NodeKind, Op, TypeKind, BOOL_INDEX, INT_INDEX, STRING_INDEX},
 };
 
 #[derive(Clone, Debug)]
@@ -102,6 +102,7 @@ impl TypeChecker {
             NodeKind::FunctionCall { name, args } => self.function_call(name, args),
             NodeKind::IntLiteral { text } => self.int_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
+            NodeKind::BoolLiteral { value } => self.bool_literal(value),
             NodeKind::ArrayLiteral {
                 elements,
                 repeat_count,
@@ -329,6 +330,10 @@ impl TypeChecker {
 
     fn string_literal(&mut self, _text: String) -> Option<usize> {
         Some(STRING_INDEX)
+    }
+
+    fn bool_literal(&mut self, _value: bool) -> Option<usize> {
+        Some(BOOL_INDEX)
     }
 
     fn array_literal(&mut self, elements: Arc<Vec<usize>>, repeat_count: usize) -> Option<usize> {
