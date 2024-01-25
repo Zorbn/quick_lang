@@ -41,6 +41,7 @@ pub struct ArrayLayout {
 pub enum TypeKind {
     Int,
     String,
+    Bool,
     Array {
         element_type_kind: usize,
         element_count: usize,
@@ -141,6 +142,9 @@ pub enum NodeKind {
     StringLiteral {
         text: String,
     },
+    BoolLiteral {
+        value: bool,
+    },
     ArrayLiteral {
         elements: Arc<Vec<usize>>,
         repeat_count: usize,
@@ -160,6 +164,7 @@ pub enum NodeKind {
 
 pub const INT_INDEX: usize = 0;
 pub const STRING_INDEX: usize = 1;
+pub const BOOL_INDEX: usize = 2;
 
 pub struct Parser {
     pub tokens: Vec<TokenKind>,
@@ -187,6 +192,7 @@ impl Parser {
 
         parser.add_type(TypeKind::Int);
         parser.add_type(TypeKind::String);
+        parser.add_type(TypeKind::Bool);
 
         parser
     }
@@ -675,6 +681,17 @@ impl Parser {
         self.add_node(NodeKind::StringLiteral { text })
     }
 
+    fn bool_literal(&mut self) -> usize {
+        let value = match self.token() {
+            TokenKind::True => true,
+            TokenKind::False => false,
+            _ => panic!("Expected bool literal"),
+        };
+        self.position += 1;
+
+        self.add_node(NodeKind::BoolLiteral { value })
+    }
+
     fn array_literal(&mut self) -> usize {
         self.assert_token(TokenKind::LBracket);
         self.position += 1;
@@ -765,6 +782,7 @@ impl Parser {
         let mut type_kind = match self.token().clone() {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
+            TokenKind::Bool => BOOL_INDEX,
             TokenKind::Identifier { text } => {
                 if let Some(type_kind) = self.struct_type_kinds.get(&text) {
                     *type_kind

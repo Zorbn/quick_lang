@@ -23,6 +23,9 @@ pub enum TokenKind {
     Extern,
     Int,
     String,
+    Bool,
+    True,
+    False,
     IntLiteral { text: String },
     StringLiteral { text: String },
     Identifier { text: String },
@@ -167,6 +170,15 @@ impl Lexer {
                 }
                 _ if self.try_consume_string("String") => {
                     self.tokens.push(TokenKind::String);
+                }
+                _ if self.try_consume_string("Bool") => {
+                    self.tokens.push(TokenKind::Bool);
+                }
+                _ if self.try_consume_string("true") => {
+                    self.tokens.push(TokenKind::True);
+                }
+                _ if self.try_consume_string("false") => {
+                    self.tokens.push(TokenKind::False);
                 }
                 c if c.is_alphabetic() => {
                     let mut c = self.chars[self.position];
