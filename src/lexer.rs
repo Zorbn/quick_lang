@@ -14,7 +14,14 @@ pub enum TokenKind {
     Minus,
     Asterisk,
     ForwardSlash,
-    Equals,
+    Equal,
+    Less,
+    Greater,
+    ExclamationPoint,
+    ExclamationPointEqual,
+    EqualEqual,
+    LessEqual,
+    GreaterEqual,
     Var,
     Val,
     Fun,
@@ -70,6 +77,18 @@ impl Lexer {
     pub fn lex(&mut self) {
         while self.position < self.chars.len() {
             match self.char() {
+                _ if self.try_consume_string("!=") => {
+                    self.tokens.push(TokenKind::ExclamationPointEqual);
+                }
+                _ if self.try_consume_string("==") => {
+                    self.tokens.push(TokenKind::EqualEqual);
+                }
+                _ if self.try_consume_string("<=") => {
+                    self.tokens.push(TokenKind::LessEqual);
+                }
+                _ if self.try_consume_string(">=") => {
+                    self.tokens.push(TokenKind::GreaterEqual);
+                }
                 '(' => {
                     self.tokens.push(TokenKind::LParen);
                     self.position += 1;
@@ -127,7 +146,19 @@ impl Lexer {
                     self.position += 1;
                 }
                 '=' => {
-                    self.tokens.push(TokenKind::Equals);
+                    self.tokens.push(TokenKind::Equal);
+                    self.position += 1;
+                }
+                '<' => {
+                    self.tokens.push(TokenKind::Less);
+                    self.position += 1;
+                }
+                '>' => {
+                    self.tokens.push(TokenKind::Greater);
+                    self.position += 1;
+                }
+                '!' => {
+                    self.tokens.push(TokenKind::ExclamationPoint);
                     self.position += 1;
                 }
                 '"' => {

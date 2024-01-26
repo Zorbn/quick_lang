@@ -10,6 +10,27 @@ pub enum Op {
     Subtract,
     Multiply,
     Divide,
+    Not,
+    Equal,
+    NotEqual,
+    Less,
+    Greater,
+    LessOrEqual,
+    GreaterOrEqual,
+    And,
+    Or,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TrailingComparison {
+    pub op: Op,
+    pub comparison: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TrailingBinary {
+    pub op: Op,
+    pub binary: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -104,6 +125,14 @@ pub enum NodeKind {
         expression: usize,
     },
     Expression {
+        comparsion: usize,
+        trailing_comparisons: Arc<Vec<TrailingComparison>>,
+    },
+    Comparision {
+        binary: usize,
+        trailing_binary: Option<TrailingBinary>,
+    },
+    Binary {
         term: usize,
         trailing_terms: Arc<Vec<TrailingTerm>>,
     },
@@ -464,7 +493,7 @@ impl Parser {
 
         let type_name = self.type_name();
 
-        self.assert_token(TokenKind::Equals);
+        self.assert_token(TokenKind::Equal);
         self.position += 1;
 
         let expression = self.expression();
@@ -480,7 +509,7 @@ impl Parser {
     fn variable_assignment(&mut self) -> usize {
         let variable = self.variable();
 
-        self.assert_token(TokenKind::Equals);
+        self.assert_token(TokenKind::Equal);
         self.position += 1;
 
         let expression = self.expression();
@@ -524,6 +553,51 @@ impl Parser {
         })
     }
 
+    fn comparison(&mut self) -> usize {
+        let binary = self.binary();
+        let trailing_binary = None;
+
+        if *self.token() == TokenKind::Less || *self.token() == TokenKind::Greater || {
+            let op = if *self.token() == TokenKind::Plus {
+                Op::Add
+            } else {
+                Op::Subtract
+            };
+            self.position += 1;
+
+            trailing_binaries.push(TrailingTerm {
+                op,
+                term: self.term(),
+            });
+        }
+
+        self.add_node(NodeKind::Comparision { binary, trailing_binary })
+    }
+
+    fn binary(&mut self) -> usize {
+        let term = self.term();
+        let mut trailing_terms = Vec::new();
+
+        while *self.token() == TokenKind::Plus || *self.token() == TokenKind::Minus {
+            let op = if *self.token() == TokenKind::Plus {
+                Op::Add
+            } else {
+                Op::Subtract
+            };
+            self.position += 1;
+
+            trailing_terms.push(TrailingTerm {
+                op,
+                term: self.term(),
+            });
+        }
+
+        self.add_node(NodeKind::Binary {
+            term,
+            trailing_terms: Arc::new(trailing_terms),
+        })
+    }
+
     fn term(&mut self) -> usize {
         let unary = self.unary();
         let mut trailing_unaries = Vec::new();
@@ -557,6 +631,10 @@ impl Parser {
             TokenKind::Minus => {
                 self.position += 1;
                 Some(Op::Divide)
+            }
+            TokenKind::ExclamationPoint => {
+                self.position += 1;
+                Some(Op::Not)
             }
             _ => None,
         };
