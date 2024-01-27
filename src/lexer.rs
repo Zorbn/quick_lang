@@ -12,16 +12,18 @@ pub enum TokenKind {
     Period,
     Plus,
     Minus,
-    Asterisk,
-    ForwardSlash,
+    Multiply,
+    Divide,
     Equal,
     Less,
     Greater,
-    ExclamationPoint,
-    ExclamationPointEqual,
+    Not,
+    NotEqual,
     EqualEqual,
     LessEqual,
     GreaterEqual,
+    And,
+    Or,
     Var,
     Val,
     Fun,
@@ -78,7 +80,7 @@ impl Lexer {
         while self.position < self.chars.len() {
             match self.char() {
                 _ if self.try_consume_string("!=") => {
-                    self.tokens.push(TokenKind::ExclamationPointEqual);
+                    self.tokens.push(TokenKind::NotEqual);
                 }
                 _ if self.try_consume_string("==") => {
                     self.tokens.push(TokenKind::EqualEqual);
@@ -88,6 +90,12 @@ impl Lexer {
                 }
                 _ if self.try_consume_string(">=") => {
                     self.tokens.push(TokenKind::GreaterEqual);
+                }
+                _ if self.try_consume_string("&&") => {
+                    self.tokens.push(TokenKind::And);
+                }
+                _ if self.try_consume_string("||") => {
+                    self.tokens.push(TokenKind::Or);
                 }
                 '(' => {
                     self.tokens.push(TokenKind::LParen);
@@ -138,11 +146,11 @@ impl Lexer {
                     self.position += 1;
                 }
                 '*' => {
-                    self.tokens.push(TokenKind::Asterisk);
+                    self.tokens.push(TokenKind::Multiply);
                     self.position += 1;
                 }
                 '/' => {
-                    self.tokens.push(TokenKind::ForwardSlash);
+                    self.tokens.push(TokenKind::Divide);
                     self.position += 1;
                 }
                 '=' => {
@@ -158,7 +166,7 @@ impl Lexer {
                     self.position += 1;
                 }
                 '!' => {
-                    self.tokens.push(TokenKind::ExclamationPoint);
+                    self.tokens.push(TokenKind::Not);
                     self.position += 1;
                 }
                 '"' => {

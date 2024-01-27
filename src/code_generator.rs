@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     emitter::Emitter,
     emitter_stack::EmitterStack,
-    parser::{NodeKind, Op, TrailingTerm, TrailingUnary, TypeKind},
+    parser::{NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm, TrailingUnary, TypeKind},
     type_checker::TypedNode,
     types::{is_type_kind_array, is_typed_expression_array_literal},
 };
@@ -115,11 +115,27 @@ impl CodeGenerator {
             TypedNode {
                 node_kind:
                     NodeKind::Expression {
+                        comparison,
+                        trailing_comparisons,
+                    },
+                type_kind,
+            } => self.expression(comparison, trailing_comparisons, type_kind),
+            TypedNode {
+                node_kind:
+                    NodeKind::Comparision {
+                        binary,
+                        trailing_binary,
+                    },
+                type_kind,
+            } => self.comparison(binary, trailing_binary, type_kind),
+            TypedNode {
+                node_kind:
+                    NodeKind::Binary {
                         term,
                         trailing_terms,
                     },
                 type_kind,
-            } => self.expression(term, trailing_terms, type_kind),
+            } => self.binary(term, trailing_terms, type_kind),
             TypedNode {
                 node_kind:
                     NodeKind::Term {
@@ -136,6 +152,10 @@ impl CodeGenerator {
                 node_kind: NodeKind::Primary { inner },
                 type_kind,
             } => self.primary(inner, type_kind),
+            TypedNode {
+                node_kind: NodeKind::ParenthesizedExpression { expression },
+                type_kind,
+            } => self.parenthesized_expression(expression, type_kind),
             TypedNode {
                 node_kind: NodeKind::Variable { inner },
                 type_kind,
@@ -497,6 +517,48 @@ impl CodeGenerator {
 
     fn expression(
         &mut self,
+        comparison: usize,
+        trailing_comparisons: Arc<Vec<TrailingComparison>>,
+        _type_kind: Option<usize>,
+    ) {
+        self.gen_node(comparison);
+
+        for trailing_comparison in trailing_comparisons.iter() {
+            if trailing_comparison.op == Op::And {
+                self.body_emitters.top().body.emit(" && ");
+            } else {
+                self.body_emitters.top().body.emit(" || ");
+            }
+
+            self.gen_node(trailing_comparison.comparison);
+        }
+    }
+
+    fn comparison(
+        &mut self,
+        binary: usize,
+        trailing_binary: Option<TrailingBinary>,
+        _type_kind: Option<usize>,
+    ) {
+        self.gen_node(binary);
+
+        if let Some(trailing_binary) = trailing_binary {
+            match trailing_binary.op {
+                Op::EqualEqual => self.body_emitters.top().body.emit(" == "),
+                Op::NotEqual => self.body_emitters.top().body.emit(" != "),
+                Op::Less => self.body_emitters.top().body.emit(" < "),
+                Op::Greater => self.body_emitters.top().body.emit(" > "),
+                Op::LessEqual => self.body_emitters.top().body.emit(" <= "),
+                Op::GreaterEqual => self.body_emitters.top().body.emit(" >= "),
+                _ => panic!("Unexpected operator in comparison")
+            }
+
+            self.gen_node(trailing_binary.binary);
+        }
+    }
+
+    fn binary(
+        &mut self,
         term: usize,
         trailing_terms: Arc<Vec<TrailingTerm>>,
         _type_kind: Option<usize>,
@@ -546,6 +608,12 @@ impl CodeGenerator {
 
     fn primary(&mut self, inner: usize, _type_kind: Option<usize>) {
         self.gen_node(inner);
+    }
+
+    fn parenthesized_expression(&mut self, expression: usize, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit("(");
+        self.gen_node(expression);
+        self.body_emitters.top().body.emit(")");
     }
 
     fn variable(&mut self, inner: usize, _type_kind: Option<usize>) {

@@ -11,12 +11,12 @@ pub enum Op {
     Multiply,
     Divide,
     Not,
-    Equal,
+    EqualEqual,
     NotEqual,
     Less,
     Greater,
-    LessOrEqual,
-    GreaterOrEqual,
+    LessEqual,
+    GreaterEqual,
     And,
     Or,
 }
@@ -125,7 +125,7 @@ pub enum NodeKind {
         expression: usize,
     },
     Expression {
-        comparsion: usize,
+        comparison: usize,
         trailing_comparisons: Arc<Vec<TrailingComparison>>,
     },
     Comparision {
@@ -146,6 +146,9 @@ pub enum NodeKind {
     },
     Primary {
         inner: usize,
+    },
+    ParenthesizedExpression {
+        expression: usize,
     },
     Variable {
         inner: usize,
@@ -530,45 +533,46 @@ impl Parser {
     }
 
     fn expression(&mut self) -> usize {
-        let term = self.term();
-        let mut trailing_terms = Vec::new();
+        let comparison = self.comparison();
+        let mut trailing_comparisons = Vec::new();
 
-        while *self.token() == TokenKind::Plus || *self.token() == TokenKind::Minus {
-            let op = if *self.token() == TokenKind::Plus {
-                Op::Add
+        while *self.token() == TokenKind::And || *self.token() == TokenKind::Or {
+            let op = if *self.token() == TokenKind::And {
+                Op::And
             } else {
-                Op::Subtract
+                Op::Or
             };
             self.position += 1;
 
-            trailing_terms.push(TrailingTerm {
+            trailing_comparisons.push(TrailingComparison {
                 op,
-                term: self.term(),
+                comparison: self.comparison(),
             });
         }
 
         self.add_node(NodeKind::Expression {
-            term,
-            trailing_terms: Arc::new(trailing_terms),
+            comparison,
+            trailing_comparisons: Arc::new(trailing_comparisons),
         })
     }
 
     fn comparison(&mut self) -> usize {
         let binary = self.binary();
-        let trailing_binary = None;
+        let mut trailing_binary = None;
 
-        if *self.token() == TokenKind::Less || *self.token() == TokenKind::Greater || {
-            let op = if *self.token() == TokenKind::Plus {
-                Op::Add
-            } else {
-                Op::Subtract
-            };
+        let op = match *self.token() {
+            TokenKind::Less => Some(Op::Less),
+            TokenKind::Greater => Some(Op::Greater),
+            TokenKind::EqualEqual => Some(Op::EqualEqual),
+            TokenKind::NotEqual => Some(Op::NotEqual),
+            TokenKind::LessEqual => Some(Op::LessEqual),
+            TokenKind::GreaterEqual => Some(Op::GreaterEqual),
+            _ => None,
+        };
+
+        if let Some(op) = op {
             self.position += 1;
-
-            trailing_binaries.push(TrailingTerm {
-                op,
-                term: self.term(),
-            });
+            trailing_binary = Some(TrailingBinary { op, binary: self.binary() });
         }
 
         self.add_node(NodeKind::Comparision { binary, trailing_binary })
@@ -602,8 +606,8 @@ impl Parser {
         let unary = self.unary();
         let mut trailing_unaries = Vec::new();
 
-        while *self.token() == TokenKind::Asterisk || *self.token() == TokenKind::ForwardSlash {
-            let op = if *self.token() == TokenKind::Asterisk {
+        while *self.token() == TokenKind::Multiply || *self.token() == TokenKind::Divide {
+            let op = if *self.token() == TokenKind::Multiply {
                 Op::Multiply
             } else {
                 Op::Divide
@@ -632,7 +636,7 @@ impl Parser {
                 self.position += 1;
                 Some(Op::Divide)
             }
-            TokenKind::ExclamationPoint => {
+            TokenKind::Not => {
                 self.position += 1;
                 Some(Op::Not)
             }
@@ -646,6 +650,9 @@ impl Parser {
 
     fn primary(&mut self) -> usize {
         let inner = match *self.token() {
+            TokenKind::LParen => {
+                self.parenthesized_expression()
+            }
             TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => {
                 self.function_call()
             }
@@ -661,6 +668,18 @@ impl Parser {
         };
 
         self.add_node(NodeKind::Primary { inner })
+    }
+
+    fn parenthesized_expression(&mut self) -> usize {
+        self.assert_token(TokenKind::LParen);
+        self.position += 1;
+
+        let expression = self.expression();
+
+        self.assert_token(TokenKind::RParen);
+        self.position += 1;
+
+        self.add_node(NodeKind::ParenthesizedExpression { expression })
     }
 
     fn variable(&mut self) -> usize {

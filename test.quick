@@ -16,11 +16,11 @@ fun main(): Int {
     var repeatStringArray: String[400] = ["a", "bb", "ccc", "dddd"; 100];
     repeatStringArray[0] = "hello";
     puts(repeatStringArray[377]);
-    
+
     var multiA: String[3][2] = [["a", "b", "ccc"], ["d", "e", "f"]];
     var multiB: String[3][2] = multiA;
     puts(multiA[1][2]);
-    
+
     var xy: Point[2] = [
         Point {
             x: 5,
@@ -31,12 +31,12 @@ fun main(): Int {
             y: 7,
         },
     ];
-    
-    var x: Int = xy[0].x;
+
+    var x: Int = (xy[0].x);
     var y: Int = xy[0].y;
-    
-    var boolean: Bool = true;
-    
+
+    var boolean: Bool = true && false || (5 <= 88);
+
     hello(a, b);
 
     return 0;

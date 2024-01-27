@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     environment::Environment,
-    parser::{ArrayLayout, Field, NodeKind, Op, TypeKind, BOOL_INDEX, INT_INDEX, STRING_INDEX},
+    parser::{ArrayLayout, Field, NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm, TrailingUnary, TypeKind, BOOL_INDEX, INT_INDEX, STRING_INDEX},
 };
 
 #[derive(Clone, Debug)]
@@ -84,15 +84,24 @@ impl TypeChecker {
             } => self.variable_assignment(variable, expression),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
             NodeKind::Expression {
+                comparison,
+                trailing_comparisons,
+            } => self.expression(comparison, trailing_comparisons),
+            NodeKind::Comparision {
+                binary,
+                trailing_binary,
+            } => self.comparison(binary, trailing_binary),
+            NodeKind::Binary {
                 term,
                 trailing_terms,
-            } => self.expression(term, trailing_terms),
+            } => self.binary(term, trailing_terms),
             NodeKind::Term {
                 unary,
                 trailing_unaries,
             } => self.term(unary, trailing_unaries),
             NodeKind::Unary { op, primary } => self.unary(op, primary),
             NodeKind::Primary { inner } => self.primary(inner),
+            NodeKind::ParenthesizedExpression { expression } => self.parenthesized_expression(expression),
             NodeKind::Variable { inner } => self.variable(inner),
             NodeKind::VariableName { name } => self.variable_name(name),
             NodeKind::VariableIndex { parent, expression } => {
@@ -232,8 +241,36 @@ impl TypeChecker {
 
     fn expression(
         &mut self,
+        comparison: usize,
+        trailing_comparisons: Arc<Vec<TrailingComparison>>,
+    ) -> Option<usize> {
+        let type_kind = self.check_node(comparison);
+
+        for trailing_comparison in trailing_comparisons.iter() {
+            self.check_node(trailing_comparison.comparison);
+        }
+
+        type_kind
+    }
+
+    fn comparison(
+        &mut self,
+        binary: usize,
+        trailing_binary: Option<TrailingBinary>,
+    ) -> Option<usize> {
+        let type_kind = self.check_node(binary);
+
+        if let Some(trailing_binary) = trailing_binary {
+            self.check_node(trailing_binary.binary);
+        }
+
+        type_kind
+    }
+
+    fn binary(
+        &mut self,
         term: usize,
-        trailing_terms: Arc<Vec<crate::parser::TrailingTerm>>,
+        trailing_terms: Arc<Vec<TrailingTerm>>,
     ) -> Option<usize> {
         let type_kind = self.check_node(term);
 
@@ -247,7 +284,7 @@ impl TypeChecker {
     fn term(
         &mut self,
         unary: usize,
-        trailing_unaries: Arc<Vec<crate::parser::TrailingUnary>>,
+        trailing_unaries: Arc<Vec<TrailingUnary>>,
     ) -> Option<usize> {
         let type_kind = self.check_node(unary);
 
@@ -264,6 +301,10 @@ impl TypeChecker {
 
     fn primary(&mut self, inner: usize) -> Option<usize> {
         self.check_node(inner)
+    }
+
+    fn parenthesized_expression(&mut self, expression: usize) -> Option<usize> {
+        self.check_node(expression)
     }
 
     fn variable(&mut self, inner: usize) -> Option<usize> {
