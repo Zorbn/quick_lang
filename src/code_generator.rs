@@ -106,11 +106,12 @@ impl CodeGenerator {
             TypedNode {
                 node_kind:
                     NodeKind::VariableAssignment {
+                        dereference_count,
                         variable,
                         expression,
                     },
                 type_kind,
-            } => self.variable_assignment(variable, expression, type_kind),
+            } => self.variable_assignment(dereference_count, variable, expression, type_kind),
             TypedNode {
                 node_kind: NodeKind::ReturnStatement { expression },
                 type_kind,
@@ -536,10 +537,15 @@ impl CodeGenerator {
 
     fn variable_assignment(
         &mut self,
+        dereference_count: usize,
         variable: usize,
         expression: usize,
         type_kind: Option<usize>,
     ) {
+        for _ in 0..dereference_count {
+            self.body_emitters.top().body.emit("*");
+        }
+
         let is_array = is_type_kind_array(&self.types, type_kind.unwrap());
 
         if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
@@ -836,8 +842,17 @@ impl CodeGenerator {
         &mut self,
         _name: String,
         fields: Arc<Vec<usize>>,
-        _type_kind: Option<usize>,
+        type_kind: Option<usize>,
     ) {
+        self.body_emitters.top().body.emit("(");
+        if let Some(type_kind) = type_kind {
+            self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
+            self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
+        } else {
+            panic!("Can't generate struct literal without a type");
+        }
+        self.body_emitters.top().body.emit(") ");
+
         self.body_emitters.top().body.emitln("{");
         self.body_emitters.top().body.indent();
 

@@ -135,6 +135,7 @@ pub enum NodeKind {
         expression: usize,
     },
     VariableAssignment {
+        dereference_count: usize,
         variable: usize,
         expression: usize,
     },
@@ -605,6 +606,12 @@ impl Parser {
     }
 
     fn variable_assignment(&mut self) -> usize {
+        let mut dereference_count = 0;
+        while *self.token() == TokenKind::Asterisk {
+            dereference_count += 1;
+            self.position += 1;
+        }
+
         let variable = self.variable();
 
         self.assert_token(TokenKind::Equal);
@@ -613,6 +620,7 @@ impl Parser {
         let expression = self.expression(true);
 
         self.add_node(NodeKind::VariableAssignment {
+            dereference_count,
             variable,
             expression,
         })

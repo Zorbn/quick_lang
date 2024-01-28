@@ -81,9 +81,10 @@ impl TypeChecker {
                 expression,
             } => self.variable_declaration(is_mutable, name, type_name, expression),
             NodeKind::VariableAssignment {
+                dereference_count,
                 variable,
                 expression,
-            } => self.variable_assignment(variable, expression),
+            } => self.variable_assignment(dereference_count, variable, expression),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
             NodeKind::IfStatement { expression, block } => self.if_statement(expression, block),
@@ -238,11 +239,22 @@ impl TypeChecker {
         type_kind
     }
 
-    fn variable_assignment(&mut self, variable: usize, expression: usize) -> Option<usize> {
-        let type_kind = self.check_node(variable);
+    fn variable_assignment(&mut self, dereference_count: usize, variable: usize, expression: usize) -> Option<usize> {
+        let Some(mut type_kind) = self.check_node(variable) else {
+            panic!("Cannot assign to untyped variable");
+        };
+
+        for _ in 0..dereference_count {
+            let TypeKind::Pointer { inner_type_kind } = &self.types[type_kind] else {
+                panic!("Only pointers can be dereferenced");
+            };
+
+            type_kind = *inner_type_kind;
+        }
+
         self.check_node(expression);
 
-        type_kind
+        Some(type_kind)
     }
 
     fn return_statement(&mut self, expression: Option<usize>) -> Option<usize> {

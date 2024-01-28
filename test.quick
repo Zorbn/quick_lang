@@ -1,4 +1,6 @@
-extern fun puts(str: String): Int
+extern fun puts(str: String): UInt
+extern fun malloc(size: UInt): Void*
+extern fun free(ptr: Void*): Void
 
 fun main(): Int32 {
     defer {
@@ -21,6 +23,10 @@ fun main(): Int32 {
     var otherPoint: Point = *pointPtr;
     var pointX: Int = pointPtr.x;
     var pointSize: Int = sizeof Point;
+
+    var heapPoint: Point* = malloc(sizeof Point);
+    *heapPoint = Point { x: 5, y: 5 };
+    free(heapPoint);
 
     var twoD: Int[2] = [1, 5];
     var myArray: Int[3] = makeArray(1, 777, 3);
