@@ -228,6 +228,10 @@ impl CodeGenerator {
                 type_kind,
             } => self.field_literal(name, expression, type_kind),
             TypedNode {
+                node_kind: NodeKind::TypeSize { type_name },
+                type_kind,
+            } => self.type_size(type_name, type_kind),
+            TypedNode {
                 node_kind: NodeKind::TypeName { .. },
                 ..
             } => panic!("Cannot generate type name with gen_node"),
@@ -848,6 +852,13 @@ impl CodeGenerator {
 
     fn field_literal(&mut self, _name: String, expression: usize, _type_kind: Option<usize>) {
         self.gen_node(expression);
+    }
+
+    fn type_size(&mut self, type_name: usize, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit("sizeof(");
+        self.emit_type_name_left(type_name, EmitterKind::Body, false);
+        self.emit_type_name_right(type_name, EmitterKind::Body, false);
+        self.body_emitters.top().body.emit(")");
     }
 
     fn emit_memmove_expression_to_variable(

@@ -228,6 +228,9 @@ pub enum NodeKind {
         name: String,
         expression: usize,
     },
+    TypeSize {
+        type_name: usize,
+    },
     TypeName {
         type_kind: usize,
     },
@@ -843,6 +846,7 @@ impl Parser {
             TokenKind::StringLiteral { .. } => self.string_literal(),
             TokenKind::True | TokenKind::False => self.bool_literal(),
             TokenKind::LBracket { .. } => self.array_literal(),
+            TokenKind::Sizeof { .. } => self.type_size(),
             _ => panic!("Invalid token in primary value"),
         };
 
@@ -1059,6 +1063,15 @@ impl Parser {
         let expression = self.expression(true);
 
         self.add_node(NodeKind::FieldLiteral { name, expression })
+    }
+
+    fn type_size(&mut self) -> usize {
+        self.assert_token(TokenKind::Sizeof);
+        self.position += 1;
+
+        let type_name = self.type_name();
+
+        self.add_node(NodeKind::TypeSize { type_name })
     }
 
     fn type_name(&mut self) -> usize {

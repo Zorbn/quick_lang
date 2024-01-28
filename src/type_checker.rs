@@ -127,6 +127,7 @@ impl TypeChecker {
             } => self.array_literal(elements, repeat_count),
             NodeKind::StructLiteral { name, fields } => self.struct_literal(name, fields),
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
+            NodeKind::TypeSize { type_name } => self.type_size(type_name),
             NodeKind::TypeName { type_kind } => self.type_name(type_kind),
         };
 
@@ -443,6 +444,12 @@ impl TypeChecker {
 
     fn field_literal(&mut self, _name: String, expression: usize) -> Option<usize> {
         self.check_node(expression)
+    }
+
+    fn type_size(&mut self, type_name: usize) -> Option<usize> {
+        self.check_node(type_name);
+
+        Some(INT_INDEX)
     }
 
     fn type_name(&mut self, type_kind: usize) -> Option<usize> {

@@ -37,6 +37,7 @@ pub enum TokenKind {
     In,
     By,
     Defer,
+    Sizeof,
     Int,
     String,
     Bool,
@@ -196,6 +197,11 @@ impl Lexer {
 
             if self.try_consume_string("defer") {
                 self.tokens.push(TokenKind::Defer);
+                continue;
+            }
+
+            if self.try_consume_string("sizeof") {
+                self.tokens.push(TokenKind::Sizeof);
                 continue;
             }
 
