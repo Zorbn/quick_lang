@@ -124,6 +124,14 @@ pub enum NodeKind {
     ReturnStatement {
         expression: usize,
     },
+    IfStatement {
+        expression: usize,
+        block: usize,
+    },
+    WhileLoop {
+        expression: usize,
+        block: usize,
+    },
     Expression {
         comparison: usize,
         trailing_comparisons: Arc<Vec<TrailingComparison>>,
@@ -463,17 +471,25 @@ impl Parser {
     }
 
     fn statement(&mut self) -> usize {
+        let needs_semicolon = !matches!(self.token(), TokenKind::If | TokenKind::While | TokenKind::LBrace);
+
         let inner = match self.token() {
             TokenKind::Var | TokenKind::Val => self.variable_declaration(),
             TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => {
                 self.function_call()
             }
             TokenKind::Return => self.return_statement(),
+            TokenKind::If => self.if_statement(),
+            TokenKind::While => self.while_loop(),
+            TokenKind::LBrace => self.block(),
             _ => self.variable_assignment(),
         };
 
-        self.assert_token(TokenKind::Semicolon);
-        self.position += 1;
+        if needs_semicolon {
+            self.assert_token(TokenKind::Semicolon);
+            self.position += 1;
+        }
+
         self.add_node(NodeKind::Statement { inner })
     }
 
@@ -499,7 +515,7 @@ impl Parser {
         self.assert_token(TokenKind::Equal);
         self.position += 1;
 
-        let expression = self.expression();
+        let expression = self.expression(true);
 
         self.add_node(NodeKind::VariableDeclaration {
             is_mutable,
@@ -515,7 +531,7 @@ impl Parser {
         self.assert_token(TokenKind::Equal);
         self.position += 1;
 
-        let expression = self.expression();
+        let expression = self.expression(true);
 
         self.add_node(NodeKind::VariableAssignment {
             variable,
@@ -527,13 +543,33 @@ impl Parser {
         self.assert_token(TokenKind::Return);
         self.position += 1;
 
-        let expression = self.expression();
+        let expression = self.expression(true);
 
         self.add_node(NodeKind::ReturnStatement { expression })
     }
 
-    fn expression(&mut self) -> usize {
-        let comparison = self.comparison();
+    fn if_statement(&mut self) -> usize {
+        self.assert_token(TokenKind::If);
+        self.position += 1;
+
+        let expression = self.expression(false);
+        let block = self.block();
+
+        self.add_node(NodeKind::IfStatement { expression, block })
+    }
+
+    fn while_loop(&mut self) -> usize {
+        self.assert_token(TokenKind::While);
+        self.position += 1;
+
+        let expression = self.expression(false);
+        let block = self.block();
+
+        self.add_node(NodeKind::WhileLoop { expression, block })
+    }
+
+    fn expression(&mut self, allow_struct_literal: bool) -> usize {
+        let comparison = self.comparison(allow_struct_literal);
         let mut trailing_comparisons = Vec::new();
 
         while *self.token() == TokenKind::And || *self.token() == TokenKind::Or {
@@ -546,7 +582,7 @@ impl Parser {
 
             trailing_comparisons.push(TrailingComparison {
                 op,
-                comparison: self.comparison(),
+                comparison: self.comparison(true),
             });
         }
 
@@ -556,8 +592,8 @@ impl Parser {
         })
     }
 
-    fn comparison(&mut self) -> usize {
-        let binary = self.binary();
+    fn comparison(&mut self, allow_struct_literal: bool) -> usize {
+        let binary = self.binary(allow_struct_literal);
         let mut trailing_binary = None;
 
         let op = match *self.token() {
@@ -572,14 +608,20 @@ impl Parser {
 
         if let Some(op) = op {
             self.position += 1;
-            trailing_binary = Some(TrailingBinary { op, binary: self.binary() });
+            trailing_binary = Some(TrailingBinary {
+                op,
+                binary: self.binary(true),
+            });
         }
 
-        self.add_node(NodeKind::Comparision { binary, trailing_binary })
+        self.add_node(NodeKind::Comparision {
+            binary,
+            trailing_binary,
+        })
     }
 
-    fn binary(&mut self) -> usize {
-        let term = self.term();
+    fn binary(&mut self, allow_struct_literal: bool) -> usize {
+        let term = self.term(allow_struct_literal);
         let mut trailing_terms = Vec::new();
 
         while *self.token() == TokenKind::Plus || *self.token() == TokenKind::Minus {
@@ -592,7 +634,7 @@ impl Parser {
 
             trailing_terms.push(TrailingTerm {
                 op,
-                term: self.term(),
+                term: self.term(true),
             });
         }
 
@@ -602,8 +644,8 @@ impl Parser {
         })
     }
 
-    fn term(&mut self) -> usize {
-        let unary = self.unary();
+    fn term(&mut self, allow_struct_literal: bool) -> usize {
+        let unary = self.unary(allow_struct_literal);
         let mut trailing_unaries = Vec::new();
 
         while *self.token() == TokenKind::Multiply || *self.token() == TokenKind::Divide {
@@ -616,7 +658,7 @@ impl Parser {
 
             trailing_unaries.push(TrailingUnary {
                 op,
-                unary: self.unary(),
+                unary: self.unary(true),
             });
         }
 
@@ -626,7 +668,7 @@ impl Parser {
         })
     }
 
-    fn unary(&mut self) -> usize {
+    fn unary(&mut self, allow_struct_literal: bool) -> usize {
         let op = match *self.token() {
             TokenKind::Plus => {
                 self.position += 1;
@@ -643,20 +685,20 @@ impl Parser {
             _ => None,
         };
 
-        let primary = self.primary();
+        let primary = self.primary(allow_struct_literal);
 
         self.add_node(NodeKind::Unary { op, primary })
     }
 
-    fn primary(&mut self) -> usize {
+    fn primary(&mut self, allow_struct_literal: bool) -> usize {
         let inner = match *self.token() {
-            TokenKind::LParen => {
-                self.parenthesized_expression()
-            }
+            TokenKind::LParen => self.parenthesized_expression(),
             TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => {
                 self.function_call()
             }
-            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LBrace => {
+            TokenKind::Identifier { .. }
+                if allow_struct_literal && *self.peek_token() == TokenKind::LBrace =>
+            {
                 self.struct_literal()
             }
             TokenKind::Identifier { .. } => self.variable(),
@@ -674,7 +716,7 @@ impl Parser {
         self.assert_token(TokenKind::LParen);
         self.position += 1;
 
-        let expression = self.expression();
+        let expression = self.expression(true);
 
         self.assert_token(TokenKind::RParen);
         self.position += 1;
@@ -694,7 +736,7 @@ impl Parser {
         loop {
             if *self.token() == TokenKind::LBracket {
                 self.position += 1;
-                let expression = self.expression();
+                let expression = self.expression(true);
                 self.assert_token(TokenKind::RBracket);
                 self.position += 1;
 
@@ -740,7 +782,7 @@ impl Parser {
         let mut args = Vec::new();
 
         while *self.token() != TokenKind::RParen {
-            args.push(self.expression());
+            args.push(self.expression(true));
 
             if *self.token() != TokenKind::Comma {
                 break;
@@ -797,7 +839,7 @@ impl Parser {
         let mut elements = Vec::new();
 
         while *self.token() != TokenKind::RBracket {
-            elements.push(self.expression());
+            elements.push(self.expression(true));
 
             if *self.token() != TokenKind::Comma {
                 break;
@@ -871,7 +913,7 @@ impl Parser {
         self.assert_token(TokenKind::Colon);
         self.position += 1;
 
-        let expression = self.expression();
+        let expression = self.expression(true);
 
         self.add_node(NodeKind::FieldLiteral { name, expression })
     }

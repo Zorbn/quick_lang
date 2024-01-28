@@ -30,6 +30,8 @@ pub enum TokenKind {
     Struct,
     Return,
     Extern,
+    If,
+    While,
     Int,
     String,
     Bool,
@@ -203,6 +205,12 @@ impl Lexer {
                 }
                 _ if self.try_consume_string("extern") => {
                     self.tokens.push(TokenKind::Extern);
+                }
+                _ if self.try_consume_string("if") => {
+                    self.tokens.push(TokenKind::If);
+                }
+                _ if self.try_consume_string("while") => {
+                    self.tokens.push(TokenKind::While);
                 }
                 _ if self.try_consume_string("Int") => {
                     self.tokens.push(TokenKind::Int);

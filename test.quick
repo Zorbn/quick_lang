@@ -37,6 +37,20 @@ fun main(): Int {
 
     var boolean: Bool = true && false || (5 <= 88);
 
+    {
+        {
+            puts("in a block");
+        }
+    }
+
+    if boolean {
+        puts("boolean is true");
+    }
+
+    while x == 5 && y == 7 {
+        x = 3;
+    }
+
     hello(a, b);
 
     return 0;

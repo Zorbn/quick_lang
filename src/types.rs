@@ -12,10 +12,11 @@ pub fn is_type_kind_array(types: &[TypeKind], type_kind: usize) -> bool {
 // Looks complicated, but is really just descending to the bottom of an expression to see if it represents a single array literal.
 pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: usize) -> bool {
     let TypedNode {
-        node_kind: NodeKind::Expression {
-            comparison,
-            trailing_comparisons,
-        },
+        node_kind:
+            NodeKind::Expression {
+                comparison,
+                trailing_comparisons,
+            },
         ..
     } = &typed_nodes[expression]
     else {
@@ -27,10 +28,11 @@ pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: 
     }
 
     let TypedNode {
-        node_kind: NodeKind::Comparision {
-            binary,
-            trailing_binary,
-        },
+        node_kind:
+            NodeKind::Comparision {
+                binary,
+                trailing_binary,
+            },
         ..
     } = &typed_nodes[*comparison]
     else {

@@ -13,6 +13,10 @@ impl Emitter {
         }
     }
 
+    pub fn append(&mut self, str: &str) {
+        self.string.push_str(str);
+    }
+
     pub fn emit(&mut self, str: &str) {
         if self.is_on_newline {
             for _ in 0..self.indent_count {
@@ -22,7 +26,7 @@ impl Emitter {
             self.is_on_newline = false;
         }
 
-        self.string.push_str(str);
+        self.append(str);
     }
 
     pub fn newline(&mut self) {

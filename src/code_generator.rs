@@ -3,7 +3,9 @@ use std::sync::Arc;
 use crate::{
     emitter::Emitter,
     emitter_stack::EmitterStack,
-    parser::{NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm, TrailingUnary, TypeKind},
+    parser::{
+        NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm, TrailingUnary, TypeKind,
+    },
     type_checker::TypedNode,
     types::{is_type_kind_array, is_typed_expression_array_literal},
 };
@@ -112,6 +114,14 @@ impl CodeGenerator {
                 node_kind: NodeKind::ReturnStatement { expression },
                 type_kind,
             } => self.return_statement(expression, type_kind),
+            TypedNode {
+                node_kind: NodeKind::IfStatement { expression, block },
+                type_kind,
+            } => self.if_statement(expression, block, type_kind),
+            TypedNode {
+                node_kind: NodeKind::WhileLoop { expression, block },
+                type_kind,
+            } => self.while_loop(expression, block, type_kind),
             TypedNode {
                 node_kind:
                     NodeKind::Expression {
@@ -236,24 +246,29 @@ impl CodeGenerator {
 
     fn top_level(
         &mut self,
-        struct_definitions: Arc<Vec<usize>>,
+        functions: Arc<Vec<usize>>,
         structs: Arc<Vec<usize>>,
         _type_kind: Option<usize>,
     ) {
         for (i, struct_definition) in structs.iter().enumerate() {
             if i > 0 {
-                self.body_emitters.top().body.newline();
+                self.prototype_emitter.newline();
             }
 
             self.gen_node(*struct_definition);
         }
 
-        for (i, function) in struct_definitions.iter().enumerate() {
+        let mut i = 0;
+        for function in functions.iter() {
             if i > 0 {
                 self.body_emitters.top().body.newline();
             }
 
             self.gen_node(*function);
+
+            if matches!(self.typed_nodes[*function], TypedNode { node_kind: NodeKind::Function { .. }, .. }) {
+                i += 1;
+            }
         }
     }
 
@@ -435,8 +450,26 @@ impl CodeGenerator {
     }
 
     fn statement(&mut self, inner: usize, _type_kind: Option<usize>) {
+        let needs_semicolon = !matches!(
+            self.typed_nodes[inner],
+            TypedNode {
+                node_kind: NodeKind::IfStatement { .. },
+                ..
+            } | TypedNode {
+                node_kind: NodeKind::WhileLoop { .. },
+                ..
+            } | TypedNode {
+                node_kind: NodeKind::Block { .. },
+                ..
+            }
+
+        );
+
         self.gen_node(inner);
-        self.body_emitters.top().body.emitln(";");
+
+        if needs_semicolon {
+            self.body_emitters.top().body.emitln(";");
+        }
     }
 
     fn variable_declaration(
@@ -515,6 +548,20 @@ impl CodeGenerator {
         }
     }
 
+    fn if_statement(&mut self, expression: usize, block: usize, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit("if (");
+        self.gen_node(expression);
+        self.body_emitters.top().body.emit(") ");
+        self.gen_node(block);
+    }
+
+    fn while_loop(&mut self, expression: usize, block: usize, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit("while (");
+        self.gen_node(expression);
+        self.body_emitters.top().body.emit(") ");
+        self.gen_node(block);
+    }
+
     fn expression(
         &mut self,
         comparison: usize,
@@ -550,7 +597,7 @@ impl CodeGenerator {
                 Op::Greater => self.body_emitters.top().body.emit(" > "),
                 Op::LessEqual => self.body_emitters.top().body.emit(" <= "),
                 Op::GreaterEqual => self.body_emitters.top().body.emit(" >= "),
-                _ => panic!("Unexpected operator in comparison")
+                _ => panic!("Unexpected operator in comparison"),
             }
 
             self.gen_node(trailing_binary.binary);
@@ -844,7 +891,7 @@ impl CodeGenerator {
                     self.emitter(emitter_kind).emit("*");
                 }
             }
-            TypeKind::PartialStruct { .. } => panic!("Can't emit partial struct")
+            TypeKind::PartialStruct { .. } => panic!("Can't emit partial struct"),
         };
     }
 

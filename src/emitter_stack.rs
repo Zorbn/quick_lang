@@ -38,8 +38,8 @@ impl EmitterStack {
 
         let destination = self.stack.last_mut().unwrap();
 
-        destination.body.emit(&source.top.string);
-        destination.body.emit(&source.body.string);
+        destination.body.append(&source.top.string);
+        destination.body.append(&source.body.string);
     }
 
     pub fn string(&self) -> &str {
