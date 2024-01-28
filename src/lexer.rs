@@ -109,25 +109,228 @@ impl Lexer {
 
     pub fn lex(&mut self) {
         while self.position < self.chars.len() {
+            if self.try_consume_string("!=") {
+                self.tokens.push(TokenKind::NotEqual);
+                continue;
+            }
+
+            if self.try_consume_string("==") {
+                self.tokens.push(TokenKind::EqualEqual);
+                continue;
+            }
+
+            if self.try_consume_string("<=") {
+                self.tokens.push(TokenKind::LessEqual);
+                continue;
+            }
+
+            if self.try_consume_string(">=") {
+                self.tokens.push(TokenKind::GreaterEqual);
+                continue;
+            }
+
+            if self.try_consume_string("&&") {
+                self.tokens.push(TokenKind::And);
+                continue;
+            }
+
+            if self.try_consume_string("||") {
+                self.tokens.push(TokenKind::Or);
+                continue;
+            }
+
+            if self.try_consume_string("var") {
+                self.tokens.push(TokenKind::Var);
+                continue;
+            }
+
+            if self.try_consume_string("val") {
+                self.tokens.push(TokenKind::Val);
+                continue;
+            }
+
+            if self.try_consume_string("fun") {
+                self.tokens.push(TokenKind::Fun);
+                continue;
+            }
+
+            if self.try_consume_string("struct") {
+                self.tokens.push(TokenKind::Struct);
+                continue;
+            }
+
+            if self.try_consume_string("return") {
+                self.tokens.push(TokenKind::Return);
+                continue;
+            }
+
+            if self.try_consume_string("extern") {
+                self.tokens.push(TokenKind::Extern);
+                continue;
+            }
+
+            if self.try_consume_string("if") {
+                self.tokens.push(TokenKind::If);
+                continue;
+            }
+
+            if self.try_consume_string("while") {
+                self.tokens.push(TokenKind::While);
+                continue;
+            }
+
+            if self.try_consume_string("for") {
+                self.tokens.push(TokenKind::For);
+                continue;
+            }
+
+            if self.try_consume_string("in") {
+                self.tokens.push(TokenKind::In);
+                continue;
+            }
+
+            if self.try_consume_string("by") {
+                self.tokens.push(TokenKind::By);
+                continue;
+            }
+
+            if self.try_consume_string("defer") {
+                self.tokens.push(TokenKind::Defer);
+                continue;
+            }
+
+            if self.try_consume_string("String") {
+                self.tokens.push(TokenKind::String);
+                continue;
+            }
+
+            if self.try_consume_string("Bool") {
+                self.tokens.push(TokenKind::Bool);
+                continue;
+            }
+
+            if self.try_consume_string("Void") {
+                self.tokens.push(TokenKind::Void);
+                continue;
+            }
+
+            if self.try_consume_string("Int8") {
+                self.tokens.push(TokenKind::Int8);
+                continue;
+            }
+
+            if self.try_consume_string("UInt8") {
+                self.tokens.push(TokenKind::UInt8);
+                continue;
+            }
+
+            if self.try_consume_string("Int16") {
+                self.tokens.push(TokenKind::Int16);
+                continue;
+            }
+
+            if self.try_consume_string("UInt16") {
+                self.tokens.push(TokenKind::UInt16);
+                continue;
+            }
+
+            if self.try_consume_string("Int32") {
+                self.tokens.push(TokenKind::Int32);
+                continue;
+            }
+
+            if self.try_consume_string("UInt32") {
+                self.tokens.push(TokenKind::UInt32);
+                continue;
+            }
+
+            if self.try_consume_string("Int64") {
+                self.tokens.push(TokenKind::Int64);
+                continue;
+            }
+
+            if self.try_consume_string("UInt64") {
+                self.tokens.push(TokenKind::UInt64);
+                continue;
+            }
+
+            if self.try_consume_string("UInt") {
+                self.tokens.push(TokenKind::UInt);
+                continue;
+            }
+
+            if self.try_consume_string("Int") {
+                self.tokens.push(TokenKind::Int);
+                continue;
+            }
+
+            if self.try_consume_string("Float32") {
+                self.tokens.push(TokenKind::Float32);
+                continue;
+            }
+
+            if self.try_consume_string("Float64") {
+                self.tokens.push(TokenKind::Float64);
+                continue;
+            }
+
+            if self.try_consume_string("true") {
+                self.tokens.push(TokenKind::True);
+                continue;
+            }
+
+            if self.try_consume_string("false") {
+                self.tokens.push(TokenKind::False);
+                continue;
+            }
+
+            if self.char().is_alphabetic() || self.char() == '_' {
+                let mut c = self.chars[self.position];
+                let start = self.position;
+
+                while Lexer::is_char_valid_in_identifier(c) {
+                    self.position += 1;
+                    c = self.char();
+                }
+
+                self.tokens.push(TokenKind::Identifier {
+                    text: self.chars[start..self.position].iter().collect(),
+                });
+
+                continue;
+            }
+
+            if self.char().is_numeric() {
+                let mut c = self.chars[self.position];
+                let mut has_decimal_point = false;
+                let start = self.position;
+
+                while c.is_numeric() || (c == '.'  && !has_decimal_point) {
+                    if c == '.' {
+                        has_decimal_point = true;
+                    }
+
+                    self.position += 1;
+                    c = self.char();
+                }
+
+                let text = self.chars[start..self.position].iter().collect();
+
+                if has_decimal_point {
+                    self.tokens.push(TokenKind::Float32Literal { text });
+                } else {
+                    self.tokens.push(TokenKind::IntLiteral { text });
+                }
+
+                continue;
+            }
+
+            if self.char().is_whitespace() {
+                self.position += 1;
+                continue;
+            }
+
             match self.char() {
-                _ if self.try_consume_string("!=") => {
-                    self.tokens.push(TokenKind::NotEqual);
-                }
-                _ if self.try_consume_string("==") => {
-                    self.tokens.push(TokenKind::EqualEqual);
-                }
-                _ if self.try_consume_string("<=") => {
-                    self.tokens.push(TokenKind::LessEqual);
-                }
-                _ if self.try_consume_string(">=") => {
-                    self.tokens.push(TokenKind::GreaterEqual);
-                }
-                _ if self.try_consume_string("&&") => {
-                    self.tokens.push(TokenKind::And);
-                }
-                _ if self.try_consume_string("||") => {
-                    self.tokens.push(TokenKind::Or);
-                }
                 '(' => {
                     self.tokens.push(TokenKind::LParen);
                     self.position += 1;
@@ -219,131 +422,6 @@ impl Lexer {
                     self.tokens.push(TokenKind::StringLiteral {
                         text: self.chars[start..self.position].iter().collect(),
                     });
-                    self.position += 1;
-                }
-                _ if self.try_consume_string("var") => {
-                    self.tokens.push(TokenKind::Var);
-                }
-                _ if self.try_consume_string("val") => {
-                    self.tokens.push(TokenKind::Val);
-                }
-                _ if self.try_consume_string("fun") => {
-                    self.tokens.push(TokenKind::Fun);
-                }
-                _ if self.try_consume_string("struct") => {
-                    self.tokens.push(TokenKind::Struct);
-                }
-                _ if self.try_consume_string("return") => {
-                    self.tokens.push(TokenKind::Return);
-                }
-                _ if self.try_consume_string("extern") => {
-                    self.tokens.push(TokenKind::Extern);
-                }
-                _ if self.try_consume_string("if") => {
-                    self.tokens.push(TokenKind::If);
-                }
-                _ if self.try_consume_string("while") => {
-                    self.tokens.push(TokenKind::While);
-                }
-                _ if self.try_consume_string("for") => {
-                    self.tokens.push(TokenKind::For);
-                }
-                _ if self.try_consume_string("in") => {
-                    self.tokens.push(TokenKind::In);
-                }
-                _ if self.try_consume_string("by") => {
-                    self.tokens.push(TokenKind::By);
-                }
-                _ if self.try_consume_string("defer") => {
-                    self.tokens.push(TokenKind::Defer);
-                }
-                _ if self.try_consume_string("String") => {
-                    self.tokens.push(TokenKind::String);
-                }
-                _ if self.try_consume_string("Bool") => {
-                    self.tokens.push(TokenKind::Bool);
-                }
-                _ if self.try_consume_string("Void") => {
-                    self.tokens.push(TokenKind::Void);
-                }
-                _ if self.try_consume_string("Int8") => {
-                    self.tokens.push(TokenKind::Int8);
-                }
-                _ if self.try_consume_string("UInt8") => {
-                    self.tokens.push(TokenKind::UInt8);
-                }
-                _ if self.try_consume_string("Int16") => {
-                    self.tokens.push(TokenKind::Int16);
-                }
-                _ if self.try_consume_string("UInt16") => {
-                    self.tokens.push(TokenKind::UInt16);
-                }
-                _ if self.try_consume_string("Int32") => {
-                    self.tokens.push(TokenKind::Int32);
-                }
-                _ if self.try_consume_string("UInt32") => {
-                    self.tokens.push(TokenKind::UInt32);
-                }
-                _ if self.try_consume_string("Int64") => {
-                    self.tokens.push(TokenKind::Int64);
-                }
-                _ if self.try_consume_string("UInt64") => {
-                    self.tokens.push(TokenKind::UInt64);
-                }
-                _ if self.try_consume_string("UInt") => {
-                    self.tokens.push(TokenKind::UInt);
-                }
-                _ if self.try_consume_string("Int") => {
-                    self.tokens.push(TokenKind::Int);
-                }
-                _ if self.try_consume_string("Float32") => {
-                    self.tokens.push(TokenKind::Float32);
-                }
-                _ if self.try_consume_string("Float64") => {
-                    self.tokens.push(TokenKind::Float64);
-                }
-                _ if self.try_consume_string("true") => {
-                    self.tokens.push(TokenKind::True);
-                }
-                _ if self.try_consume_string("false") => {
-                    self.tokens.push(TokenKind::False);
-                }
-                c if c.is_alphabetic() || c == '_' => {
-                    let mut c = self.chars[self.position];
-                    let start = self.position;
-
-                    while Lexer::is_char_valid_in_identifier(c) {
-                        self.position += 1;
-                        c = self.char();
-                    }
-
-                    self.tokens.push(TokenKind::Identifier {
-                        text: self.chars[start..self.position].iter().collect(),
-                    });
-                }
-                c if c.is_numeric() => {
-                    let mut c = self.chars[self.position];
-                    let mut has_decimal_point = false;
-                    let start = self.position;
-
-                    while c.is_numeric() || (c == '.'  && !has_decimal_point) {
-                        if c == '.' {
-                            has_decimal_point = true;
-                        }
-
-                        self.position += 1;
-                        c = self.char();
-                    }
-
-                    let text = self.chars[start..self.position].iter().collect();
-
-                    if has_decimal_point {
-                        self.tokens.push(TokenKind::Float32Literal { text });
-                    } else {
-                        self.tokens.push(TokenKind::IntLiteral { text });
-                    }
-                }
-                c if c.is_whitespace() => {
                     self.position += 1;
                 }
                 _ => panic!(
