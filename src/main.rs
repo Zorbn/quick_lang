@@ -33,7 +33,6 @@ mod types;
  * Single/multi-line comments.
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Make main a void function in this language, and generate a version that returns int for C.
- * Add defer keyword.
  *
  * NOTES:
  * Create special statements for alloc and free:

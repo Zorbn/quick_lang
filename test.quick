@@ -1,6 +1,10 @@
 extern fun puts(str: String): Int
 
 fun main(): Int32 {
+    defer {
+        puts("defer in main");
+    }
+
     val a: Int = 542 + 54578 / 3;
     var b: Int = a * 2;
     b = b / 4;
@@ -52,11 +56,13 @@ fun main(): Int32 {
     }
 
     for i in -10 < 10 {
-
+        defer puts("defer in loop");
     }
 
     for i in zero() <= 10 {
+        defer puts("defer in loop");
 
+        return 0;
     }
 
     for i in 10 >= 0 by -1 {

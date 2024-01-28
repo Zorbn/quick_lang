@@ -41,7 +41,7 @@ impl CodeGenerator {
 
         code_generator.header_emitter.emitln("#include <string.h>");
         code_generator.header_emitter.emitln("#include <inttypes.h>");
-        code_generator.body_emitters.push();
+        code_generator.body_emitters.push(1);
 
         code_generator
     }
@@ -115,6 +115,10 @@ impl CodeGenerator {
                 node_kind: NodeKind::ReturnStatement { expression },
                 type_kind,
             } => self.return_statement(expression, type_kind),
+            TypedNode {
+                node_kind: NodeKind::DeferStatement { statement },
+                type_kind,
+            } => self.defer_statement(statement, type_kind),
             TypedNode {
                 node_kind: NodeKind::IfStatement { expression, block },
                 type_kind,
@@ -440,7 +444,7 @@ impl CodeGenerator {
 
     fn block(&mut self, statements: Arc<Vec<usize>>, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emitln("{");
-        self.body_emitters.push();
+        self.body_emitters.push(1);
 
         // Make copies of any parameters that are arrays, because arrays are supposed to be passed by value.
         if let Some(function_declaration) = self.function_declaration_needing_init {
@@ -452,7 +456,16 @@ impl CodeGenerator {
             self.gen_node(*statement);
         }
 
-        self.body_emitters.pop();
+        let was_last_statement_return = if let Some(last_statement) = statements.last() {
+            let TypedNode { node_kind: NodeKind::Statement { inner }, .. } = self.typed_nodes[*last_statement] else {
+                panic!("Last statement is not a statement");
+            };
+            matches!(self.typed_nodes[inner], TypedNode { node_kind: NodeKind::ReturnStatement { .. }, .. })
+        } else {
+            false
+        };
+
+        self.body_emitters.pop(!was_last_statement_return);
         self.body_emitters.top().body.emitln("}");
     }
 
@@ -460,6 +473,9 @@ impl CodeGenerator {
         let needs_semicolon = !matches!(
             self.typed_nodes[inner],
             TypedNode {
+                node_kind: NodeKind::DeferStatement { .. },
+                ..
+            } | TypedNode {
                 node_kind: NodeKind::IfStatement { .. },
                 ..
             } | TypedNode {
@@ -532,6 +548,8 @@ impl CodeGenerator {
     }
 
     fn return_statement(&mut self, expression: Option<usize>, type_kind: Option<usize>) {
+        self.body_emitters.exiting_all_scopes();
+
         let expression = if let Some(expression) = expression {
             expression
         } else {
@@ -563,6 +581,12 @@ impl CodeGenerator {
             self.body_emitters.top().body.emit("return ");
             self.gen_node(expression);
         }
+    }
+
+    fn defer_statement(&mut self, statement: usize, _type_kind: Option<usize>) {
+        self.body_emitters.push(0);
+        self.gen_node(statement);
+        self.body_emitters.pop_to_bottom();
     }
 
     fn if_statement(&mut self, expression: usize, block: usize, _type_kind: Option<usize>) {

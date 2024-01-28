@@ -17,6 +17,17 @@ impl Emitter {
         self.string.push_str(str);
     }
 
+    pub fn append_indented(&mut self, str: &str, indent_amount: usize) {
+        for line in str.lines() {
+            for _ in 0..indent_amount {
+                self.string.push('\t');
+            }
+
+            self.string.push_str(line);
+            self.string.push('\n');
+        }
+    }
+
     pub fn emit(&mut self, str: &str) {
         if self.is_on_newline {
             for _ in 0..self.indent_count {

@@ -136,6 +136,9 @@ pub enum NodeKind {
     ReturnStatement {
         expression: Option<usize>,
     },
+    DeferStatement {
+        statement: usize,
+    },
     IfStatement {
         expression: usize,
         block: usize,
@@ -534,7 +537,7 @@ impl Parser {
     fn statement(&mut self) -> usize {
         let needs_semicolon = !matches!(
             self.token(),
-            TokenKind::If | TokenKind::While | TokenKind::For | TokenKind::LBrace
+            TokenKind::Defer | TokenKind::If | TokenKind::While | TokenKind::For | TokenKind::LBrace
         );
 
         let inner = match self.token() {
@@ -543,6 +546,7 @@ impl Parser {
                 self.function_call()
             }
             TokenKind::Return => self.return_statement(),
+            TokenKind::Defer => self.defer_statement(),
             TokenKind::If => self.if_statement(),
             TokenKind::While => self.while_loop(),
             TokenKind::For => self.for_loop(),
@@ -614,6 +618,15 @@ impl Parser {
         }
 
         self.add_node(NodeKind::ReturnStatement { expression })
+    }
+
+    fn defer_statement(&mut self) -> usize {
+        self.assert_token(TokenKind::Defer);
+        self.position += 1;
+
+        let statement = self.statement();
+
+        self.add_node(NodeKind::DeferStatement { statement })
     }
 
     fn if_statement(&mut self) -> usize {

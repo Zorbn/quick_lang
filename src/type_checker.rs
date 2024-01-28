@@ -85,6 +85,7 @@ impl TypeChecker {
                 expression,
             } => self.variable_assignment(variable, expression),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
+            NodeKind::DeferStatement { statement } => self.defer_statement(statement),
             NodeKind::IfStatement { expression, block } => self.if_statement(expression, block),
             NodeKind::WhileLoop { expression, block } => self.while_loop(expression, block),
             NodeKind::ForLoop { iterator, op, from, to, by, block } => self.for_loop(iterator, op, from, to, by, block),
@@ -245,6 +246,10 @@ impl TypeChecker {
 
     fn return_statement(&mut self, expression: Option<usize>) -> Option<usize> {
         self.check_node(expression?)
+    }
+
+    fn defer_statement(&mut self, statement: usize) -> Option<usize> {
+        self.check_node(statement)
     }
 
     fn if_statement(&mut self, expression: usize, block: usize) -> Option<usize> {
