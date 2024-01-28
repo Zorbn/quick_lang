@@ -12,7 +12,8 @@ pub enum TokenKind {
     Period,
     Plus,
     Minus,
-    Multiply,
+    Asterisk,
+    Ampersand,
     Divide,
     Equal,
     Less,
@@ -80,17 +81,28 @@ impl Lexer {
     }
 
     fn try_consume_string(&mut self, str: &str) -> bool {
-        if self.position + str.len() >= self.chars.len() {
+        if self.position + str.len() > self.chars.len() {
             return false;
         }
 
+        let mut is_last_char_valid_in_identifier = false;
         for (i, c) in str.chars().enumerate() {
+            is_last_char_valid_in_identifier = Lexer::is_char_valid_in_identifier(c);
             if self.chars[self.position + i] != c {
                 return false;
             }
         }
 
-        self.position += str.len();
+        let next_char_index = self.position + str.len();
+        if is_last_char_valid_in_identifier {
+            // The string needs to be a full word, rather than the start of another string,
+            // eg, "for" but not "fortune".
+            if next_char_index < self.chars.len() && Lexer::is_char_valid_in_identifier(self.chars[next_char_index]) {
+                return false;
+            }
+        }
+
+        self.position = next_char_index;
 
         true
     }
@@ -165,7 +177,11 @@ impl Lexer {
                     self.position += 1;
                 }
                 '*' => {
-                    self.tokens.push(TokenKind::Multiply);
+                    self.tokens.push(TokenKind::Asterisk);
+                    self.position += 1;
+                }
+                '&' => {
+                    self.tokens.push(TokenKind::Ampersand);
                     self.position += 1;
                 }
                 '/' => {
@@ -296,7 +312,7 @@ impl Lexer {
                     let mut c = self.chars[self.position];
                     let start = self.position;
 
-                    while c.is_alphabetic() || c.is_numeric() || c == '_' {
+                    while Lexer::is_char_valid_in_identifier(c) {
                         self.position += 1;
                         c = self.char();
                     }
@@ -336,5 +352,9 @@ impl Lexer {
                 ),
             }
         }
+    }
+
+    fn is_char_valid_in_identifier(c: char) -> bool {
+        c.is_alphabetic() || c.is_numeric() || c == '_'
     }
 }

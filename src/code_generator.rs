@@ -703,6 +703,8 @@ impl CodeGenerator {
         match op {
             Some(Op::Plus) => self.body_emitters.top().body.emit("+"),
             Some(Op::Minus) => self.body_emitters.top().body.emit("-"),
+            Some(Op::Reference) => self.body_emitters.top().body.emit("&"),
+            Some(Op::Dereference) => self.body_emitters.top().body.emit("*"),
             None => {}
             _ => panic!("Unexpected operator in unary, {:?}", op),
         }
@@ -737,7 +739,17 @@ impl CodeGenerator {
 
     fn variable_field(&mut self, parent: usize, name: String, _type_kind: Option<usize>) {
         self.gen_node(parent);
-        self.body_emitters.top().body.emit(".");
+
+        let Some(parent_type) = self.typed_nodes[parent].type_kind else {
+            panic!("Cannot access field of untyped variable");
+        };
+
+        match &self.types[parent_type] {
+            TypeKind::Struct { .. } => self.body_emitters.top().body.emit("."),
+            TypeKind::Pointer { .. } => self.body_emitters.top().body.emit("->"),
+            _ => panic!("Field access is only allowed on structs or pointers to structs")
+        }
+
         self.body_emitters.top().body.emit(&name);
     }
 
@@ -968,7 +980,11 @@ impl CodeGenerator {
                     self.emitter(emitter_kind).emit("*");
                 }
             }
-            TypeKind::PartialStruct { .. } => panic!("Can't emit partial struct"),
+            TypeKind::Pointer { inner_type_kind } => {
+                self.emit_type_kind_left(inner_type_kind, emitter_kind, do_arrays_as_pointers);
+                self.emitter(emitter_kind).emit("*");
+            },
+            TypeKind::PartialStruct => panic!("Can't emit partial struct"),
         };
     }
 

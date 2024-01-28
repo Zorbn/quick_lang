@@ -12,6 +12,15 @@ fun main(): Int32 {
     var str: String = "hello world";
     puts(str);
 
+    var byte: UInt8 = 255;
+    var bytePtr: UInt8* = &byte;
+    var otherByte: UInt8 = *bytePtr;
+
+    var point: Point = Point { x: 1, y: 2 };
+    var pointPtr: Point* = &point;
+    var otherPoint: Point = *pointPtr;
+    var pointX: Int = pointPtr.x;
+
     var twoD: Int[2] = [1, 5];
     var myArray: Int[3] = makeArray(1, 777, 3);
     var myArrayCopy: Int[3] = takeArray(myArray);

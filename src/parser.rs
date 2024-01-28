@@ -19,6 +19,8 @@ pub enum Op {
     GreaterEqual,
     And,
     Or,
+    Reference,
+    Dereference,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -75,13 +77,16 @@ pub enum TypeKind {
     UInt64,
     Float32,
     Float64,
+    Pointer {
+        inner_type_kind: usize,
+    },
     Array {
         element_type_kind: usize,
         element_count: usize,
     },
     Struct {
         name: String,
-        fields_kinds: Arc<Vec<Field>>,
+        field_kinds: Arc<Vec<Field>>,
     },
     PartialStruct,
 }
@@ -250,6 +255,7 @@ pub struct Parser {
     pub function_declaration_indices: HashMap<String, usize>,
     pub struct_definition_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
+    pub pointer_type_kinds: HashMap<usize, usize>,
     pub struct_type_kinds: HashMap<String, usize>,
 
     pub tokens: Option<Vec<TokenKind>>,
@@ -265,6 +271,7 @@ impl Parser {
             function_declaration_indices: HashMap::new(),
             struct_definition_indices: HashMap::new(),
             array_type_kinds: HashMap::new(),
+            pointer_type_kinds: HashMap::new(),
             struct_type_kinds: HashMap::new(),
             position: 0,
         };
@@ -404,7 +411,7 @@ impl Parser {
 
         let type_kind_struct = TypeKind::Struct {
             name: name.clone(),
-            fields_kinds: Arc::new(field_kinds),
+            field_kinds: Arc::new(field_kinds),
         };
 
         let type_kind = if let Some(type_kind) = self.struct_type_kinds.get(&name) {
@@ -769,8 +776,8 @@ impl Parser {
         let unary = self.unary(allow_struct_literal);
         let mut trailing_unaries = Vec::new();
 
-        while *self.token() == TokenKind::Multiply || *self.token() == TokenKind::Divide {
-            let op = if *self.token() == TokenKind::Multiply {
+        while *self.token() == TokenKind::Asterisk || *self.token() == TokenKind::Divide {
+            let op = if *self.token() == TokenKind::Asterisk {
                 Op::Multiply
             } else {
                 Op::Divide
@@ -802,6 +809,14 @@ impl Parser {
             TokenKind::Not => {
                 self.position += 1;
                 Some(Op::Not)
+            }
+            TokenKind::Ampersand => {
+                self.position += 1;
+                Some(Op::Reference)
+            }
+            TokenKind::Asterisk => {
+                self.position += 1;
+                Some(Op::Dereference)
             }
             _ => None,
         };
@@ -1099,6 +1114,22 @@ impl Parser {
                         element_count: length,
                     });
                     self.array_type_kinds.insert(array_layout, index);
+                    index
+                };
+
+                continue;
+            }
+
+            if *self.token() == TokenKind::Asterisk {
+                self.position += 1;
+
+                type_kind = if let Some(index) = self.pointer_type_kinds.get(&type_kind) {
+                    *index
+                } else {
+                    let index = self.add_type(TypeKind::Pointer {
+                        inner_type_kind: type_kind,
+                    });
+                    self.pointer_type_kinds.insert(type_kind, index);
                     index
                 };
 

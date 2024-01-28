@@ -19,7 +19,6 @@ mod types;
  * Report error messages that are helpful, have file positions.
  * Complete type checking.
  * Simple type inference.
- * Pointers.
  * Incremental and parallel compilation.
  * Default parameters.
  * Variadic arguments.
@@ -33,17 +32,15 @@ mod types;
  * Single/multi-line comments.
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Make main a void function in this language, and generate a version that returns int for C.
+ * Bitwise operations.
  *
  * NOTES:
- * Create special statements for alloc and free:
- * var a: Int* = alloc 5;
- * free a;
+ * After adding generics, add functions for alloc and free to the standard library.
+ * fn alloc<T>(value: T) { calls malloc with sizeof T, assigns value to new memory, returns new memory }
  *
- * note that these both must be STATEMENT, alloc 5 cannot be an expression because it needs to be codegen'ed to:
- * int* a = malloc(sizeof(int));
- * *a = 5;
- * which isn't an expression, and wouldn't be helpful as an expression anyway, because there are very few times
- * you want to allocate and then not immediately assign the resulting pointer to a variable.
+ * Of course, there will still need to be some equivalent of void* for direct malloc without having to first initialize the value
+ * on the stack like the alloc<T> method would. eg, if you're creating an array that is too big for the stack you need to
+ * allocate the memory on the heap then write into it directly.
  *
  * There should be const versions of pointer types that you can't free,
  * including strings, ie: const String = "hello"; String = ... some allocation ...

@@ -357,14 +357,22 @@ impl TypeChecker {
 
     fn variable_field(&mut self, parent: usize, name: String) -> Option<usize> {
         let parent_type = self.check_node(parent).unwrap();
-        let TypeKind::Struct { fields_kinds, .. } = &self.types[parent_type] else {
-            panic!("Field access is only allowed on structs");
+        let field_kinds = match &self.types[parent_type] {
+            TypeKind::Struct { field_kinds, .. } => field_kinds,
+            TypeKind::Pointer { inner_type_kind } => {
+                let TypeKind::Struct { field_kinds, .. } = &self.types[*inner_type_kind] else {
+                    panic!("Field access is not allowed on pointers to non-struct types");
+                };
+
+                field_kinds
+            }
+            _ => panic!("Field access is only allowed on structs or pointers to structs")
         };
 
         for Field {
             name: field_name,
             type_kind: field_kind,
-        } in fields_kinds.iter()
+        } in field_kinds.iter()
         {
             if *field_name == name {
                 return Some(*field_kind);
