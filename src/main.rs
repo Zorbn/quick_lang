@@ -1,4 +1,4 @@
-use std::{fs, io::Write};
+use std::{env, ffi::OsStr, fs, io::{self, Write}, path::Path};
 
 use crate::{
     code_generator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker,
@@ -20,7 +20,7 @@ mod types;
  * Complete type checking.
  * Simple type inference.
  * Pointers.
- * Multiple files and incremental compilation.
+ * Incremental and parallel compilation.
  * Default parameters.
  * Variadic arguments.
  * Generics.
@@ -33,6 +33,7 @@ mod types;
  * Single/multi-line comments.
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Make main a void function in this language, and generate a version that returns int for C.
+ * Add defer keyword.
  *
  * NOTES:
  * Create special statements for alloc and free:
@@ -51,25 +52,43 @@ mod types;
  */
 
 fn main() {
-    let chars: Vec<char> = fs::read_to_string("test.quick").unwrap().chars().collect();
+    let mut args: Vec<String> = env::args().collect();
+
+    if args.len() < 2 {
+        args.push(".".into());
+    }
+
+    let mut files = Vec::new();
+    let path = Path::new(&args[1]);
+    if is_path_source_file(path) {
+        files.push(fs::read_to_string(path).unwrap().chars().collect());
+    } else if path.is_dir() {
+        collect_source_files(path, &mut files).unwrap();
+    }
+
+    if files.is_empty() {
+        return;
+    }
 
     println!("~~ Lexing ~~");
 
-    let mut lexer = Lexer::new(chars);
-    lexer.lex();
+    let mut file_lexers = Vec::with_capacity(files.len());
 
-    // for token in &lexer.tokens {
-    //     println!("{:?}", *token);
-    // }
+    for chars in files {
+        let mut lexer = Lexer::new(chars);
+        lexer.lex();
+        file_lexers.push(lexer);
+    }
 
     println!("~~ Parsing ~~");
 
-    let mut parser = Parser::new(lexer.tokens);
-    let start_index = parser.parse();
+    let mut parser = Parser::new();
 
-    // for node in &parser.nodes {
-    //     println!("{:?}", *node);
-    // }
+    let mut start_indices = Vec::with_capacity(file_lexers.len());
+    for lexer in file_lexers {
+        let start_index = parser.parse(lexer.tokens);
+        start_indices.push(start_index);
+    }
 
     println!("~~ Checking ~~");
 
@@ -80,7 +99,9 @@ fn main() {
         parser.struct_definition_indices,
         parser.array_type_kinds,
     );
-    type_checker.check(start_index);
+    for start_index in &start_indices {
+        type_checker.check(*start_index);
+    }
 
     let typed_nodes = type_checker
         .typed_nodes
@@ -91,9 +112,11 @@ fn main() {
     println!("~~ Generating ~~");
 
     let mut code_generator = CodeGenerator::new(typed_nodes, type_checker.types);
-    code_generator.gen(start_index);
+    for start_index in &start_indices {
+        code_generator.gen(*start_index);
+    }
 
-    let mut output_file = fs::File::create("out/test.c").unwrap();
+    let mut output_file = fs::File::create("out/out.c").unwrap();
     output_file
         .write_all(code_generator.header_emitter.string.as_bytes())
         .unwrap();
@@ -112,7 +135,7 @@ fn main() {
 
     println!("~~~ Calling system compiler ~~~");
     match std::process::Command::new("clang")
-        .args(["out/test.c", "-o", "out/test.exe"])
+        .args(["out/out.c", "-o", "out/out.exe"])
         .output()
     {
         Err(_) => panic!("Couldn't compile using the system compiler!"),
@@ -123,4 +146,27 @@ fn main() {
             }
         }
     }
+}
+
+fn collect_source_files(directory: &Path, files: &mut Vec<Vec<char>>) -> io::Result<()> {
+    if !directory.is_dir() {
+        return Ok(());
+    }
+
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_source_files(&path, files)?;
+        } else if is_path_source_file(&path) {
+            let chars = fs::read_to_string(path).unwrap().chars().collect();
+            files.push(chars);
+        }
+    }
+
+    Ok(())
+}
+
+fn is_path_source_file(path: &Path) -> bool {
+    path.extension().is_some() && path.extension().unwrap() == OsStr::new("quick")
 }

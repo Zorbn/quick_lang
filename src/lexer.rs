@@ -35,6 +35,7 @@ pub enum TokenKind {
     For,
     In,
     By,
+    Import,
     Int,
     String,
     Bool,
@@ -236,6 +237,9 @@ impl Lexer {
                 }
                 _ if self.try_consume_string("by") => {
                     self.tokens.push(TokenKind::By);
+                }
+                _ if self.try_consume_string("import") => {
+                    self.tokens.push(TokenKind::Import);
                 }
                 _ if self.try_consume_string("String") => {
                     self.tokens.push(TokenKind::String);

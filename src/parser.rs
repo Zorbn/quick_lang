@@ -242,20 +242,21 @@ pub const FLOAT32_INDEX: usize = 13;
 pub const FLOAT64_INDEX: usize = 14;
 
 pub struct Parser {
-    pub tokens: Vec<TokenKind>,
     pub nodes: Vec<NodeKind>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: HashMap<String, usize>,
     pub struct_definition_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub struct_type_kinds: HashMap<String, usize>,
-    position: usize,
+
+    pub tokens: Option<Vec<TokenKind>>,
+    pub position: usize,
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<TokenKind>) -> Self {
+    pub fn new() -> Self {
         let mut parser = Self {
-            tokens,
+            tokens: None,
             nodes: Vec::new(),
             types: Vec::new(),
             function_declaration_indices: HashMap::new(),
@@ -285,11 +286,13 @@ impl Parser {
     }
 
     fn token(&self) -> &TokenKind {
-        self.tokens.get(self.position).unwrap_or(&TokenKind::Eof)
+        let tokens = self.tokens.as_ref().unwrap();
+        tokens.get(self.position).unwrap_or(&TokenKind::Eof)
     }
 
     fn peek_token(&self) -> &TokenKind {
-        self.tokens
+        let tokens = self.tokens.as_ref().unwrap();
+        tokens
             .get(self.position + 1)
             .unwrap_or(&TokenKind::Eof)
     }
@@ -325,7 +328,9 @@ impl Parser {
         index
     }
 
-    pub fn parse(&mut self) -> usize {
+    pub fn parse(&mut self, tokens: Vec<TokenKind>) -> usize {
+        self.position = 0;
+        self.tokens = Some(tokens);
         self.top_level()
     }
 

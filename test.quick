@@ -79,11 +79,6 @@ fun main(): Int32 {
     return 0;
 }
 
-struct Point {
-    x: Int,
-    y: Int,
-}
-
 fun zero(): Int {
     return 0;
 }
