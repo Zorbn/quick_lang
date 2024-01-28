@@ -40,6 +40,7 @@ impl CodeGenerator {
         };
 
         code_generator.header_emitter.emitln("#include <string.h>");
+        code_generator.header_emitter.emitln("#include <inttypes.h>");
         code_generator.body_emitters.push();
 
         code_generator
@@ -122,6 +123,10 @@ impl CodeGenerator {
                 node_kind: NodeKind::WhileLoop { expression, block },
                 type_kind,
             } => self.while_loop(expression, block, type_kind),
+            TypedNode {
+                node_kind: NodeKind::ForLoop { iterator, inclusive, from, to, by, block },
+                type_kind,
+            } => self.for_loop(iterator, inclusive, from, to, by, block, type_kind),
             TypedNode {
                 node_kind:
                     NodeKind::Expression {
@@ -278,7 +283,7 @@ impl CodeGenerator {
         fields: Arc<Vec<usize>>,
         _type_kind: Option<usize>,
     ) {
-        self.prototype_emitter.emit("typedef struct ");
+        self.prototype_emitter.emit("struct ");
         self.prototype_emitter.emit(&name);
         self.prototype_emitter.emitln(" {");
         self.prototype_emitter.indent();
@@ -288,9 +293,7 @@ impl CodeGenerator {
         }
 
         self.prototype_emitter.unindent();
-        self.prototype_emitter.emit("} ");
-        self.prototype_emitter.emit(&name);
-        self.prototype_emitter.emitln(";");
+        self.prototype_emitter.emitln("};");
     }
 
     fn field(&mut self, name: String, _type_name: usize, type_kind: Option<usize>) {
@@ -459,6 +462,9 @@ impl CodeGenerator {
                 node_kind: NodeKind::WhileLoop { .. },
                 ..
             } | TypedNode {
+                node_kind: NodeKind::ForLoop { .. },
+                ..
+            } | TypedNode {
                 node_kind: NodeKind::Block { .. },
                 ..
             }
@@ -559,6 +565,42 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("while (");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
+        self.gen_node(block);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn for_loop(&mut self, iterator: String, inclusive: bool, from: i64, to: i64, by: i64, block: usize, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit("for (intptr_t ");
+        self.body_emitters.top().body.emit(&iterator);
+        self.body_emitters.top().body.emit(" = ");
+        self.body_emitters.top().body.emit(&from.to_string());
+        self.body_emitters.top().body.emit("; ");
+
+        self.body_emitters.top().body.emit(&iterator);
+        if from < to {
+            if inclusive {
+                self.body_emitters.top().body.emit(" <= ");
+            } else {
+                self.body_emitters.top().body.emit(" < ");
+            }
+        } else if inclusive {
+            self.body_emitters.top().body.emit(" >= ");
+        } else {
+            self.body_emitters.top().body.emit(" > ");
+        }
+        self.body_emitters.top().body.emit(&to.to_string());
+        self.body_emitters.top().body.emit("; ");
+
+        self.body_emitters.top().body.emit(&iterator);
+        if by >= 0 {
+            self.body_emitters.top().body.emit(" += ");
+            self.body_emitters.top().body.emit(&by.to_string());
+        } else {
+            self.body_emitters.top().body.emit(" -= ");
+            self.body_emitters.top().body.emit(&(-by).to_string());
+        }
+        self.body_emitters.top().body.emit(") ");
+
         self.gen_node(block);
     }
 
@@ -879,10 +921,13 @@ impl CodeGenerator {
         let type_kind = &self.types[type_kind];
 
         match type_kind.clone() {
-            TypeKind::Int => self.emitter(emitter_kind).emit("int"),
+            TypeKind::Int => self.emitter(emitter_kind).emit("int32_t"),
             TypeKind::String => self.emitter(emitter_kind).emit("char*"),
-            TypeKind::Bool => self.emitter(emitter_kind).emit("int"),
-            TypeKind::Struct { name, .. } => self.emitter(emitter_kind).emit(&name),
+            TypeKind::Bool => self.emitter(emitter_kind).emit("int32_t"),
+            TypeKind::Struct { name, .. } => {
+                self.emitter(emitter_kind).emit("struct ");
+                self.emitter(emitter_kind).emit(&name)
+            },
             TypeKind::Array {
                 element_type_kind, ..
             } => {

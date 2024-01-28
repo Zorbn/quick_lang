@@ -132,6 +132,14 @@ pub enum NodeKind {
         expression: usize,
         block: usize,
     },
+    ForLoop {
+        iterator: String,
+        inclusive: bool,
+        from: i64,
+        to: i64,
+        by: i64,
+        block: usize,
+    },
     Expression {
         comparison: usize,
         trailing_comparisons: Arc<Vec<TrailingComparison>>,
@@ -255,6 +263,33 @@ impl Parser {
                 self.token()
             );
         }
+    }
+
+    fn consume_int_literal(&mut self) -> i64 {
+        let sign = if *self.token() == TokenKind::Minus {
+            self.position += 1;
+            -1
+        } else {
+            1
+        };
+
+        let int_string = match self.token() {
+            TokenKind::IntLiteral { text } => text,
+            _ => panic!("Expected int literal"),
+        };
+
+        let value = int_string.parse::<i64>().expect("Expected signed 64 bit integer") * sign;
+        self.position += 1;
+        value
+    }
+
+    fn parse_uint_literal(&self) -> usize {
+        let int_string = match self.token() {
+            TokenKind::IntLiteral { text } => text,
+            _ => panic!("Expected int literal"),
+        };
+
+        int_string.parse::<usize>().expect("Expected unsigned integer")
     }
 
     fn add_node(&mut self, node: NodeKind) -> usize {
@@ -471,7 +506,10 @@ impl Parser {
     }
 
     fn statement(&mut self) -> usize {
-        let needs_semicolon = !matches!(self.token(), TokenKind::If | TokenKind::While | TokenKind::LBrace);
+        let needs_semicolon = !matches!(
+            self.token(),
+            TokenKind::If | TokenKind::While | TokenKind::For | TokenKind::LBrace
+        );
 
         let inner = match self.token() {
             TokenKind::Var | TokenKind::Val => self.variable_declaration(),
@@ -481,6 +519,7 @@ impl Parser {
             TokenKind::Return => self.return_statement(),
             TokenKind::If => self.if_statement(),
             TokenKind::While => self.while_loop(),
+            TokenKind::For => self.for_loop(),
             TokenKind::LBrace => self.block(),
             _ => self.variable_assignment(),
         };
@@ -566,6 +605,44 @@ impl Parser {
         let block = self.block();
 
         self.add_node(NodeKind::WhileLoop { expression, block })
+    }
+
+    fn for_loop(&mut self) -> usize {
+        self.assert_token(TokenKind::For);
+        self.position += 1;
+
+        let iterator = if let TokenKind::Identifier { text } = self.token() {
+            text.clone()
+        } else {
+            panic!("Expected iterator name");
+        };
+        self.position += 1;
+
+        self.assert_token(TokenKind::In);
+        self.position += 1;
+
+        let from = self.consume_int_literal();
+
+        let inclusive = match *self.token() {
+            TokenKind::Range => false,
+            TokenKind::InclusiveRange => true,
+            _ => panic!("Expected range")
+        };
+        self.position += 1;
+
+        let to = self.consume_int_literal();
+
+        let mut by = 1;
+
+        if *self.token() == TokenKind::By {
+            self.position += 1;
+
+            by = self.consume_int_literal();
+        }
+
+        let block = self.block();
+
+        self.add_node(NodeKind::ForLoop { iterator, inclusive, from, to, by, block })
     }
 
     fn expression(&mut self, allow_struct_literal: bool) -> usize {
@@ -854,11 +931,7 @@ impl Parser {
         if *self.token() == TokenKind::Semicolon {
             self.position += 1;
 
-            let repeat_count_string = match self.token() {
-                TokenKind::IntLiteral { text } => text,
-                _ => panic!("Expected int literal for array repeat count"),
-            };
-            repeat_count = repeat_count_string.parse::<usize>().unwrap();
+            repeat_count = self.parse_uint_literal();
             self.position += 1;
         }
 
@@ -940,11 +1013,7 @@ impl Parser {
             if *self.token() == TokenKind::LBracket {
                 self.position += 1;
 
-                let length_string = match self.token() {
-                    TokenKind::IntLiteral { text } => text,
-                    _ => panic!("Expected int literal in array type"),
-                };
-                let length = length_string.parse::<usize>().unwrap();
+                let length = self.parse_uint_literal();
                 self.position += 1;
 
                 self.assert_token(TokenKind::RBracket);

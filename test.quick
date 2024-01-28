@@ -51,6 +51,18 @@ fun main(): Int {
         x = 3;
     }
 
+    for i in 0..10 {
+
+    }
+
+    for i in 0..=10 {
+
+    }
+
+    for i in 10..0 by -1 {
+
+    }
+
     hello(a, b);
 
     return 0;

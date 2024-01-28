@@ -10,6 +10,8 @@ pub enum TokenKind {
     Colon,
     Semicolon,
     Period,
+    Range,
+    InclusiveRange,
     Plus,
     Minus,
     Multiply,
@@ -32,6 +34,9 @@ pub enum TokenKind {
     Extern,
     If,
     While,
+    For,
+    In,
+    By,
     Int,
     String,
     Bool,
@@ -98,6 +103,12 @@ impl Lexer {
                 }
                 _ if self.try_consume_string("||") => {
                     self.tokens.push(TokenKind::Or);
+                }
+                _ if self.try_consume_string("..=") => {
+                    self.tokens.push(TokenKind::InclusiveRange);
+                }
+                _ if self.try_consume_string("..") => {
+                    self.tokens.push(TokenKind::Range);
                 }
                 '(' => {
                     self.tokens.push(TokenKind::LParen);
@@ -211,6 +222,15 @@ impl Lexer {
                 }
                 _ if self.try_consume_string("while") => {
                     self.tokens.push(TokenKind::While);
+                }
+                _ if self.try_consume_string("for") => {
+                    self.tokens.push(TokenKind::For);
+                }
+                _ if self.try_consume_string("in") => {
+                    self.tokens.push(TokenKind::In);
+                }
+                _ if self.try_consume_string("by") => {
+                    self.tokens.push(TokenKind::By);
                 }
                 _ if self.try_consume_string("Int") => {
                     self.tokens.push(TokenKind::Int);

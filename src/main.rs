@@ -19,13 +19,12 @@ mod types;
  * Report error messages that are helpful, have file positions.
  * Complete type checking.
  * Simple type inference.
- * If/While
- * For
  * Pointers.
  * Generics.
  * Variadic arguments.
  * Default parameters.
  * Multiple files and incremental compilation.
+ * Range syntax in integer array initializer? [1..10 by 3] [1..10 by 3; 100]
  *
  * Create special statements for alloc and free:
  * var a: Int* = alloc 5;
@@ -40,7 +39,6 @@ mod types;
  * There should be const versions of pointer types that you can't free,
  * including strings, ie: const String = "hello"; String = ... some allocation ...
  * or maybe String should be the const version of a character pointer?
- *
  */
 
 fn main() {
