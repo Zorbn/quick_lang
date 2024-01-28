@@ -51,15 +51,15 @@ fun main(): Int {
         x = 3;
     }
 
-    for i in 0..10 {
+    for i in -10 < 10 {
 
     }
 
-    for i in 0..=10 {
+    for i in zero() <= 10 {
 
     }
 
-    for i in 10..0 by -1 {
+    for i in 10 >= 0 by -1 {
 
     }
 
@@ -71,6 +71,10 @@ fun main(): Int {
 struct Point {
     x: Int,
     y: Int,
+}
+
+fun zero(): Int {
+    return 0;
 }
 
 fun hello(num: Int, othernum: Int): Int {

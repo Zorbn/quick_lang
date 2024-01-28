@@ -6,8 +6,8 @@ use crate::lexer::TokenKind;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Op {
-    Add,
-    Subtract,
+    Plus,
+    Minus,
     Multiply,
     Divide,
     Not,
@@ -134,10 +134,10 @@ pub enum NodeKind {
     },
     ForLoop {
         iterator: String,
-        inclusive: bool,
-        from: i64,
-        to: i64,
-        by: i64,
+        op: Op,
+        from: usize,
+        to: usize,
+        by: Option<usize>,
         block: usize,
     },
     Expression {
@@ -263,24 +263,6 @@ impl Parser {
                 self.token()
             );
         }
-    }
-
-    fn consume_int_literal(&mut self) -> i64 {
-        let sign = if *self.token() == TokenKind::Minus {
-            self.position += 1;
-            -1
-        } else {
-            1
-        };
-
-        let int_string = match self.token() {
-            TokenKind::IntLiteral { text } => text,
-            _ => panic!("Expected int literal"),
-        };
-
-        let value = int_string.parse::<i64>().expect("Expected signed 64 bit integer") * sign;
-        self.position += 1;
-        value
     }
 
     fn parse_uint_literal(&self) -> usize {
@@ -621,28 +603,30 @@ impl Parser {
         self.assert_token(TokenKind::In);
         self.position += 1;
 
-        let from = self.consume_int_literal();
+        let from = self.binary(true);
 
-        let inclusive = match *self.token() {
-            TokenKind::Range => false,
-            TokenKind::InclusiveRange => true,
-            _ => panic!("Expected range")
+        let op = match *self.token() {
+            TokenKind::Less => Op::Less,
+            TokenKind::LessEqual => Op::LessEqual,
+            TokenKind::Greater => Op::Greater,
+            TokenKind::GreaterEqual => Op::GreaterEqual,
+            _ => panic!("Expected comparison operator")
         };
         self.position += 1;
 
-        let to = self.consume_int_literal();
+        let to = self.binary(true);
 
-        let mut by = 1;
+        let mut by = None;
 
         if *self.token() == TokenKind::By {
             self.position += 1;
 
-            by = self.consume_int_literal();
+            by = Some(self.binary(true));
         }
 
         let block = self.block();
 
-        self.add_node(NodeKind::ForLoop { iterator, inclusive, from, to, by, block })
+        self.add_node(NodeKind::ForLoop { iterator, op, from, to, by, block })
     }
 
     fn expression(&mut self, allow_struct_literal: bool) -> usize {
@@ -703,9 +687,9 @@ impl Parser {
 
         while *self.token() == TokenKind::Plus || *self.token() == TokenKind::Minus {
             let op = if *self.token() == TokenKind::Plus {
-                Op::Add
+                Op::Plus
             } else {
-                Op::Subtract
+                Op::Minus
             };
             self.position += 1;
 
@@ -749,11 +733,11 @@ impl Parser {
         let op = match *self.token() {
             TokenKind::Plus => {
                 self.position += 1;
-                Some(Op::Add)
+                Some(Op::Plus)
             }
             TokenKind::Minus => {
                 self.position += 1;
-                Some(Op::Divide)
+                Some(Op::Minus)
             }
             TokenKind::Not => {
                 self.position += 1;

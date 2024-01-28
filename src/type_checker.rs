@@ -88,7 +88,7 @@ impl TypeChecker {
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
             NodeKind::IfStatement { expression, block } => self.if_statement(expression, block),
             NodeKind::WhileLoop { expression, block } => self.while_loop(expression, block),
-            NodeKind::ForLoop { iterator, inclusive, from, to, by, block } => self.for_loop(iterator, inclusive, from, to, by, block),
+            NodeKind::ForLoop { iterator, op, from, to, by, block } => self.for_loop(iterator, op, from, to, by, block),
             NodeKind::Expression {
                 comparison,
                 trailing_comparisons,
@@ -257,7 +257,12 @@ impl TypeChecker {
         self.check_node(block)
     }
 
-    fn for_loop(&mut self, _iterator: String, _inclusive: bool, _from: i64, _to: i64, _by: i64, block: usize) -> Option<usize> {
+    fn for_loop(&mut self, _iterator: String, _op: Op, from: usize, to: usize, by: Option<usize>, block: usize) -> Option<usize> {
+        self.check_node(from);
+        self.check_node(to);
+        if let Some(by) = by {
+            self.check_node(by);
+        }
         self.check_node(block)
     }
 

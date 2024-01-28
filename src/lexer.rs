@@ -10,8 +10,6 @@ pub enum TokenKind {
     Colon,
     Semicolon,
     Period,
-    Range,
-    InclusiveRange,
     Plus,
     Minus,
     Multiply,
@@ -103,12 +101,6 @@ impl Lexer {
                 }
                 _ if self.try_consume_string("||") => {
                     self.tokens.push(TokenKind::Or);
-                }
-                _ if self.try_consume_string("..=") => {
-                    self.tokens.push(TokenKind::InclusiveRange);
-                }
-                _ if self.try_consume_string("..") => {
-                    self.tokens.push(TokenKind::Range);
                 }
                 '(' => {
                     self.tokens.push(TokenKind::LParen);

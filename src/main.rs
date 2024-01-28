@@ -24,8 +24,15 @@ mod types;
  * Variadic arguments.
  * Default parameters.
  * Multiple files and incremental compilation.
- * Range syntax in integer array initializer? [1..10 by 3] [1..10 by 3; 100]
  *
+ * SMALL TODOS:
+ * Range syntax in integer array initializer? [1<10 by 3] [1<10 by 3; 100]
+ * for elem in array {}
+ * Add void type as the default return type: "fun a() {}" is Void.
+ * Add more numeric types, make sure floats work as for loop iterators.
+ * Unify most functionality of function_declaration_prototype and function_declaration, make them emit (void) if the function has no params.
+ *
+ * NOTES:
  * Create special statements for alloc and free:
  * var a: Int* = alloc 5;
  * free a;

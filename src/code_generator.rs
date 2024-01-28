@@ -124,9 +124,9 @@ impl CodeGenerator {
                 type_kind,
             } => self.while_loop(expression, block, type_kind),
             TypedNode {
-                node_kind: NodeKind::ForLoop { iterator, inclusive, from, to, by, block },
+                node_kind: NodeKind::ForLoop { iterator, op, from, to, by, block },
                 type_kind,
-            } => self.for_loop(iterator, inclusive, from, to, by, block, type_kind),
+            } => self.for_loop(iterator, op, from, to, by, block, type_kind),
             TypedNode {
                 node_kind:
                     NodeKind::Expression {
@@ -569,35 +569,24 @@ impl CodeGenerator {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn for_loop(&mut self, iterator: String, inclusive: bool, from: i64, to: i64, by: i64, block: usize, _type_kind: Option<usize>) {
+    fn for_loop(&mut self, iterator: String, op: Op, from: usize, to: usize, by: Option<usize>, block: usize, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("for (intptr_t ");
         self.body_emitters.top().body.emit(&iterator);
         self.body_emitters.top().body.emit(" = ");
-        self.body_emitters.top().body.emit(&from.to_string());
+        self.gen_node(from);
         self.body_emitters.top().body.emit("; ");
 
         self.body_emitters.top().body.emit(&iterator);
-        if from < to {
-            if inclusive {
-                self.body_emitters.top().body.emit(" <= ");
-            } else {
-                self.body_emitters.top().body.emit(" < ");
-            }
-        } else if inclusive {
-            self.body_emitters.top().body.emit(" >= ");
-        } else {
-            self.body_emitters.top().body.emit(" > ");
-        }
-        self.body_emitters.top().body.emit(&to.to_string());
+        self.emit_comparison_op(op);
+        self.gen_node(to);
         self.body_emitters.top().body.emit("; ");
 
         self.body_emitters.top().body.emit(&iterator);
-        if by >= 0 {
-            self.body_emitters.top().body.emit(" += ");
-            self.body_emitters.top().body.emit(&by.to_string());
+        self.body_emitters.top().body.emit(" += ");
+        if let Some(by) = by {
+            self.gen_node(by);
         } else {
-            self.body_emitters.top().body.emit(" -= ");
-            self.body_emitters.top().body.emit(&(-by).to_string());
+            self.body_emitters.top().body.emit("1");
         }
         self.body_emitters.top().body.emit(") ");
 
@@ -632,16 +621,7 @@ impl CodeGenerator {
         self.gen_node(binary);
 
         if let Some(trailing_binary) = trailing_binary {
-            match trailing_binary.op {
-                Op::EqualEqual => self.body_emitters.top().body.emit(" == "),
-                Op::NotEqual => self.body_emitters.top().body.emit(" != "),
-                Op::Less => self.body_emitters.top().body.emit(" < "),
-                Op::Greater => self.body_emitters.top().body.emit(" > "),
-                Op::LessEqual => self.body_emitters.top().body.emit(" <= "),
-                Op::GreaterEqual => self.body_emitters.top().body.emit(" >= "),
-                _ => panic!("Unexpected operator in comparison"),
-            }
-
+            self.emit_comparison_op(trailing_binary.op);
             self.gen_node(trailing_binary.binary);
         }
     }
@@ -655,7 +635,7 @@ impl CodeGenerator {
         self.gen_node(term);
 
         for trailing_term in trailing_terms.iter() {
-            if trailing_term.op == Op::Add {
+            if trailing_term.op == Op::Plus {
                 self.body_emitters.top().body.emit(" + ");
             } else {
                 self.body_emitters.top().body.emit(" - ");
@@ -686,10 +666,10 @@ impl CodeGenerator {
 
     fn unary(&mut self, op: Option<Op>, primary: usize, _type_kind: Option<usize>) {
         match op {
-            Some(Op::Add) => self.body_emitters.top().body.emit(" + "),
-            Some(Op::Subtract) => self.body_emitters.top().body.emit(" - "),
+            Some(Op::Plus) => self.body_emitters.top().body.emit("+"),
+            Some(Op::Minus) => self.body_emitters.top().body.emit("-"),
             None => {}
-            _ => panic!("Unexpected operator in unary"),
+            _ => panic!("Unexpected operator in unary, {:?}", op),
         }
 
         self.gen_node(primary);
@@ -960,6 +940,18 @@ impl CodeGenerator {
             }
             self.emit_type_kind_right(element_type_kind, emitter_kind, do_arrays_as_pointers);
         };
+    }
+
+    fn emit_comparison_op(&mut self, op: Op) {
+        match op {
+            Op::EqualEqual => self.body_emitters.top().body.emit(" == "),
+            Op::NotEqual => self.body_emitters.top().body.emit(" != "),
+            Op::Less => self.body_emitters.top().body.emit(" < "),
+            Op::Greater => self.body_emitters.top().body.emit(" > "),
+            Op::LessEqual => self.body_emitters.top().body.emit(" <= "),
+            Op::GreaterEqual => self.body_emitters.top().body.emit(" >= "),
+            _ => panic!("Expected comparison operator"),
+        }
     }
 
     fn emitter(&mut self, kind: EmitterKind) -> &mut Emitter {
