@@ -3,9 +3,9 @@ extern fun malloc(size: UInt): Void*
 extern fun free(ptr: Void*): Void
 
 fun main(): Int32 {
-    defer {
-        puts("defer in main");
-    }
+    // defer {
+    //     puts("defer in main");
+    // }
 
     val a: Int = 542 + 54578 / 3;
     var b: Int = a * 2;
@@ -18,11 +18,15 @@ fun main(): Int32 {
     var bytePtr: UInt8* = &byte;
     var otherByte: UInt8 = *bytePtr;
 
+    /*
+    /*
     var point: Point = Point { x: 1, y: 2 };
     var pointPtr: Point* = &point;
     var otherPoint: Point = *pointPtr;
     var pointX: Int = pointPtr.x;
     var pointSize: Int = sizeof Point;
+    */
+    */
 
     var heapPoint: Point* = malloc(sizeof Point);
     *heapPoint = Point { x: 5, y: 5 };

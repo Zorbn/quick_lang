@@ -29,7 +29,6 @@ mod types;
  * Range syntax in integer array initializer? [1<10 by 3] [1<10 by 3; 100]
  * for elem in array {}
  * Unify most functionality of function_declaration_prototype and function_declaration, make them emit (void) if the function has no params.
- * Single/multi-line comments.
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Make main a void function in this language, and generate a version that returns int for C.
  * Bitwise operations.

@@ -140,6 +140,16 @@ impl Lexer {
                 continue;
             }
 
+            if self.try_consume_string("//") {
+                self.handle_single_line_comment();
+                continue;
+            }
+
+            if self.try_consume_string("/*") {
+                self.handle_multi_line_comment();
+                continue;
+            }
+
             if self.try_consume_string("var") {
                 self.tokens.push(TokenKind::Var);
                 continue;
@@ -435,6 +445,30 @@ impl Lexer {
                     self.chars[self.position], self.position
                 ),
             }
+        }
+    }
+
+    fn handle_single_line_comment(&mut self) {
+        while self.char() != '\n' {
+            self.position += 1;
+        }
+
+        self.position += 1;
+    }
+
+    fn handle_multi_line_comment(&mut self) {
+        // Track the number of open multi-line comments, so that these comments can be nested.
+        let mut open_count = 1;
+        self.position += 1;
+
+        while open_count > 0 {
+            if self.try_consume_string("/*") {
+                open_count += 1;
+            } else if self.try_consume_string("*/") {
+                open_count -= 1;
+            }
+
+            self.position += 1;
         }
     }
 
