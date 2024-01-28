@@ -1,6 +1,6 @@
 extern fun puts(str: String): Int
 
-fun main(): Int {
+fun main(): Int32 {
     val a: Int = 542 + 54578 / 3;
     var b: Int = a * 2;
     b = b / 4;
@@ -63,7 +63,18 @@ fun main(): Int {
 
     }
 
-    hello(a, b);
+    for i in 10 >= 0 by -1 {
+
+    }
+
+    for i in 10.0 >= 0.0 by -1.0 {
+
+    }
+
+    hello(
+        a,
+        b,
+    );
 
     return 0;
 }
@@ -75,6 +86,10 @@ struct Point {
 
 fun zero(): Int {
     return 0;
+}
+
+fun print(msg: String): Void {
+    puts("Hello");
 }
 
 fun hello(num: Int, othernum: Int): Int {

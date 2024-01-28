@@ -63,6 +63,18 @@ pub enum TypeKind {
     Int,
     String,
     Bool,
+    Void,
+    UInt,
+    Int8,
+    UInt8,
+    Int16,
+    UInt16,
+    Int32,
+    UInt32,
+    Int64,
+    UInt64,
+    Float32,
+    Float64,
     Array {
         element_type_kind: usize,
         element_count: usize,
@@ -122,7 +134,7 @@ pub enum NodeKind {
         expression: usize,
     },
     ReturnStatement {
-        expression: usize,
+        expression: Option<usize>,
     },
     IfStatement {
         expression: usize,
@@ -187,6 +199,9 @@ pub enum NodeKind {
     IntLiteral {
         text: String,
     },
+    Float32Literal {
+        text: String,
+    },
     StringLiteral {
         text: String,
     },
@@ -213,6 +228,18 @@ pub enum NodeKind {
 pub const INT_INDEX: usize = 0;
 pub const STRING_INDEX: usize = 1;
 pub const BOOL_INDEX: usize = 2;
+pub const VOID_INDEX: usize = 3;
+pub const UINT_INDEX: usize = 4;
+pub const INT8_INDEX: usize = 5;
+pub const UINT8_INDEX: usize = 6;
+pub const INT16_INDEX: usize = 7;
+pub const UINT16_INDEX: usize = 8;
+pub const INT32_INDEX: usize = 9;
+pub const UINT32_INDEX: usize = 10;
+pub const INT64_INDEX: usize = 11;
+pub const UINT64_INDEX: usize = 12;
+pub const FLOAT32_INDEX: usize = 13;
+pub const FLOAT64_INDEX: usize = 14;
 
 pub struct Parser {
     pub tokens: Vec<TokenKind>,
@@ -241,6 +268,18 @@ impl Parser {
         parser.add_type(TypeKind::Int);
         parser.add_type(TypeKind::String);
         parser.add_type(TypeKind::Bool);
+        parser.add_type(TypeKind::Void);
+        parser.add_type(TypeKind::UInt);
+        parser.add_type(TypeKind::Int8);
+        parser.add_type(TypeKind::UInt8);
+        parser.add_type(TypeKind::Int16);
+        parser.add_type(TypeKind::UInt16);
+        parser.add_type(TypeKind::Int32);
+        parser.add_type(TypeKind::UInt32);
+        parser.add_type(TypeKind::Int64);
+        parser.add_type(TypeKind::UInt64);
+        parser.add_type(TypeKind::Float32);
+        parser.add_type(TypeKind::Float64);
 
         parser
     }
@@ -564,7 +603,10 @@ impl Parser {
         self.assert_token(TokenKind::Return);
         self.position += 1;
 
-        let expression = self.expression(true);
+        let mut expression = None;
+        if *self.token() != TokenKind::Semicolon {
+            expression = Some(self.expression(true));
+        }
 
         self.add_node(NodeKind::ReturnStatement { expression })
     }
@@ -764,6 +806,7 @@ impl Parser {
             }
             TokenKind::Identifier { .. } => self.variable(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
+            TokenKind::Float32Literal { .. } => self.float32_literal(),
             TokenKind::StringLiteral { .. } => self.string_literal(),
             TokenKind::True | TokenKind::False => self.bool_literal(),
             TokenKind::LBracket { .. } => self.array_literal(),
@@ -870,6 +913,16 @@ impl Parser {
         self.position += 1;
 
         self.add_node(NodeKind::IntLiteral { text })
+    }
+
+    fn float32_literal(&mut self) -> usize {
+        let text = match self.token() {
+            TokenKind::Float32Literal { text } => text.clone(),
+            _ => panic!("Expected float32 literal"),
+        };
+        self.position += 1;
+
+        self.add_node(NodeKind::Float32Literal { text })
     }
 
     fn string_literal(&mut self) -> usize {
@@ -980,6 +1033,18 @@ impl Parser {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
             TokenKind::Bool => BOOL_INDEX,
+            TokenKind::Void => VOID_INDEX,
+            TokenKind::UInt => UINT_INDEX,
+            TokenKind::Int8 => INT8_INDEX,
+            TokenKind::UInt8 => UINT8_INDEX,
+            TokenKind::Int16 => INT16_INDEX,
+            TokenKind::UInt16 => UINT16_INDEX,
+            TokenKind::Int32 => INT32_INDEX,
+            TokenKind::UInt32 => UINT32_INDEX,
+            TokenKind::Int64 => INT64_INDEX,
+            TokenKind::UInt64 => UINT64_INDEX,
+            TokenKind::Float32 => FLOAT32_INDEX,
+            TokenKind::Float64 => FLOAT64_INDEX,
             TokenKind::Identifier { text } => {
                 if let Some(type_kind) = self.struct_type_kinds.get(&text) {
                     *type_kind

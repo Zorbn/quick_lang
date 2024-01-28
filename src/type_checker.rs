@@ -3,8 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     environment::Environment,
     parser::{
-        ArrayLayout, Field, NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm,
-        TrailingUnary, TypeKind, BOOL_INDEX, INT_INDEX, STRING_INDEX,
+        ArrayLayout, Field, NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm, TrailingUnary, TypeKind, BOOL_INDEX, FLOAT32_INDEX, INT_INDEX, STRING_INDEX
     },
 };
 
@@ -118,6 +117,7 @@ impl TypeChecker {
             NodeKind::VariableField { parent, name } => self.variable_field(parent, name),
             NodeKind::FunctionCall { name, args } => self.function_call(name, args),
             NodeKind::IntLiteral { text } => self.int_literal(text),
+            NodeKind::Float32Literal { text } => self.float32_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
             NodeKind::BoolLiteral { value } => self.bool_literal(value),
             NodeKind::ArrayLiteral {
@@ -243,8 +243,8 @@ impl TypeChecker {
         type_kind
     }
 
-    fn return_statement(&mut self, expression: usize) -> Option<usize> {
-        self.check_node(expression)
+    fn return_statement(&mut self, expression: Option<usize>) -> Option<usize> {
+        self.check_node(expression?)
     }
 
     fn if_statement(&mut self, expression: usize, block: usize) -> Option<usize> {
@@ -386,6 +386,10 @@ impl TypeChecker {
 
     fn int_literal(&mut self, _text: String) -> Option<usize> {
         Some(INT_INDEX)
+    }
+
+    fn float32_literal(&mut self, _text: String) -> Option<usize> {
+        Some(FLOAT32_INDEX)
     }
 
     fn string_literal(&mut self, _text: String) -> Option<usize> {

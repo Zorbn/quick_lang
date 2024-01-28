@@ -196,6 +196,10 @@ impl CodeGenerator {
                 type_kind,
             } => self.int_literal(text, type_kind),
             TypedNode {
+                node_kind: NodeKind::Float32Literal { text },
+                type_kind,
+            } => self.float32_literal(text, type_kind),
+            TypedNode {
                 node_kind: NodeKind::StringLiteral { text },
                 type_kind,
             } => self.string_literal(text, type_kind),
@@ -527,7 +531,14 @@ impl CodeGenerator {
         }
     }
 
-    fn return_statement(&mut self, expression: usize, type_kind: Option<usize>) {
+    fn return_statement(&mut self, expression: Option<usize>, type_kind: Option<usize>) {
+        let expression = if let Some(expression) = expression {
+            expression
+        } else {
+            self.body_emitters.top().body.emit("return");
+            return;
+        };
+
         if is_type_kind_array(&self.types, type_kind.unwrap()) {
             if is_typed_expression_array_literal(&self.typed_nodes, expression) {
                 let temp_name = self.temp_variable_name("temp");
@@ -740,6 +751,11 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(&text);
     }
 
+    fn float32_literal(&mut self, text: String, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit(&text);
+        self.body_emitters.top().body.emit("f");
+    }
+
     fn string_literal(&mut self, text: String, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("\"");
         self.body_emitters.top().body.emit(&text);
@@ -901,9 +917,21 @@ impl CodeGenerator {
         let type_kind = &self.types[type_kind];
 
         match type_kind.clone() {
-            TypeKind::Int => self.emitter(emitter_kind).emit("int32_t"),
+            TypeKind::Int => self.emitter(emitter_kind).emit("intptr_t"),
             TypeKind::String => self.emitter(emitter_kind).emit("char*"),
             TypeKind::Bool => self.emitter(emitter_kind).emit("int32_t"),
+            TypeKind::Void => self.emitter(emitter_kind).emit("void"),
+            TypeKind::UInt => self.emitter(emitter_kind).emit("uintptr_t"),
+            TypeKind::Int8 => self.emitter(emitter_kind).emit("int8_t"),
+            TypeKind::UInt8 => self.emitter(emitter_kind).emit("uint8_t"),
+            TypeKind::Int16 => self.emitter(emitter_kind).emit("int16_t"),
+            TypeKind::UInt16 => self.emitter(emitter_kind).emit("uint16_t"),
+            TypeKind::Int32 => self.emitter(emitter_kind).emit("int32_t"),
+            TypeKind::UInt32 => self.emitter(emitter_kind).emit("uint32_t"),
+            TypeKind::Int64 => self.emitter(emitter_kind).emit("int64_t"),
+            TypeKind::UInt64 => self.emitter(emitter_kind).emit("uint64_t"),
+            TypeKind::Float32 => self.emitter(emitter_kind).emit("float"),
+            TypeKind::Float64 => self.emitter(emitter_kind).emit("double"),
             TypeKind::Struct { name, .. } => {
                 self.emitter(emitter_kind).emit("struct ");
                 self.emitter(emitter_kind).emit(&name)
