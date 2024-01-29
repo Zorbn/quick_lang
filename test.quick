@@ -63,7 +63,8 @@ fun main(): Int32 {
 
     {
         {
-            puts("in a block");
+            puts("in a
+            block");
         }
     }
 

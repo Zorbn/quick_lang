@@ -808,7 +808,13 @@ impl CodeGenerator {
 
     fn string_literal(&mut self, text: String, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("\"");
-        self.body_emitters.top().body.emit(&text);
+        for (i, line) in text.lines().enumerate() {
+            if i > 0 {
+                self.body_emitters.top().body.emit("\\n");
+            }
+
+            self.body_emitters.top().body.emit(line);
+        }
         self.body_emitters.top().body.emit("\"");
     }
 

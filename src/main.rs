@@ -16,8 +16,6 @@ mod position;
 
 /*
  * BIG TODOS:
- * Graceful error handling (keep lexing/parsing/etc even if you hit an error)
- * Report error messages that are helpful, have file positions.
  * Complete type checking.
  * Simple type inference.
  * Incremental and parallel compilation.
@@ -31,10 +29,8 @@ mod position;
  * for elem in array {}
  * Unify most functionality of function_declaration_prototype and function_declaration, make them emit (void) if the function has no params.
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
- * Make main a void function in this language, and generate a version that returns int for C.
  * Bitwise operations.
  * Assignment operators.
- * Handle codegen for multiline string literals.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.
