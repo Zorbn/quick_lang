@@ -111,6 +111,10 @@ fn main() -> ExitCode {
         type_checker.check(*start_index);
     }
 
+    if type_checker.had_error {
+        return ExitCode::FAILURE;
+    }
+
     let typed_nodes = type_checker
         .typed_nodes
         .iter()

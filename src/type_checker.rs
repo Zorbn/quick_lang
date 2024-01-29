@@ -3,7 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     environment::Environment,
     parser::{
-        ArrayLayout, Field, Node, NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm, TrailingUnary, TypeKind, BOOL_INDEX, FLOAT32_INDEX, INT_INDEX, STRING_INDEX
+        ArrayLayout, Field, Node, NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm,
+        TrailingUnary, TypeKind, BOOL_INDEX, FLOAT32_INDEX, INT_INDEX, STRING_INDEX,
     },
 };
 
@@ -13,6 +14,21 @@ pub struct TypedNode {
     pub type_kind: Option<usize>,
 }
 
+macro_rules! type_error {
+    ($self:ident, $message:expr) => {{
+        $self.had_error = true;
+
+        println!(
+            "Type error at line {}, column {}: {}",
+            $self.nodes[$self.last_visited_index].start.line,
+            $self.nodes[$self.last_visited_index].start.column,
+            $message,
+        );
+
+        return None;
+    }};
+}
+
 pub struct TypeChecker {
     pub typed_nodes: Vec<Option<TypedNode>>,
     pub nodes: Vec<Node>,
@@ -20,8 +36,10 @@ pub struct TypeChecker {
     pub function_declaration_indices: HashMap<String, usize>,
     pub struct_definition_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
+    pub had_error: bool,
     environment: Environment,
     has_function_opened_block: bool,
+    last_visited_index: usize,
 }
 
 impl TypeChecker {
@@ -41,8 +59,10 @@ impl TypeChecker {
             function_declaration_indices,
             struct_definition_indices: struct_declaration_indices,
             array_type_kinds: array_type_indices,
+            had_error: false,
             environment: Environment::new(),
             has_function_opened_block: false,
+            last_visited_index: 0,
         };
 
         type_checker.typed_nodes.resize(node_count, None);
@@ -56,6 +76,8 @@ impl TypeChecker {
     }
 
     fn check_node(&mut self, index: usize) -> Option<usize> {
+        self.last_visited_index = index;
+
         let type_kind = match self.nodes[index].kind.clone() {
             NodeKind::TopLevel { functions, structs } => self.top_level(functions, structs),
             NodeKind::StructDefinition {
@@ -89,7 +111,14 @@ impl TypeChecker {
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
             NodeKind::IfStatement { expression, block } => self.if_statement(expression, block),
             NodeKind::WhileLoop { expression, block } => self.while_loop(expression, block),
-            NodeKind::ForLoop { iterator, op, from, to, by, block } => self.for_loop(iterator, op, from, to, by, block),
+            NodeKind::ForLoop {
+                iterator,
+                op,
+                from,
+                to,
+                by,
+                block,
+            } => self.for_loop(iterator, op, from, to, by, block),
             NodeKind::Expression {
                 comparison,
                 trailing_comparisons,
@@ -130,7 +159,7 @@ impl TypeChecker {
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
             NodeKind::TypeSize { type_name } => self.type_size(type_name),
             NodeKind::TypeName { type_kind } => self.type_name(type_kind),
-            NodeKind::Error => panic!("Cannot generate error node"),
+            NodeKind::Error => type_error!(self, "cannot generate error node"),
         };
 
         self.typed_nodes[index] = Some(TypedNode {
@@ -240,14 +269,19 @@ impl TypeChecker {
         type_kind
     }
 
-    fn variable_assignment(&mut self, dereference_count: usize, variable: usize, expression: usize) -> Option<usize> {
+    fn variable_assignment(
+        &mut self,
+        dereference_count: usize,
+        variable: usize,
+        expression: usize,
+    ) -> Option<usize> {
         let Some(mut type_kind) = self.check_node(variable) else {
-            panic!("Cannot assign to untyped variable");
+            type_error!(self, "cannot assign to untyped variable");
         };
 
         for _ in 0..dereference_count {
             let TypeKind::Pointer { inner_type_kind } = &self.types[type_kind] else {
-                panic!("Only pointers can be dereferenced");
+                type_error!(self, "only pointers can be dereferenced");
             };
 
             type_kind = *inner_type_kind;
@@ -276,7 +310,15 @@ impl TypeChecker {
         self.check_node(block)
     }
 
-    fn for_loop(&mut self, _iterator: String, _op: Op, from: usize, to: usize, by: Option<usize>, block: usize) -> Option<usize> {
+    fn for_loop(
+        &mut self,
+        _iterator: String,
+        _op: Op,
+        from: usize,
+        to: usize,
+        by: Option<usize>,
+        block: usize,
+    ) -> Option<usize> {
         self.check_node(from);
         self.check_node(to);
         if let Some(by) = by {
@@ -361,7 +403,7 @@ impl TypeChecker {
         {
             *element_type_kind
         } else {
-            panic!("Indexing is only allowed on arrays");
+            type_error!(self, "indexing is only allowed on arrays");
         };
 
         self.check_node(expression);
@@ -375,12 +417,18 @@ impl TypeChecker {
             TypeKind::Struct { field_kinds, .. } => field_kinds,
             TypeKind::Pointer { inner_type_kind } => {
                 let TypeKind::Struct { field_kinds, .. } = &self.types[*inner_type_kind] else {
-                    panic!("Field access is not allowed on pointers to non-struct types");
+                    type_error!(
+                        self,
+                        "field access is not allowed on pointers to non-struct types"
+                    );
                 };
 
                 field_kinds
             }
-            _ => panic!("Field access is only allowed on structs or pointers to structs")
+            _ => type_error!(
+                self,
+                "field access is only allowed on structs or pointers to structs"
+            ),
         };
 
         for Field {
@@ -393,7 +441,7 @@ impl TypeChecker {
             }
         }
 
-        panic!("Field doesn't exist in struct");
+        type_error!(self, "field doesn't exist in struct");
     }
 
     fn function_call(&mut self, name: String, args: Arc<Vec<usize>>) -> Option<usize> {
@@ -401,9 +449,16 @@ impl TypeChecker {
             self.check_node(*arg);
         }
 
+        let Some(declaration_index) = self.function_declaration_indices.get(&name) else {
+            type_error!(
+                self,
+                &format!("function with name \"{}\" does not exist", name)
+            );
+        };
+
         let NodeKind::FunctionDeclaration {
             return_type_name, ..
-        } = self.nodes[self.function_declaration_indices[&name]].kind
+        } = self.nodes[*declaration_index].kind
         else {
             return None;
         };
@@ -446,9 +501,14 @@ impl TypeChecker {
             self.check_node(*field);
         }
 
-        if let NodeKind::StructDefinition { type_kind, .. } =
-            self.nodes[self.struct_definition_indices[&name]].kind
-        {
+        let Some(definition_index) = self.struct_definition_indices.get(&name) else {
+            type_error!(
+                self,
+                &format!("struct with name \"{}\" does not exist", name)
+            );
+        };
+
+        if let NodeKind::StructDefinition { type_kind, .. } = self.nodes[*definition_index].kind {
             Some(type_kind)
         } else {
             None
