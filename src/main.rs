@@ -1,4 +1,4 @@
-use std::{env, ffi::OsStr, fs, io::{self, Write}, path::Path};
+use std::{env, ffi::OsStr, fs, io::{self, Write}, path::Path, process::ExitCode};
 
 use crate::{
     code_generator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker,
@@ -12,6 +12,7 @@ mod lexer;
 mod parser;
 mod type_checker;
 mod types;
+mod position;
 
 /*
  * BIG TODOS:
@@ -33,6 +34,7 @@ mod types;
  * Make main a void function in this language, and generate a version that returns int for C.
  * Bitwise operations.
  * Assignment operators.
+ * Handle codegen for multiline string literals.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.
@@ -47,7 +49,7 @@ mod types;
  * or maybe String should be the const version of a character pointer?
  */
 
-fn main() {
+fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
@@ -63,17 +65,23 @@ fn main() {
     }
 
     if files.is_empty() {
-        return;
+        return ExitCode::SUCCESS;
     }
 
     println!("~~ Lexing ~~");
 
     let mut file_lexers = Vec::with_capacity(files.len());
+    let mut had_lexing_error = false;
 
     for chars in files {
         let mut lexer = Lexer::new(chars);
         lexer.lex();
+        had_lexing_error = had_lexing_error || lexer.had_error;
         file_lexers.push(lexer);
+    }
+
+    if had_lexing_error {
+        return ExitCode::FAILURE;
     }
 
     println!("~~ Parsing ~~");
@@ -142,6 +150,8 @@ fn main() {
             }
         }
     }
+
+    ExitCode::SUCCESS
 }
 
 fn collect_source_files(directory: &Path, files: &mut Vec<Vec<char>>) -> io::Result<()> {

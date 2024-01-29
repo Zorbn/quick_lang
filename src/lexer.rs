@@ -1,3 +1,5 @@
+use crate::position::Position;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
     LParen,
@@ -60,12 +62,21 @@ pub enum TokenKind {
     StringLiteral { text: String },
     Identifier { text: String },
     Eof,
+    Error,
+}
+
+#[derive(Clone, Debug)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub start: Position,
+    pub end: Position,
 }
 
 pub struct Lexer {
     pub chars: Vec<char>,
-    pub tokens: Vec<TokenKind>,
-    position: usize,
+    pub tokens: Vec<Token>,
+    pub had_error: bool,
+    position: Position,
 }
 
 impl Lexer {
@@ -73,70 +84,112 @@ impl Lexer {
         Self {
             chars,
             tokens: Vec::new(),
-            position: 0,
+            had_error: false,
+            position: Position::new(),
         }
     }
 
     fn char(&self) -> char {
-        return *self.chars.get(self.position).unwrap_or(&'\0');
+        return *self.chars.get(self.position.index).unwrap_or(&'\0');
     }
 
     fn try_consume_string(&mut self, str: &str) -> bool {
-        if self.position + str.len() > self.chars.len() {
+        if self.position.index + str.len() > self.chars.len() {
             return false;
         }
 
         let mut is_last_char_valid_in_identifier = false;
         for (i, c) in str.chars().enumerate() {
             is_last_char_valid_in_identifier = Lexer::is_char_valid_in_identifier(c);
-            if self.chars[self.position + i] != c {
+            if self.chars[self.position.index + i] != c {
                 return false;
             }
         }
 
-        let next_char_index = self.position + str.len();
         if is_last_char_valid_in_identifier {
             // The string needs to be a full word, rather than the start of another string,
             // eg, "for" but not "fortune".
-            if next_char_index < self.chars.len() && Lexer::is_char_valid_in_identifier(self.chars[next_char_index]) {
+            let next_char_index = self.position.index + str.len();
+            if next_char_index < self.chars.len()
+                && Lexer::is_char_valid_in_identifier(self.chars[next_char_index])
+            {
                 return false;
             }
         }
 
-        self.position = next_char_index;
+        self.position.advance_by(str.len());
 
         true
     }
 
+    fn try_string_to_token(&mut self, str: &str, kind: TokenKind) -> bool {
+        let start = self.position;
+        let did_succeed = self.try_consume_string(str);
+        let end = self.position;
+
+        if did_succeed {
+            self.tokens.push(Token { kind, start, end });
+        }
+
+        did_succeed
+    }
+
+    fn handle_single_line_comment(&mut self) {
+        while self.char() != '\n' {
+            self.position.advance();
+        }
+
+        self.position.advance();
+    }
+
+    fn handle_multi_line_comment(&mut self) {
+        // Track the number of open multi-line comments, so that these comments can be nested.
+        let mut open_count = 1;
+        self.position.advance();
+
+        while open_count > 0 {
+            if self.try_consume_string("/*") {
+                open_count += 1;
+            } else if self.try_consume_string("*/") {
+                open_count -= 1;
+            }
+
+            self.position.advance();
+        }
+    }
+
+    fn is_char_valid_in_identifier(c: char) -> bool {
+        c.is_alphabetic() || c.is_numeric() || c == '_'
+    }
+
+    fn error(&mut self, message: &str) {
+        self.had_error = true;
+        println!("Syntax error at line {}, column {}: {}", self.position.line, self.position.column, message);
+    }
+
     pub fn lex(&mut self) {
-        while self.position < self.chars.len() {
-            if self.try_consume_string("!=") {
-                self.tokens.push(TokenKind::NotEqual);
+        while self.position.index < self.chars.len() {
+            if self.try_string_to_token("!=", TokenKind::NotEqual) {
                 continue;
             }
 
-            if self.try_consume_string("==") {
-                self.tokens.push(TokenKind::EqualEqual);
+            if self.try_string_to_token("==", TokenKind::EqualEqual) {
                 continue;
             }
 
-            if self.try_consume_string("<=") {
-                self.tokens.push(TokenKind::LessEqual);
+            if self.try_string_to_token("<=", TokenKind::LessEqual) {
                 continue;
             }
 
-            if self.try_consume_string(">=") {
-                self.tokens.push(TokenKind::GreaterEqual);
+            if self.try_string_to_token(">=", TokenKind::GreaterEqual) {
                 continue;
             }
 
-            if self.try_consume_string("&&") {
-                self.tokens.push(TokenKind::And);
+            if self.try_string_to_token("&&", TokenKind::And) {
                 continue;
             }
 
-            if self.try_consume_string("||") {
-                self.tokens.push(TokenKind::Or);
+            if self.try_string_to_token("||", TokenKind::Or) {
                 continue;
             }
 
@@ -150,329 +203,377 @@ impl Lexer {
                 continue;
             }
 
-            if self.try_consume_string("var") {
-                self.tokens.push(TokenKind::Var);
+            if self.try_string_to_token("var", TokenKind::Var) {
                 continue;
             }
 
-            if self.try_consume_string("val") {
-                self.tokens.push(TokenKind::Val);
+            if self.try_string_to_token("val", TokenKind::Val) {
                 continue;
             }
 
-            if self.try_consume_string("fun") {
-                self.tokens.push(TokenKind::Fun);
+            if self.try_string_to_token("fun", TokenKind::Fun) {
                 continue;
             }
 
-            if self.try_consume_string("struct") {
-                self.tokens.push(TokenKind::Struct);
+            if self.try_string_to_token("struct", TokenKind::Struct) {
                 continue;
             }
 
-            if self.try_consume_string("return") {
-                self.tokens.push(TokenKind::Return);
+            if self.try_string_to_token("return", TokenKind::Return) {
                 continue;
             }
 
-            if self.try_consume_string("extern") {
-                self.tokens.push(TokenKind::Extern);
+            if self.try_string_to_token("extern", TokenKind::Extern) {
                 continue;
             }
 
-            if self.try_consume_string("if") {
-                self.tokens.push(TokenKind::If);
+            if self.try_string_to_token("if", TokenKind::If) {
                 continue;
             }
 
-            if self.try_consume_string("while") {
-                self.tokens.push(TokenKind::While);
+            if self.try_string_to_token("while", TokenKind::While) {
                 continue;
             }
 
-            if self.try_consume_string("for") {
-                self.tokens.push(TokenKind::For);
+            if self.try_string_to_token("for", TokenKind::For) {
                 continue;
             }
 
-            if self.try_consume_string("in") {
-                self.tokens.push(TokenKind::In);
+            if self.try_string_to_token("in", TokenKind::In) {
                 continue;
             }
 
-            if self.try_consume_string("by") {
-                self.tokens.push(TokenKind::By);
+            if self.try_string_to_token("by", TokenKind::By) {
                 continue;
             }
 
-            if self.try_consume_string("defer") {
-                self.tokens.push(TokenKind::Defer);
+            if self.try_string_to_token("defer", TokenKind::Defer) {
                 continue;
             }
 
-            if self.try_consume_string("sizeof") {
-                self.tokens.push(TokenKind::Sizeof);
+            if self.try_string_to_token("sizeof", TokenKind::Sizeof) {
                 continue;
             }
 
-            if self.try_consume_string("String") {
-                self.tokens.push(TokenKind::String);
+            if self.try_string_to_token("String", TokenKind::String) {
                 continue;
             }
 
-            if self.try_consume_string("Bool") {
-                self.tokens.push(TokenKind::Bool);
+            if self.try_string_to_token("Bool", TokenKind::Bool) {
                 continue;
             }
 
-            if self.try_consume_string("Void") {
-                self.tokens.push(TokenKind::Void);
+            if self.try_string_to_token("Void", TokenKind::Void) {
                 continue;
             }
 
-            if self.try_consume_string("Int8") {
-                self.tokens.push(TokenKind::Int8);
+            if self.try_string_to_token("Int8", TokenKind::Int8) {
                 continue;
             }
 
-            if self.try_consume_string("UInt8") {
-                self.tokens.push(TokenKind::UInt8);
+            if self.try_string_to_token("UInt8", TokenKind::UInt8) {
                 continue;
             }
 
-            if self.try_consume_string("Int16") {
-                self.tokens.push(TokenKind::Int16);
+            if self.try_string_to_token("Int16", TokenKind::Int16) {
                 continue;
             }
 
-            if self.try_consume_string("UInt16") {
-                self.tokens.push(TokenKind::UInt16);
+            if self.try_string_to_token("UInt16", TokenKind::UInt16) {
                 continue;
             }
 
-            if self.try_consume_string("Int32") {
-                self.tokens.push(TokenKind::Int32);
+            if self.try_string_to_token("Int32", TokenKind::Int32) {
                 continue;
             }
 
-            if self.try_consume_string("UInt32") {
-                self.tokens.push(TokenKind::UInt32);
+            if self.try_string_to_token("UInt32", TokenKind::UInt32) {
                 continue;
             }
 
-            if self.try_consume_string("Int64") {
-                self.tokens.push(TokenKind::Int64);
+            if self.try_string_to_token("Int64", TokenKind::Int64) {
                 continue;
             }
 
-            if self.try_consume_string("UInt64") {
-                self.tokens.push(TokenKind::UInt64);
+            if self.try_string_to_token("UInt64", TokenKind::UInt64) {
                 continue;
             }
 
-            if self.try_consume_string("UInt") {
-                self.tokens.push(TokenKind::UInt);
+            if self.try_string_to_token("UInt", TokenKind::UInt) {
                 continue;
             }
 
-            if self.try_consume_string("Int") {
-                self.tokens.push(TokenKind::Int);
+            if self.try_string_to_token("Int", TokenKind::Int) {
                 continue;
             }
 
-            if self.try_consume_string("Float32") {
-                self.tokens.push(TokenKind::Float32);
+            if self.try_string_to_token("Float32", TokenKind::Float32) {
                 continue;
             }
 
-            if self.try_consume_string("Float64") {
-                self.tokens.push(TokenKind::Float64);
+            if self.try_string_to_token("Float64", TokenKind::Float64) {
                 continue;
             }
 
-            if self.try_consume_string("true") {
-                self.tokens.push(TokenKind::True);
+            if self.try_string_to_token("true", TokenKind::True) {
                 continue;
             }
 
-            if self.try_consume_string("false") {
-                self.tokens.push(TokenKind::False);
+            if self.try_string_to_token("false", TokenKind::False) {
                 continue;
             }
 
             if self.char().is_alphabetic() || self.char() == '_' {
-                let mut c = self.chars[self.position];
+                let mut c = self.char();
                 let start = self.position;
 
                 while Lexer::is_char_valid_in_identifier(c) {
-                    self.position += 1;
+                    self.position.advance();
                     c = self.char();
                 }
 
-                self.tokens.push(TokenKind::Identifier {
-                    text: self.chars[start..self.position].iter().collect(),
+                let end = self.position;
+                self.tokens.push(Token {
+                    kind: TokenKind::Identifier {
+                        text: self.chars[start.index..end.index].iter().collect(),
+                    },
+                    start,
+                    end,
                 });
 
                 continue;
             }
 
             if self.char().is_numeric() {
-                let mut c = self.chars[self.position];
+                let mut c = self.char();
                 let mut has_decimal_point = false;
                 let start = self.position;
 
-                while c.is_numeric() || (c == '.'  && !has_decimal_point) {
+                while c.is_numeric() || (c == '.' && !has_decimal_point) {
                     if c == '.' {
                         has_decimal_point = true;
                     }
 
-                    self.position += 1;
+                    self.position.advance();
                     c = self.char();
                 }
 
-                let text = self.chars[start..self.position].iter().collect();
+                let end = self.position;
+                let text = self.chars[start.index..end.index].iter().collect();
 
                 if has_decimal_point {
-                    self.tokens.push(TokenKind::Float32Literal { text });
+                    self.tokens.push(Token {
+                        kind: TokenKind::Float32Literal { text },
+                        start,
+                        end,
+                    });
                 } else {
-                    self.tokens.push(TokenKind::IntLiteral { text });
+                    self.tokens.push(Token {
+                        kind: TokenKind::IntLiteral { text },
+                        start,
+                        end,
+                    });
                 }
 
                 continue;
             }
 
             if self.char().is_whitespace() {
-                self.position += 1;
+                if self.char() == '\n' {
+                    self.position.newline();
+                } else {
+                    self.position.advance();
+                }
+
                 continue;
             }
 
             match self.char() {
                 '(' => {
-                    self.tokens.push(TokenKind::LParen);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::LParen,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 ')' => {
-                    self.tokens.push(TokenKind::RParen);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::RParen,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '{' => {
-                    self.tokens.push(TokenKind::LBrace);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::LBrace,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '}' => {
-                    self.tokens.push(TokenKind::RBrace);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::RBrace,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '[' => {
-                    self.tokens.push(TokenKind::LBracket);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::LBracket,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 ']' => {
-                    self.tokens.push(TokenKind::RBracket);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::RBracket,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 ',' => {
-                    self.tokens.push(TokenKind::Comma);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Comma,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 ':' => {
-                    self.tokens.push(TokenKind::Colon);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Colon,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 ';' => {
-                    self.tokens.push(TokenKind::Semicolon);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Semicolon,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '.' => {
-                    self.tokens.push(TokenKind::Period);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Period,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '+' => {
-                    self.tokens.push(TokenKind::Plus);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Plus,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '-' => {
-                    self.tokens.push(TokenKind::Minus);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Minus,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '*' => {
-                    self.tokens.push(TokenKind::Asterisk);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Asterisk,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '&' => {
-                    self.tokens.push(TokenKind::Ampersand);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Ampersand,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '/' => {
-                    self.tokens.push(TokenKind::Divide);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Divide,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '=' => {
-                    self.tokens.push(TokenKind::Equal);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Equal,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '<' => {
-                    self.tokens.push(TokenKind::Less);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Less,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '>' => {
-                    self.tokens.push(TokenKind::Greater);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Greater,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '!' => {
-                    self.tokens.push(TokenKind::Not);
-                    self.position += 1;
+                    self.tokens.push(Token {
+                        kind: TokenKind::Not,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
                 }
                 '"' => {
-                    self.position += 1;
-                    let mut c = self.chars[self.position];
+                    self.position.advance();
+                    let mut c = self.char();
                     let start = self.position;
+
                     while c != '"' {
                         if c == '\0' {
-                            panic!("Hit EOF during string literal");
+                            self.tokens.push(Token { kind: TokenKind::Error, start, end: self.position });
+                            self.error("reached end of file during string literal");
+                            self.position.advance();
+                            continue;
                         }
 
-                        self.position += 1;
+                        self.position.advance();
                         c = self.char();
                     }
-                    self.tokens.push(TokenKind::StringLiteral {
-                        text: self.chars[start..self.position].iter().collect(),
+
+                    let end = self.position;
+                    self.tokens.push(Token {
+                        kind: TokenKind::StringLiteral {
+                            text: self.chars[start.index..end.index].iter().collect(),
+                        },
+                        start,
+                        end,
                     });
-                    self.position += 1;
+                    self.position.advance();
                 }
-                _ => panic!(
-                    "Error while parsing at {}, {}",
-                    self.chars[self.position], self.position
-                ),
+                _ => {
+                    self.tokens.push(Token { kind: TokenKind::Error, start: self.position, end: self.position });
+                    self.error(&format!("unexpected character \"{}\"", self.char()));
+                    self.position.advance();
+                },
             }
         }
-    }
-
-    fn handle_single_line_comment(&mut self) {
-        while self.char() != '\n' {
-            self.position += 1;
-        }
-
-        self.position += 1;
-    }
-
-    fn handle_multi_line_comment(&mut self) {
-        // Track the number of open multi-line comments, so that these comments can be nested.
-        let mut open_count = 1;
-        self.position += 1;
-
-        while open_count > 0 {
-            if self.try_consume_string("/*") {
-                open_count += 1;
-            } else if self.try_consume_string("*/") {
-                open_count -= 1;
-            }
-
-            self.position += 1;
-        }
-    }
-
-    fn is_char_valid_in_identifier(c: char) -> bool {
-        c.is_alphabetic() || c.is_numeric() || c == '_'
     }
 }

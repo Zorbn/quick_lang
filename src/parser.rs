@@ -1,6 +1,9 @@
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
-use crate::lexer::TokenKind;
+use crate::{
+    lexer::{Token, TokenKind},
+    position::Position,
+};
 
 // TODO: Should strings be refcounted strs instead?
 
@@ -237,6 +240,13 @@ pub enum NodeKind {
     },
 }
 
+#[derive(Clone, Debug)]
+pub struct Node {
+    pub kind: NodeKind,
+    pub start: Position,
+    pub end: Position,
+}
+
 pub const INT_INDEX: usize = 0;
 pub const STRING_INDEX: usize = 1;
 pub const BOOL_INDEX: usize = 2;
@@ -254,7 +264,7 @@ pub const FLOAT32_INDEX: usize = 13;
 pub const FLOAT64_INDEX: usize = 14;
 
 pub struct Parser {
-    pub nodes: Vec<NodeKind>,
+    pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: HashMap<String, usize>,
     pub struct_definition_indices: HashMap<String, usize>,
@@ -262,8 +272,8 @@ pub struct Parser {
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub struct_type_kinds: HashMap<String, usize>,
 
-    pub tokens: Option<Vec<TokenKind>>,
-    pub position: usize,
+    pub tokens: Option<Vec<Token>>,
+    pub position: Position,
 }
 
 impl Parser {
@@ -277,7 +287,7 @@ impl Parser {
             array_type_kinds: HashMap::new(),
             pointer_type_kinds: HashMap::new(),
             struct_type_kinds: HashMap::new(),
-            position: 0,
+            position: Position::new(),
         };
 
         parser.add_type(TypeKind::Int);
@@ -299,38 +309,59 @@ impl Parser {
         parser
     }
 
-    fn token(&self) -> &TokenKind {
+    fn token_kind(&self) -> &TokenKind {
         let tokens = self.tokens.as_ref().unwrap();
-        tokens.get(self.position).unwrap_or(&TokenKind::Eof)
+        if let Some(token) = tokens.get(self.position.index) {
+            &token.kind
+        } else {
+            &TokenKind::Eof
+        }
     }
 
-    fn peek_token(&self) -> &TokenKind {
+    fn peek_token_kind(&self) -> &TokenKind {
         let tokens = self.tokens.as_ref().unwrap();
-        tokens
-            .get(self.position + 1)
-            .unwrap_or(&TokenKind::Eof)
+        if let Some(token) = tokens.get(self.position.index + 1) {
+            &token.kind
+        } else {
+            &TokenKind::Eof
+        }
     }
 
     fn assert_token(&self, token: TokenKind) {
-        if *self.token() != token {
+        if *self.token_kind() != token {
             panic!(
                 "Expected token {:?} but got token {:?}",
                 token,
-                self.token()
+                self.token_kind()
             );
         }
     }
 
+    fn node_end(&self, index: usize) -> Position {
+        self.nodes[index].end
+    }
+
+    fn token_end(&self) -> Position {
+        let tokens = self.tokens.as_ref().unwrap();
+        if let Some(token) = tokens.get(self.position.index) {
+            token.end
+        } else {
+            self.position
+        }
+    }
+
     fn parse_uint_literal(&self) -> usize {
-        let int_string = match self.token() {
+        let int_string = match self.token_kind() {
             TokenKind::IntLiteral { text } => text,
             _ => panic!("Expected int literal"),
         };
 
-        int_string.parse::<usize>().expect("Expected unsigned integer")
+        int_string
+            .parse::<usize>()
+            .expect("Expected unsigned integer")
     }
 
-    fn add_node(&mut self, node: NodeKind) -> usize {
+    fn add_node(&mut self, node: Node) -> usize {
         let index = self.nodes.len();
         self.nodes.push(node);
         index
@@ -342,8 +373,8 @@ impl Parser {
         index
     }
 
-    pub fn parse(&mut self, tokens: Vec<TokenKind>) -> usize {
-        self.position = 0;
+    pub fn parse(&mut self, tokens: Vec<Token>) -> usize {
+        self.position = Position::new();
         self.tokens = Some(tokens);
         self.top_level()
     }
@@ -351,59 +382,89 @@ impl Parser {
     fn top_level(&mut self) -> usize {
         let mut functions = Vec::new();
         let mut structs = Vec::new();
+        let start = self.position;
+        let mut end = self.position;
 
-        while *self.token() != TokenKind::Eof {
-            match *self.token() {
-                TokenKind::Fun => functions.push(self.function()),
-                TokenKind::Extern => functions.push(self.extern_function()),
-                TokenKind::Struct => structs.push(self.struct_definition()),
+        while *self.token_kind() != TokenKind::Eof {
+            let mut index = 0;
+
+            match *self.token_kind() {
+                TokenKind::Fun => {
+                    index = self.function();
+                    functions.push(index);
+                }
+                TokenKind::Extern => {
+                    index = self.extern_function();
+                    functions.push(index);
+                }
+                TokenKind::Struct => {
+                    index = self.struct_definition();
+                    structs.push(index);
+                }
                 _ => panic!("Unexpected token at top level"),
             }
+
+            end = self.node_end(index);
         }
 
-        self.add_node(NodeKind::TopLevel {
-            functions: Arc::new(functions),
-            structs: Arc::new(structs),
+        self.add_node(Node {
+            kind: NodeKind::TopLevel {
+                functions: Arc::new(functions),
+                structs: Arc::new(structs),
+            },
+            start,
+            end,
         })
     }
 
     fn struct_definition(&mut self) -> usize {
-        self.assert_token(TokenKind::Struct);
-        self.position += 1;
+        let start = self.position;
 
-        let name = match self.token() {
+        self.assert_token(TokenKind::Struct);
+        self.position.advance();
+
+        let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected struct name"),
         };
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::LBrace);
-        self.position += 1;
+        self.position.advance();
 
         let mut fields = Vec::new();
 
-        while *self.token() != TokenKind::RBrace {
+        while *self.token_kind() != TokenKind::RBrace {
             fields.push(self.field());
 
-            if *self.token() != TokenKind::Comma {
+            if *self.token_kind() != TokenKind::Comma {
                 break;
             }
 
             self.assert_token(TokenKind::Comma);
-            self.position += 1;
+            self.position.advance();
         }
 
+        let end = self.token_end();
         self.assert_token(TokenKind::RBrace);
-        self.position += 1;
+        self.position.advance();
 
         let mut field_kinds = Vec::new();
 
         for field in &fields {
-            let NodeKind::Field { name, type_name } = &self.nodes[*field] else {
+            let Node {
+                kind: NodeKind::Field { name, type_name },
+                ..
+            } = &self.nodes[*field]
+            else {
                 panic!("Invalid struct field");
             };
 
-            let NodeKind::TypeName { type_kind } = &self.nodes[*type_name] else {
+            let Node {
+                kind: NodeKind::TypeName { type_kind },
+                ..
+            } = &self.nodes[*type_name]
+            else {
                 panic!("Invalid struct field type name");
             };
 
@@ -427,10 +488,14 @@ impl Parser {
             type_kind
         };
 
-        let index = self.add_node(NodeKind::StructDefinition {
-            name: name.clone(),
-            fields: Arc::new(fields),
-            type_kind,
+        let index = self.add_node(Node {
+            kind: NodeKind::StructDefinition {
+                name: name.clone(),
+                fields: Arc::new(fields),
+                type_kind,
+            },
+            start,
+            end,
         });
         self.struct_definition_indices.insert(name, index);
 
@@ -438,58 +503,70 @@ impl Parser {
     }
 
     fn field(&mut self) -> usize {
-        let name = match self.token() {
+        let start = self.position;
+        let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected field name"),
         };
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::Colon);
-        self.position += 1;
+        self.position.advance();
 
         let type_name = self.type_name();
+        let end = self.node_end(type_name);
 
-        self.add_node(NodeKind::Field { name, type_name })
+        self.add_node(Node {
+            kind: NodeKind::Field { name, type_name },
+            start,
+            end,
+        })
     }
 
     fn function_declaration(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::Fun);
-        self.position += 1;
+        self.position.advance();
 
-        let name = match self.token() {
+        let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected function name"),
         };
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::LParen);
-        self.position += 1;
+        self.position.advance();
 
         let mut params = Vec::new();
 
-        while *self.token() != TokenKind::RParen {
+        while *self.token_kind() != TokenKind::RParen {
             params.push(self.param());
 
-            if *self.token() != TokenKind::Comma {
+            if *self.token_kind() != TokenKind::Comma {
                 break;
             }
 
             self.assert_token(TokenKind::Comma);
-            self.position += 1;
+            self.position.advance();
         }
 
         self.assert_token(TokenKind::RParen);
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::Colon);
-        self.position += 1;
+        self.position.advance();
 
         let return_type_name = self.type_name();
+        let end = self.node_end(return_type_name);
 
-        let index = self.add_node(NodeKind::FunctionDeclaration {
-            name: name.clone(),
-            return_type_name,
-            params: Arc::new(params),
+        let index = self.add_node(Node {
+            kind: NodeKind::FunctionDeclaration {
+                name: name.clone(),
+                return_type_name,
+                params: Arc::new(params),
+            },
+            start,
+            end,
         });
         self.function_declaration_indices.insert(name, index);
 
@@ -497,63 +574,92 @@ impl Parser {
     }
 
     fn function(&mut self) -> usize {
+        let start = self.position;
         let declaration = self.function_declaration();
         let block = self.block();
+        let end = self.node_end(block);
 
-        self.add_node(NodeKind::Function { declaration, block })
+        self.add_node(Node {
+            kind: NodeKind::Function { declaration, block },
+            start,
+            end,
+        })
     }
 
     fn extern_function(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::Extern);
-        self.position += 1;
+        self.position.advance();
 
         let declaration = self.function_declaration();
+        let end = self.node_end(declaration);
 
-        self.add_node(NodeKind::ExternFunction { declaration })
+        self.add_node(Node {
+            kind: NodeKind::ExternFunction { declaration },
+            start,
+            end,
+        })
     }
 
     fn param(&mut self) -> usize {
-        let name = match self.token() {
+        let start = self.position;
+        let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected param name"),
         };
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::Colon);
-        self.position += 1;
+        self.position.advance();
 
         let type_name = self.type_name();
+        let end = self.node_end(type_name);
 
-        self.add_node(NodeKind::Param { name, type_name })
+        self.add_node(Node {
+            kind: NodeKind::Param { name, type_name },
+            start,
+            end,
+        })
     }
 
     fn block(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::LBrace);
-        self.position += 1;
+        self.position.advance();
 
         let mut statements = Vec::new();
 
-        while *self.token() != TokenKind::RBrace {
+        while *self.token_kind() != TokenKind::RBrace {
             statements.push(self.statement());
         }
 
+        let end = self.token_end();
         self.assert_token(TokenKind::RBrace);
-        self.position += 1;
+        self.position.advance();
 
-        self.add_node(NodeKind::Block {
-            statements: Arc::new(statements),
+        self.add_node(Node {
+            kind: NodeKind::Block {
+                statements: Arc::new(statements),
+            },
+            start,
+            end,
         })
     }
 
     fn statement(&mut self) -> usize {
+        let start = self.position;
         let needs_semicolon = !matches!(
-            self.token(),
-            TokenKind::Defer | TokenKind::If | TokenKind::While | TokenKind::For | TokenKind::LBrace
+            self.token_kind(),
+            TokenKind::Defer
+                | TokenKind::If
+                | TokenKind::While
+                | TokenKind::For
+                | TokenKind::LBrace
         );
 
-        let inner = match self.token() {
+        let inner = match self.token_kind() {
             TokenKind::Var | TokenKind::Val => self.variable_declaration(),
-            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => {
+            TokenKind::Identifier { .. } if *self.peek_token_kind() == TokenKind::LParen => {
                 self.function_call()
             }
             TokenKind::Return => self.return_statement(),
@@ -564,178 +670,242 @@ impl Parser {
             TokenKind::LBrace => self.block(),
             _ => self.variable_assignment(),
         };
+        let mut end = self.node_end(inner);
 
         if needs_semicolon {
+            end = self.token_end();
             self.assert_token(TokenKind::Semicolon);
-            self.position += 1;
+            self.position.advance();
         }
 
-        self.add_node(NodeKind::Statement { inner })
+        self.add_node(Node {
+            kind: NodeKind::Statement { inner },
+            start,
+            end,
+        })
     }
 
     fn variable_declaration(&mut self) -> usize {
-        let is_mutable = match self.token() {
+        let start = self.position;
+        let is_mutable = match self.token_kind() {
             TokenKind::Var => true,
             TokenKind::Val => false,
             _ => panic!("Expected var or val keyword in declaration"),
         };
-        self.position += 1;
+        self.position.advance();
 
-        let name = match self.token() {
+        let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected variable name in declaration"),
         };
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::Colon);
-        self.position += 1;
+        self.position.advance();
 
         let type_name = self.type_name();
 
         self.assert_token(TokenKind::Equal);
-        self.position += 1;
+        self.position.advance();
 
         let expression = self.expression(true);
+        let end = self.node_end(expression);
 
-        self.add_node(NodeKind::VariableDeclaration {
-            is_mutable,
-            name,
-            type_name,
-            expression,
+        self.add_node(Node {
+            kind: NodeKind::VariableDeclaration {
+                is_mutable,
+                name,
+                type_name,
+                expression,
+            },
+            start,
+            end,
         })
     }
 
     fn variable_assignment(&mut self) -> usize {
+        let start = self.position;
         let mut dereference_count = 0;
-        while *self.token() == TokenKind::Asterisk {
+        while *self.token_kind() == TokenKind::Asterisk {
             dereference_count += 1;
-            self.position += 1;
+            self.position.advance();
         }
 
         let variable = self.variable();
 
         self.assert_token(TokenKind::Equal);
-        self.position += 1;
+        self.position.advance();
 
         let expression = self.expression(true);
+        let end = self.node_end(expression);
 
-        self.add_node(NodeKind::VariableAssignment {
-            dereference_count,
-            variable,
-            expression,
+        self.add_node(Node {
+            kind: NodeKind::VariableAssignment {
+                dereference_count,
+                variable,
+                expression,
+            },
+            start,
+            end,
         })
     }
 
     fn return_statement(&mut self) -> usize {
+        let start = self.position;
+        let mut end = self.token_end();
         self.assert_token(TokenKind::Return);
-        self.position += 1;
+        self.position.advance();
 
         let mut expression = None;
-        if *self.token() != TokenKind::Semicolon {
-            expression = Some(self.expression(true));
+        if *self.token_kind() != TokenKind::Semicolon {
+            let index = self.expression(true);
+            end = self.node_end(index);
+            expression = Some(index);
         }
 
-        self.add_node(NodeKind::ReturnStatement { expression })
+        self.add_node(Node {
+            kind: NodeKind::ReturnStatement { expression },
+            start,
+            end,
+        })
     }
 
     fn defer_statement(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::Defer);
-        self.position += 1;
+        self.position.advance();
 
         let statement = self.statement();
+        let end = self.node_end(statement);
 
-        self.add_node(NodeKind::DeferStatement { statement })
+        self.add_node(Node {
+            kind: NodeKind::DeferStatement { statement },
+            start,
+            end,
+        })
     }
 
     fn if_statement(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::If);
-        self.position += 1;
+        self.position.advance();
 
         let expression = self.expression(false);
         let block = self.block();
+        let end = self.node_end(block);
 
-        self.add_node(NodeKind::IfStatement { expression, block })
+        self.add_node(Node {
+            kind: NodeKind::IfStatement { expression, block },
+            start,
+            end,
+        })
     }
 
     fn while_loop(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::While);
-        self.position += 1;
+        self.position.advance();
 
         let expression = self.expression(false);
         let block = self.block();
+        let end = self.node_end(block);
 
-        self.add_node(NodeKind::WhileLoop { expression, block })
+        self.add_node(Node {
+            kind: NodeKind::WhileLoop { expression, block },
+            start,
+            end,
+        })
     }
 
     fn for_loop(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::For);
-        self.position += 1;
+        self.position.advance();
 
-        let iterator = if let TokenKind::Identifier { text } = self.token() {
+        let iterator = if let TokenKind::Identifier { text } = self.token_kind() {
             text.clone()
         } else {
             panic!("Expected iterator name");
         };
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::In);
-        self.position += 1;
+        self.position.advance();
 
         let from = self.binary(true);
 
-        let op = match *self.token() {
+        let op = match *self.token_kind() {
             TokenKind::Less => Op::Less,
             TokenKind::LessEqual => Op::LessEqual,
             TokenKind::Greater => Op::Greater,
             TokenKind::GreaterEqual => Op::GreaterEqual,
-            _ => panic!("Expected comparison operator")
+            _ => panic!("Expected comparison operator"),
         };
-        self.position += 1;
+        self.position.advance();
 
         let to = self.binary(true);
 
         let mut by = None;
 
-        if *self.token() == TokenKind::By {
-            self.position += 1;
+        if *self.token_kind() == TokenKind::By {
+            self.position.advance();
 
             by = Some(self.binary(true));
         }
 
         let block = self.block();
+        let end = self.node_end(block);
 
-        self.add_node(NodeKind::ForLoop { iterator, op, from, to, by, block })
+        self.add_node(Node {
+            kind: NodeKind::ForLoop {
+                iterator,
+                op,
+                from,
+                to,
+                by,
+                block,
+            },
+            start,
+            end,
+        })
     }
 
     fn expression(&mut self, allow_struct_literal: bool) -> usize {
+        let start = self.position;
         let comparison = self.comparison(allow_struct_literal);
+        let mut end = self.node_end(comparison);
         let mut trailing_comparisons = Vec::new();
 
-        while *self.token() == TokenKind::And || *self.token() == TokenKind::Or {
-            let op = if *self.token() == TokenKind::And {
+        while *self.token_kind() == TokenKind::And || *self.token_kind() == TokenKind::Or {
+            let op = if *self.token_kind() == TokenKind::And {
                 Op::And
             } else {
                 Op::Or
             };
-            self.position += 1;
+            self.position.advance();
 
-            trailing_comparisons.push(TrailingComparison {
-                op,
-                comparison: self.comparison(true),
-            });
+            let comparison = self.comparison(true);
+            end = self.node_end(comparison);
+            trailing_comparisons.push(TrailingComparison { op, comparison });
         }
 
-        self.add_node(NodeKind::Expression {
-            comparison,
-            trailing_comparisons: Arc::new(trailing_comparisons),
+        self.add_node(Node {
+            kind: NodeKind::Expression {
+                comparison,
+                trailing_comparisons: Arc::new(trailing_comparisons),
+            },
+            start,
+            end,
         })
     }
 
     fn comparison(&mut self, allow_struct_literal: bool) -> usize {
+        let start = self.position;
         let binary = self.binary(allow_struct_literal);
+        let mut end = self.node_end(binary);
         let mut trailing_binary = None;
 
-        let op = match *self.token() {
+        let op = match *self.token_kind() {
             TokenKind::Less => Some(Op::Less),
             TokenKind::Greater => Some(Op::Greater),
             TokenKind::EqualEqual => Some(Op::EqualEqual),
@@ -746,105 +916,125 @@ impl Parser {
         };
 
         if let Some(op) = op {
-            self.position += 1;
-            trailing_binary = Some(TrailingBinary {
-                op,
-                binary: self.binary(true),
-            });
+            self.position.advance();
+            let binary = self.binary(true);
+            end = self.node_end(binary);
+            trailing_binary = Some(TrailingBinary { op, binary });
         }
 
-        self.add_node(NodeKind::Comparision {
-            binary,
-            trailing_binary,
+        self.add_node(Node {
+            kind: NodeKind::Comparision {
+                binary,
+                trailing_binary,
+            },
+            start,
+            end,
         })
     }
 
     fn binary(&mut self, allow_struct_literal: bool) -> usize {
+        let start = self.position;
         let term = self.term(allow_struct_literal);
+        let mut end = self.node_end(term);
         let mut trailing_terms = Vec::new();
 
-        while *self.token() == TokenKind::Plus || *self.token() == TokenKind::Minus {
-            let op = if *self.token() == TokenKind::Plus {
+        while *self.token_kind() == TokenKind::Plus || *self.token_kind() == TokenKind::Minus {
+            let op = if *self.token_kind() == TokenKind::Plus {
                 Op::Plus
             } else {
                 Op::Minus
             };
-            self.position += 1;
+            self.position.advance();
 
-            trailing_terms.push(TrailingTerm {
-                op,
-                term: self.term(true),
-            });
+            let term = self.term(true);
+            end = self.node_end(term);
+            trailing_terms.push(TrailingTerm { op, term });
         }
 
-        self.add_node(NodeKind::Binary {
-            term,
-            trailing_terms: Arc::new(trailing_terms),
+        self.add_node(Node {
+            kind: NodeKind::Binary {
+                term,
+                trailing_terms: Arc::new(trailing_terms),
+            },
+            start,
+            end,
         })
     }
 
     fn term(&mut self, allow_struct_literal: bool) -> usize {
+        let start = self.position;
         let unary = self.unary(allow_struct_literal);
+        let mut end = self.node_end(unary);
         let mut trailing_unaries = Vec::new();
 
-        while *self.token() == TokenKind::Asterisk || *self.token() == TokenKind::Divide {
-            let op = if *self.token() == TokenKind::Asterisk {
+        while *self.token_kind() == TokenKind::Asterisk || *self.token_kind() == TokenKind::Divide {
+            let op = if *self.token_kind() == TokenKind::Asterisk {
                 Op::Multiply
             } else {
                 Op::Divide
             };
-            self.position += 1;
+            self.position.advance();
 
-            trailing_unaries.push(TrailingUnary {
-                op,
-                unary: self.unary(true),
-            });
+            let unary = self.unary(true);
+            end = self.node_end(unary);
+            trailing_unaries.push(TrailingUnary { op, unary });
         }
 
-        self.add_node(NodeKind::Term {
-            unary,
-            trailing_unaries: Arc::new(trailing_unaries),
+        self.add_node(Node {
+            kind: NodeKind::Term {
+                unary,
+                trailing_unaries: Arc::new(trailing_unaries),
+            },
+            start,
+            end,
         })
     }
 
     fn unary(&mut self, allow_struct_literal: bool) -> usize {
-        let op = match *self.token() {
+        let start = self.position;
+        let op = match *self.token_kind() {
             TokenKind::Plus => {
-                self.position += 1;
+                self.position.advance();
                 Some(Op::Plus)
             }
             TokenKind::Minus => {
-                self.position += 1;
+                self.position.advance();
                 Some(Op::Minus)
             }
             TokenKind::Not => {
-                self.position += 1;
+                self.position.advance();
                 Some(Op::Not)
             }
             TokenKind::Ampersand => {
-                self.position += 1;
+                self.position.advance();
                 Some(Op::Reference)
             }
             TokenKind::Asterisk => {
-                self.position += 1;
+                self.position.advance();
                 Some(Op::Dereference)
             }
             _ => None,
         };
 
         let primary = self.primary(allow_struct_literal);
+        let end = self.node_end(primary);
 
-        self.add_node(NodeKind::Unary { op, primary })
+        self.add_node(Node {
+            kind: NodeKind::Unary { op, primary },
+            start,
+            end,
+        })
     }
 
     fn primary(&mut self, allow_struct_literal: bool) -> usize {
-        let inner = match *self.token() {
+        let start = self.position;
+        let inner = match *self.token_kind() {
             TokenKind::LParen => self.parenthesized_expression(),
-            TokenKind::Identifier { .. } if *self.peek_token() == TokenKind::LParen => {
+            TokenKind::Identifier { .. } if *self.peek_token_kind() == TokenKind::LParen => {
                 self.function_call()
             }
             TokenKind::Identifier { .. }
-                if allow_struct_literal && *self.peek_token() == TokenKind::LBrace =>
+                if allow_struct_literal && *self.peek_token_kind() == TokenKind::LBrace =>
             {
                 self.struct_literal()
             }
@@ -857,57 +1047,84 @@ impl Parser {
             TokenKind::Sizeof { .. } => self.type_size(),
             _ => panic!("Invalid token in primary value"),
         };
+        let end = self.node_end(inner);
 
-        self.add_node(NodeKind::Primary { inner })
+        self.add_node(Node {
+            kind: NodeKind::Primary { inner },
+            start,
+            end,
+        })
     }
 
     fn parenthesized_expression(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::LParen);
-        self.position += 1;
+        self.position.advance();
 
         let expression = self.expression(true);
 
+        let end = self.token_end();
         self.assert_token(TokenKind::RParen);
-        self.position += 1;
+        self.position.advance();
 
-        self.add_node(NodeKind::ParenthesizedExpression { expression })
+        self.add_node(Node {
+            kind: NodeKind::ParenthesizedExpression { expression },
+            start,
+            end,
+        })
     }
 
     fn variable(&mut self) -> usize {
-        let name = match self.token() {
+        let start = self.position;
+        let mut end = self.token_end();
+        let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected variable name"),
         };
-        self.position += 1;
+        self.position.advance();
 
-        let mut inner = self.add_node(NodeKind::VariableName { name });
+        let mut inner = self.add_node(Node {
+            kind: NodeKind::VariableName { name },
+            start,
+            end,
+        });
 
         loop {
-            if *self.token() == TokenKind::LBracket {
-                self.position += 1;
+            if *self.token_kind() == TokenKind::LBracket {
+                self.position.advance();
                 let expression = self.expression(true);
+                end = self.token_end();
                 self.assert_token(TokenKind::RBracket);
-                self.position += 1;
+                self.position.advance();
 
-                inner = self.add_node(NodeKind::VariableIndex {
-                    parent: inner,
-                    expression,
+                inner = self.add_node(Node {
+                    kind: NodeKind::VariableIndex {
+                        parent: inner,
+                        expression,
+                    },
+                    start,
+                    end,
                 });
                 continue;
             }
 
-            if *self.token() == TokenKind::Period {
-                self.position += 1;
+            if *self.token_kind() == TokenKind::Period {
+                self.position.advance();
+                end = self.token_end();
 
-                let field_name = match self.token() {
+                let field_name = match self.token_kind() {
                     TokenKind::Identifier { text } => text.clone(),
                     _ => panic!("Expected field name"),
                 };
-                self.position += 1;
+                self.position.advance();
 
-                inner = self.add_node(NodeKind::VariableField {
-                    parent: inner,
-                    name: field_name,
+                inner = self.add_node(Node {
+                    kind: NodeKind::VariableField {
+                        parent: inner,
+                        name: field_name,
+                    },
+                    start,
+                    end,
                 });
                 continue;
             }
@@ -915,175 +1132,235 @@ impl Parser {
             break;
         }
 
-        self.add_node(NodeKind::Variable { inner })
+        self.add_node(Node {
+            kind: NodeKind::Variable { inner },
+            start,
+            end,
+        })
     }
 
     fn function_call(&mut self) -> usize {
-        let name = match self.token() {
+        let start = self.position;
+        let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected function name"),
         };
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::LParen);
-        self.position += 1;
+        self.position.advance();
 
         let mut args = Vec::new();
 
-        while *self.token() != TokenKind::RParen {
+        while *self.token_kind() != TokenKind::RParen {
             args.push(self.expression(true));
 
-            if *self.token() != TokenKind::Comma {
+            if *self.token_kind() != TokenKind::Comma {
                 break;
             }
 
             self.assert_token(TokenKind::Comma);
-            self.position += 1;
+            self.position.advance();
         }
 
+        let end = self.token_end();
         self.assert_token(TokenKind::RParen);
-        self.position += 1;
+        self.position.advance();
 
-        self.add_node(NodeKind::FunctionCall {
-            name,
-            args: Arc::new(args),
+        self.add_node(Node {
+            kind: NodeKind::FunctionCall {
+                name,
+                args: Arc::new(args),
+            },
+            start,
+            end,
         })
     }
 
     fn int_literal(&mut self) -> usize {
-        let text = match self.token() {
+        let start = self.position;
+        let end = self.token_end();
+        let text = match self.token_kind() {
             TokenKind::IntLiteral { text } => text.clone(),
             _ => panic!("Expected int literal"),
         };
-        self.position += 1;
+        self.position.advance();
 
-        self.add_node(NodeKind::IntLiteral { text })
+        self.add_node(Node {
+            kind: NodeKind::IntLiteral { text },
+            start,
+            end,
+        })
     }
 
     fn float32_literal(&mut self) -> usize {
-        let text = match self.token() {
+        let start = self.position;
+        let end = self.token_end();
+        let text = match self.token_kind() {
             TokenKind::Float32Literal { text } => text.clone(),
             _ => panic!("Expected float32 literal"),
         };
-        self.position += 1;
+        self.position.advance();
 
-        self.add_node(NodeKind::Float32Literal { text })
+        self.add_node(Node {
+            kind: NodeKind::Float32Literal { text },
+            start,
+            end,
+        })
     }
 
     fn string_literal(&mut self) -> usize {
-        let text = match self.token() {
+        let start = self.position;
+        let end = self.token_end();
+        let text = match self.token_kind() {
             TokenKind::StringLiteral { text } => text.clone(),
             _ => panic!("Expected string literal"),
         };
-        self.position += 1;
+        self.position.advance();
 
-        self.add_node(NodeKind::StringLiteral { text })
+        self.add_node(Node {
+            kind: NodeKind::StringLiteral { text },
+            start,
+            end,
+        })
     }
 
     fn bool_literal(&mut self) -> usize {
-        let value = match self.token() {
+        let start = self.position;
+        let end = self.token_end();
+        let value = match self.token_kind() {
             TokenKind::True => true,
             TokenKind::False => false,
             _ => panic!("Expected bool literal"),
         };
-        self.position += 1;
+        self.position.advance();
 
-        self.add_node(NodeKind::BoolLiteral { value })
+        self.add_node(Node {
+            kind: NodeKind::BoolLiteral { value },
+            start,
+            end,
+        })
     }
 
     fn array_literal(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::LBracket);
-        self.position += 1;
+        self.position.advance();
 
         let mut elements = Vec::new();
 
-        while *self.token() != TokenKind::RBracket {
+        while *self.token_kind() != TokenKind::RBracket {
             elements.push(self.expression(true));
 
-            if *self.token() != TokenKind::Comma {
+            if *self.token_kind() != TokenKind::Comma {
                 break;
             }
 
             self.assert_token(TokenKind::Comma);
-            self.position += 1;
+            self.position.advance();
         }
 
         let mut repeat_count = 1;
 
-        if *self.token() == TokenKind::Semicolon {
-            self.position += 1;
+        if *self.token_kind() == TokenKind::Semicolon {
+            self.position.advance();
 
             repeat_count = self.parse_uint_literal();
-            self.position += 1;
+            self.position.advance();
         }
 
+        let end = self.token_end();
         self.assert_token(TokenKind::RBracket);
-        self.position += 1;
+        self.position.advance();
 
-        self.add_node(NodeKind::ArrayLiteral {
-            elements: Arc::new(elements),
-            repeat_count,
+        self.add_node(Node {
+            kind: NodeKind::ArrayLiteral {
+                elements: Arc::new(elements),
+                repeat_count,
+            },
+            start,
+            end,
         })
     }
 
     fn struct_literal(&mut self) -> usize {
-        let name = match self.token() {
+        let start = self.position;
+        let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected struct name"),
         };
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::LBrace);
-        self.position += 1;
+        self.position.advance();
 
         let mut fields = Vec::new();
 
-        while *self.token() != TokenKind::RBrace {
+        while *self.token_kind() != TokenKind::RBrace {
             fields.push(self.field_literal());
 
-            if *self.token() != TokenKind::Comma {
+            if *self.token_kind() != TokenKind::Comma {
                 break;
             }
 
             self.assert_token(TokenKind::Comma);
-            self.position += 1;
+            self.position.advance();
         }
 
+        let end = self.token_end();
         self.assert_token(TokenKind::RBrace);
-        self.position += 1;
+        self.position.advance();
 
-        self.add_node(NodeKind::StructLiteral {
-            name,
-            fields: Arc::new(fields),
+        self.add_node(Node {
+            kind: NodeKind::StructLiteral {
+                name,
+                fields: Arc::new(fields),
+            },
+            start,
+            end,
         })
     }
 
     fn field_literal(&mut self) -> usize {
-        let name = match self.token() {
+        let start = self.position;
+        let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
             _ => panic!("Expected field name"),
         };
-        self.position += 1;
+        self.position.advance();
 
         self.assert_token(TokenKind::Colon);
-        self.position += 1;
+        self.position.advance();
 
         let expression = self.expression(true);
+        let end = self.node_end(expression);
 
-        self.add_node(NodeKind::FieldLiteral { name, expression })
+        self.add_node(Node {
+            kind: NodeKind::FieldLiteral { name, expression },
+            start,
+            end,
+        })
     }
 
     fn type_size(&mut self) -> usize {
+        let start = self.position;
         self.assert_token(TokenKind::Sizeof);
-        self.position += 1;
+        self.position.advance();
 
         let type_name = self.type_name();
+        let end = self.node_end(type_name);
 
-        self.add_node(NodeKind::TypeSize { type_name })
+        self.add_node(Node {
+            kind: NodeKind::TypeSize { type_name },
+            start,
+            end,
+        })
     }
 
     fn type_name(&mut self) -> usize {
-        let mut type_kind = match self.token().clone() {
+        let start = self.position;
+        let mut end = self.token_end();
+        let mut type_kind = match self.token_kind().clone() {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
             TokenKind::Bool => BOOL_INDEX,
@@ -1110,17 +1387,18 @@ impl Parser {
             }
             _ => panic!("Expected type name"),
         };
-        self.position += 1;
+        self.position.advance();
 
         loop {
-            if *self.token() == TokenKind::LBracket {
-                self.position += 1;
+            if *self.token_kind() == TokenKind::LBracket {
+                self.position.advance();
 
                 let length = self.parse_uint_literal();
-                self.position += 1;
+                self.position.advance();
 
+                end = self.token_end();
                 self.assert_token(TokenKind::RBracket);
-                self.position += 1;
+                self.position.advance();
 
                 let array_layout = ArrayLayout {
                     element_type_kind: type_kind,
@@ -1141,8 +1419,9 @@ impl Parser {
                 continue;
             }
 
-            if *self.token() == TokenKind::Asterisk {
-                self.position += 1;
+            if *self.token_kind() == TokenKind::Asterisk {
+                end = self.token_end();
+                self.position.advance();
 
                 type_kind = if let Some(index) = self.pointer_type_kinds.get(&type_kind) {
                     *index
@@ -1160,6 +1439,10 @@ impl Parser {
             break;
         }
 
-        self.add_node(NodeKind::TypeName { type_kind })
+        self.add_node(Node {
+            kind: NodeKind::TypeName { type_kind },
+            start,
+            end,
+        })
     }
 }
