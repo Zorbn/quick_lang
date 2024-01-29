@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     environment::Environment,
     parser::{
-        ArrayLayout, Field, NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm, TrailingUnary, TypeKind, BOOL_INDEX, FLOAT32_INDEX, INT_INDEX, STRING_INDEX
+        ArrayLayout, Field, Node, NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm, TrailingUnary, TypeKind, BOOL_INDEX, FLOAT32_INDEX, INT_INDEX, STRING_INDEX
     },
 };
 
@@ -15,7 +15,7 @@ pub struct TypedNode {
 
 pub struct TypeChecker {
     pub typed_nodes: Vec<Option<TypedNode>>,
-    pub nodes: Vec<NodeKind>,
+    pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: HashMap<String, usize>,
     pub struct_definition_indices: HashMap<String, usize>,
@@ -26,7 +26,7 @@ pub struct TypeChecker {
 
 impl TypeChecker {
     pub fn new(
-        nodes: Vec<NodeKind>,
+        nodes: Vec<Node>,
         types: Vec<TypeKind>,
         function_declaration_indices: HashMap<String, usize>,
         struct_declaration_indices: HashMap<String, usize>,
@@ -56,7 +56,7 @@ impl TypeChecker {
     }
 
     fn check_node(&mut self, index: usize) -> Option<usize> {
-        let type_kind = match self.nodes[index].clone() {
+        let type_kind = match self.nodes[index].kind.clone() {
             NodeKind::TopLevel { functions, structs } => self.top_level(functions, structs),
             NodeKind::StructDefinition {
                 name,
@@ -130,10 +130,11 @@ impl TypeChecker {
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
             NodeKind::TypeSize { type_name } => self.type_size(type_name),
             NodeKind::TypeName { type_kind } => self.type_name(type_kind),
+            NodeKind::Error => panic!("Cannot generate error node"),
         };
 
         self.typed_nodes[index] = Some(TypedNode {
-            node_kind: self.nodes[index].clone(),
+            node_kind: self.nodes[index].kind.clone(),
             type_kind,
         });
 
@@ -402,7 +403,7 @@ impl TypeChecker {
 
         let NodeKind::FunctionDeclaration {
             return_type_name, ..
-        } = self.nodes[self.function_declaration_indices[&name]]
+        } = self.nodes[self.function_declaration_indices[&name]].kind
         else {
             return None;
         };
@@ -446,7 +447,7 @@ impl TypeChecker {
         }
 
         if let NodeKind::StructDefinition { type_kind, .. } =
-            self.nodes[self.struct_definition_indices[&name]]
+            self.nodes[self.struct_definition_indices[&name]].kind
         {
             Some(type_kind)
         } else {

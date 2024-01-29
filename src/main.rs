@@ -94,6 +94,10 @@ fn main() -> ExitCode {
         start_indices.push(start_index);
     }
 
+    if parser.had_error {
+        return ExitCode::FAILURE;
+    }
+
     println!("~~ Checking ~~");
 
     let mut type_checker = TypeChecker::new(

@@ -236,6 +236,10 @@ impl CodeGenerator {
                 node_kind: NodeKind::TypeName { .. },
                 ..
             } => panic!("Cannot generate type name with gen_node"),
+            TypedNode {
+                node_kind: NodeKind::Error,
+                ..
+            } => panic!("Cannot generate error node"),
         }
     }
 
