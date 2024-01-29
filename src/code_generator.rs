@@ -511,29 +511,33 @@ impl CodeGenerator {
         &mut self,
         is_mutable: bool,
         name: String,
-        type_name: usize,
+        _type_name: Option<usize>,
         expression: usize,
         type_kind: Option<usize>,
     ) {
-        let is_array = is_type_kind_array(&self.types, type_kind.unwrap());
+        let Some(type_kind) = type_kind else {
+            panic!("cannot generate variable declaration without a type");
+        };
+
+        let is_array = is_type_kind_array(&self.types, type_kind);
 
         if !is_mutable && !is_array {
             self.body_emitters.top().body.emit("const ");
         }
 
         if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
-            self.emit_type_name_left(type_name, EmitterKind::Body, false);
+            self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" ");
             self.body_emitters.top().body.emit(&name);
-            self.emit_type_name_right(type_name, EmitterKind::Body, false);
+            self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emitln(";");
 
-            self.emit_memmove_expression_to_name(&name, expression, type_kind.unwrap());
+            self.emit_memmove_expression_to_name(&name, expression, type_kind);
         } else {
-            self.emit_type_name_left(type_name, EmitterKind::Body, false);
+            self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" ");
             self.body_emitters.top().body.emit(&name);
-            self.emit_type_name_right(type_name, EmitterKind::Body, false);
+            self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" = ");
             self.gen_node(expression);
         }

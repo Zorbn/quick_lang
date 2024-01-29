@@ -1,10 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::{HashMap, HashSet}, sync::Arc};
 
 use crate::{
     environment::Environment,
     parser::{
         ArrayLayout, Field, Node, NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm,
-        TrailingUnary, TypeKind, BOOL_INDEX, FLOAT32_INDEX, INT_INDEX, STRING_INDEX,
+        TrailingUnary, TypeKind, BOOL_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX,
+        INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, UINT16_INDEX, UINT32_INDEX,
+        UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
     },
 };
 
@@ -36,7 +38,9 @@ pub struct TypeChecker {
     pub function_declaration_indices: HashMap<String, usize>,
     pub struct_definition_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
+    pub pointer_type_kinds: HashMap<usize, usize>,
     pub had_error: bool,
+    pointer_type_kind_set: HashSet<usize>,
     environment: Environment,
     has_function_opened_block: bool,
     last_visited_index: usize,
@@ -47,18 +51,23 @@ impl TypeChecker {
         nodes: Vec<Node>,
         types: Vec<TypeKind>,
         function_declaration_indices: HashMap<String, usize>,
-        struct_declaration_indices: HashMap<String, usize>,
-        array_type_indices: HashMap<ArrayLayout, usize>,
+        struct_definition_indices: HashMap<String, usize>,
+        array_type_kinds: HashMap<ArrayLayout, usize>,
+        pointer_type_kinds: HashMap<usize, usize>,
     ) -> Self {
         let node_count = nodes.len();
+
+        let pointer_type_kind_set = HashSet::from_iter(pointer_type_kinds.values().copied());
 
         let mut type_checker = Self {
             typed_nodes: Vec::new(),
             nodes,
             types,
             function_declaration_indices,
-            struct_definition_indices: struct_declaration_indices,
-            array_type_kinds: array_type_indices,
+            struct_definition_indices,
+            array_type_kinds,
+            pointer_type_kinds,
+            pointer_type_kind_set,
             had_error: false,
             environment: Environment::new(),
             has_function_opened_block: false,
@@ -258,11 +267,20 @@ impl TypeChecker {
         &mut self,
         _is_mutable: bool,
         name: String,
-        type_name: usize,
+        type_name: Option<usize>,
         expression: usize,
     ) -> Option<usize> {
-        let type_kind = self.check_node(type_name);
-        self.check_node(expression);
+        let expression_type_kind = self.check_node(expression);
+
+        let type_kind = if let Some(type_name) = type_name {
+            self.check_node(type_name)
+        } else {
+            expression_type_kind
+        };
+
+        if type_kind != expression_type_kind {
+            type_error!(self, "mismatched types in variable declaration");
+        }
 
         self.environment.insert(name, type_kind.unwrap());
 
@@ -287,7 +305,13 @@ impl TypeChecker {
             type_kind = *inner_type_kind;
         }
 
-        self.check_node(expression);
+        let Some(expression_type_kind) = self.check_node(expression) else {
+            type_error!(self, "cannot assign an untyped value to a variable");
+        };
+
+        if type_kind != expression_type_kind {
+            type_error!(self, "type mismatch in assignment");
+        }
 
         Some(type_kind)
     }
@@ -335,7 +359,9 @@ impl TypeChecker {
         let type_kind = self.check_node(comparison);
 
         for trailing_comparison in trailing_comparisons.iter() {
-            self.check_node(trailing_comparison.comparison);
+            if self.check_node(trailing_comparison.comparison) != Some(BOOL_INDEX) {
+                type_error!(self, "attempted to perform a boolean operation on a non-boolean");
+            }
         }
 
         type_kind
@@ -349,7 +375,15 @@ impl TypeChecker {
         let type_kind = self.check_node(binary);
 
         if let Some(trailing_binary) = trailing_binary {
-            self.check_node(trailing_binary.binary);
+            if type_kind != self.check_node(trailing_binary.binary) {
+                type_error!(self, "cannot compare values with different types");
+            }
+
+            if matches!(trailing_binary.op, Op::Less | Op::Greater | Op::LessEqual | Op::GreaterEqual) && !TypeChecker::is_type_numeric(type_kind) {
+                type_error!(self, "only numeric types can be compared by magnitude");
+            }
+
+            return Some(BOOL_INDEX);
         }
 
         type_kind
@@ -359,7 +393,13 @@ impl TypeChecker {
         let type_kind = self.check_node(term);
 
         for trailing_term in trailing_terms.iter() {
-            self.check_node(trailing_term.term);
+            if type_kind != self.check_node(trailing_term.term) {
+                type_error!(self, "cannot perform binary operation on values with different types");
+            }
+
+            if !TypeChecker::is_type_numeric(type_kind) {
+                type_error!(self, "binary operations can only be performed on numeric types");
+            }
         }
 
         type_kind
@@ -369,14 +409,44 @@ impl TypeChecker {
         let type_kind = self.check_node(unary);
 
         for trailing_unary in trailing_unaries.iter() {
-            self.check_node(trailing_unary.unary);
+            if type_kind != self.check_node(trailing_unary.unary) {
+                type_error!(self, "cannot perform binary operation on values with different types");
+            }
+
+            if !TypeChecker::is_type_numeric(type_kind) {
+                type_error!(self, "binary operations can only be performed on numeric types");
+            }
         }
 
         type_kind
     }
 
-    fn unary(&mut self, _op: Option<Op>, primary: usize) -> Option<usize> {
-        self.check_node(primary)
+    fn unary(&mut self, op: Option<Op>, primary: usize) -> Option<usize> {
+        let type_kind = self.check_node(primary);
+
+        if let Some(op) = op {
+            let Some(type_kind) = type_kind else {
+                type_error!(self, "cannot apply unary operator to untyped value");
+            };
+
+            match op {
+                Op::Plus | Op::Minus => if !TypeChecker::is_type_numeric(Some(type_kind)) {
+                    type_error!(self, "numeric operations can only be performed on numeric types");
+                },
+                Op::Not => if type_kind != BOOL_INDEX {
+                    type_error!(self, "not operator can only be used on booleans");
+                },
+                Op::Reference => if !matches!(self.typed_nodes[primary], Some(TypedNode { node_kind: NodeKind::Variable { .. }, .. })) {
+                    type_error!(self, "references must refer to a variable");
+                }
+                Op::Dereference => if !self.pointer_type_kind_set.contains(&type_kind) {
+                    type_error!(self, "cannot dereference non-pointer type");
+                },
+                _ => type_error!(self, "unexpected operator in unary expression")
+            }
+        }
+
+        type_kind
     }
 
     fn primary(&mut self, inner: usize) -> Option<usize> {
@@ -527,5 +597,23 @@ impl TypeChecker {
 
     fn type_name(&mut self, type_kind: usize) -> Option<usize> {
         Some(type_kind)
+    }
+
+    fn is_type_numeric(type_kind: Option<usize>) -> bool {
+        matches!(
+            type_kind,
+            Some(INT_INDEX)
+                | Some(UINT_INDEX)
+                | Some(INT8_INDEX)
+                | Some(UINT8_INDEX)
+                | Some(INT16_INDEX)
+                | Some(UINT16_INDEX)
+                | Some(INT32_INDEX)
+                | Some(UINT32_INDEX)
+                | Some(INT64_INDEX)
+                | Some(UINT64_INDEX)
+                | Some(FLOAT32_INDEX)
+                | Some(FLOAT64_INDEX)
+        )
     }
 }

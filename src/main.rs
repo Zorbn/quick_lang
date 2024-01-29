@@ -102,6 +102,7 @@ fn main() -> ExitCode {
         parser.function_declaration_indices,
         parser.struct_definition_indices,
         parser.array_type_kinds,
+        parser.pointer_type_kinds,
     );
     for start_index in &start_indices {
         type_checker.check(*start_index);

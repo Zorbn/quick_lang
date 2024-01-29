@@ -134,7 +134,7 @@ pub enum NodeKind {
     VariableDeclaration {
         is_mutable: bool,
         name: String,
-        type_name: usize,
+        type_name: Option<usize>,
         expression: usize,
     },
     VariableAssignment {
@@ -740,10 +740,13 @@ impl Parser {
         };
         self.position += 1;
 
-        assert_token!(self, TokenKind::Colon, start, self.token_end());
-        self.position += 1;
 
-        let type_name = self.type_name();
+        let type_name = if *self.token_kind() == TokenKind::Colon {
+            self.position += 1;
+            Some(self.type_name())
+        } else {
+            None
+        };
 
         assert_token!(self, TokenKind::Equal, start, self.token_end());
         self.position += 1;
