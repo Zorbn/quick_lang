@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::position::Position;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -63,6 +65,76 @@ pub enum TokenKind {
     Identifier { text: String },
     Eof,
     Error,
+}
+
+impl Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            TokenKind::LParen => "(",
+            TokenKind::RParen => ")",
+            TokenKind::LBrace => "{",
+            TokenKind::RBrace => "}",
+            TokenKind::LBracket => "[",
+            TokenKind::RBracket => "]",
+            TokenKind::Comma => ",",
+            TokenKind::Colon => ":",
+            TokenKind::Semicolon => ";",
+            TokenKind::Period => ".",
+            TokenKind::Plus => "+",
+            TokenKind::Minus => "-",
+            TokenKind::Asterisk => "*",
+            TokenKind::Ampersand => "&",
+            TokenKind::Divide => "/",
+            TokenKind::Equal => "=",
+            TokenKind::Less => "<",
+            TokenKind::Greater => ">",
+            TokenKind::Not => "!",
+            TokenKind::NotEqual => "!=",
+            TokenKind::EqualEqual => "==",
+            TokenKind::LessEqual => "<=",
+            TokenKind::GreaterEqual => ">=",
+            TokenKind::And => "&&",
+            TokenKind::Or => "||",
+            TokenKind::Var => "var",
+            TokenKind::Val => "val",
+            TokenKind::Fun => "fun",
+            TokenKind::Struct => "struct",
+            TokenKind::Return => "return",
+            TokenKind::Extern => "extern",
+            TokenKind::If => "if",
+            TokenKind::While => "while",
+            TokenKind::For => "for",
+            TokenKind::In => "in",
+            TokenKind::By => "by",
+            TokenKind::Defer => "defer",
+            TokenKind::Sizeof => "sizeof",
+            TokenKind::Int => "int",
+            TokenKind::String => "string",
+            TokenKind::Bool => "bool",
+            TokenKind::Void => "void",
+            TokenKind::UInt => "UInt",
+            TokenKind::Int8 => "Int8",
+            TokenKind::UInt8 => "UInt8",
+            TokenKind::Int16 => "Int16",
+            TokenKind::UInt16 => "UInt16",
+            TokenKind::Int32 => "Int32",
+            TokenKind::UInt32 => "UInt32",
+            TokenKind::Int64 => "Int64",
+            TokenKind::UInt64 => "UInt64",
+            TokenKind::Float32 => "Float32",
+            TokenKind::Float64 => "Float64",
+            TokenKind::True => "true",
+            TokenKind::False => "false",
+            TokenKind::IntLiteral { text } => text,
+            TokenKind::Float32Literal { text } => text,
+            TokenKind::StringLiteral { text } => text,
+            TokenKind::Identifier { text } => text,
+            TokenKind::Eof => "EOF",
+            TokenKind::Error => "error",
+        };
+
+        f.write_str(str)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -139,7 +211,7 @@ impl Lexer {
             self.position.advance();
         }
 
-        self.position.advance();
+        self.position.newline();
     }
 
     fn handle_multi_line_comment(&mut self) {
@@ -154,7 +226,11 @@ impl Lexer {
                 open_count -= 1;
             }
 
-            self.position.advance();
+            if self.char() == '\n' {
+                self.position.newline();
+            } else {
+                self.position.advance();
+            }
         }
     }
 

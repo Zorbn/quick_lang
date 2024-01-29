@@ -267,11 +267,12 @@ pub const FLOAT64_INDEX: usize = 14;
 macro_rules! assert_token {
     ($self:ident, $token:expr, $start:expr, $end:expr) => {
         if *$self.token_kind() != $token {
-            $self.print_error(&format!(
-                "expected token {:?} but got token {:?}",
+            $self.error(&format!(
+                "expected \"{}\" but got \"{}\"",
                 $token,
                 $self.token_kind()
             ));
+            $self.position += 1;
 
             return $self.add_node(Node {
                 kind: NodeKind::Error,
@@ -284,7 +285,8 @@ macro_rules! assert_token {
 
 macro_rules! parse_error {
     ($self:ident, $message:expr, $start:expr, $end:expr) => {{
-        $self.print_error($message);
+        $self.error($message);
+        $self.position += 1;
 
         return $self.add_node(Node {
             kind: NodeKind::Error,
@@ -319,7 +321,7 @@ impl Parser {
             array_type_kinds: HashMap::new(),
             pointer_type_kinds: HashMap::new(),
             struct_type_kinds: HashMap::new(),
-            had_error: true,
+            had_error: false,
             position: 0,
         };
 
@@ -401,8 +403,7 @@ impl Parser {
         index
     }
 
-    // TODO: Rename to error().
-    fn print_error(&mut self, message: &str) {
+    fn error(&mut self, message: &str) {
         self.had_error = true;
         println!(
             "Syntax error at line {}, column {}: {}",
