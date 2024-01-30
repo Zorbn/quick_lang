@@ -63,7 +63,8 @@ fun main(): Int32 {
 
     {
         {
-            puts("in a block"); // TODO: Spanning strings like this across mutliple lines messes up future token line numbers.
+            puts("in
+            a block");
         }
     }
 

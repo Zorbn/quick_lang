@@ -629,22 +629,33 @@ impl Lexer {
                 '"' => {
                     self.position.advance();
                     let mut c = self.char();
+                    let mut had_error = false;
                     let start = self.position;
 
-                    while c != '"' {
-                        if c == '\0' {
-                            self.tokens.push(Token {
-                                kind: TokenKind::Error,
-                                start,
-                                end: self.position,
-                            });
-                            self.error("reached end of file during string literal");
-                            self.position.advance();
-                            continue;
+                    loop {
+                        match c {
+                            '\0' => {
+                                self.tokens.push(Token {
+                                    kind: TokenKind::Error,
+                                    start,
+                                    end: self.position,
+                                });
+                                self.error("reached end of file during string literal");
+                                self.position.advance();
+
+                                had_error = true;
+                                break;
+                            }
+                            '\"' => break,
+                            '\n' => self.position.newline(),
+                            _ => self.position.advance(),
                         }
 
-                        self.position.advance();
                         c = self.char();
+                    }
+
+                    if had_error {
+                        continue;
                     }
 
                     let end = self.position;
