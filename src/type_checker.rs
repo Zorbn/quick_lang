@@ -311,7 +311,14 @@ impl TypeChecker {
         }
 
         match op {
-            Op::Plus | Op::Minus | Op::Multiply | Op::Divide => {
+            Op::Plus
+            | Op::Minus
+            | Op::Multiply
+            | Op::Divide
+            | Op::PlusAssign
+            | Op::MinusAssign
+            | Op::MultiplyAssign
+            | Op::DivideAssign => {
                 if !TypeChecker::is_type_numeric(type_kind) {
                     type_error!(self, "expected arithmetic types");
                 }

@@ -15,7 +15,11 @@ pub enum Op {
     Multiply,
     Divide,
     Not,
-    Assignment,
+    Assign,
+    PlusAssign,
+    MinusAssign,
+    MultiplyAssign,
+    DivideAssign,
     Equal,
     NotEqual,
     Less,
@@ -870,7 +874,7 @@ impl Parser {
      * Inequality: <, <=, >, >=
      * Equality: ==, !=
      * Compound: &&, ||
-     * Assignment: =
+     * Assignment: =, +=, -=, /=, *=
      */
     fn expression(&mut self, allow_struct_literal: bool) -> usize {
         self.assignment(allow_struct_literal)
@@ -880,14 +884,23 @@ impl Parser {
         let start = self.token_start();
         let mut left = self.compound(allow_struct_literal);
 
-        while *self.token_kind() == TokenKind::Equal {
+        loop {
+            let op = match *self.token_kind() {
+                TokenKind::Equal => Op::Assign,
+                TokenKind::PlusEqual => Op::PlusAssign,
+                TokenKind::MinusEqual => Op::MinusAssign,
+                TokenKind::MultiplyEqual => Op::MultiplyAssign,
+                TokenKind::DivideEqual => Op::DivideAssign,
+                _ => break
+            };
+
             self.position += 1;
             let right = self.assignment(true);
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary {
                     left,
-                    op: Op::Assignment,
+                    op,
                     right,
                 },
                 start,
@@ -902,11 +915,11 @@ impl Parser {
         let start = self.token_start();
         let mut left = self.equality(allow_struct_literal);
 
-        while *self.token_kind() == TokenKind::And || *self.token_kind() == TokenKind::Or {
-            let op = if *self.token_kind() == TokenKind::And {
-                Op::And
-            } else {
-                Op::Or
+        loop {
+            let op = match *self.token_kind() {
+                TokenKind::And => Op::And,
+                TokenKind::Or => Op::Or,
+                _ => break,
             };
             self.position += 1;
 
@@ -926,13 +939,11 @@ impl Parser {
         let start = self.token_start();
         let mut left = self.inequality(allow_struct_literal);
 
-        while *self.token_kind() == TokenKind::EqualEqual
-            || *self.token_kind() == TokenKind::NotEqual
-        {
-            let op = if *self.token_kind() == TokenKind::EqualEqual {
-                Op::Equal
-            } else {
-                Op::NotEqual
+        loop {
+            let op = match *self.token_kind() {
+                TokenKind::EqualEqual => Op::Equal,
+                TokenKind::NotEqual => Op::NotEqual,
+                _ => break,
             };
             self.position += 1;
 
@@ -952,16 +963,13 @@ impl Parser {
         let start = self.token_start();
         let mut left = self.term(allow_struct_literal);
 
-        while *self.token_kind() == TokenKind::Less
-            || *self.token_kind() == TokenKind::LessEqual
-            || *self.token_kind() == TokenKind::Greater
-            || *self.token_kind() == TokenKind::GreaterEqual
-        {
+        loop {
             let op = match *self.token_kind() {
                 TokenKind::Less => Op::Less,
                 TokenKind::LessEqual => Op::LessEqual,
                 TokenKind::Greater => Op::Greater,
-                _ => Op::GreaterEqual,
+                TokenKind::GreaterEqual => Op::GreaterEqual,
+                _ => break
             };
             self.position += 1;
 
@@ -981,11 +989,11 @@ impl Parser {
         let start = self.token_start();
         let mut left = self.factor(allow_struct_literal);
 
-        while *self.token_kind() == TokenKind::Plus || *self.token_kind() == TokenKind::Minus {
-            let op = if *self.token_kind() == TokenKind::Plus {
-                Op::Plus
-            } else {
-                Op::Minus
+        loop {
+            let op = match *self.token_kind() {
+                TokenKind::Plus => Op::Plus,
+                TokenKind::Minus => Op::Minus,
+                _ => break,
             };
             self.position += 1;
 
@@ -1005,11 +1013,11 @@ impl Parser {
         let start = self.token_start();
         let mut left = self.unary_prefix(allow_struct_literal);
 
-        while *self.token_kind() == TokenKind::Asterisk || *self.token_kind() == TokenKind::Divide {
-            let op = if *self.token_kind() == TokenKind::Asterisk {
-                Op::Multiply
-            } else {
-                Op::Divide
+        loop {
+            let op = match *self.token_kind() {
+                TokenKind::Asterisk => Op::Multiply,
+                TokenKind::Divide => Op::Divide,
+                _ => break,
             };
             self.position += 1;
 

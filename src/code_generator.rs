@@ -579,7 +579,7 @@ impl CodeGenerator {
     }
 
     fn binary(&mut self, left: usize, op: Op, right: usize, type_kind: Option<usize>) {
-        if op == Op::Assignment {
+        if op == Op::Assign {
             let is_array = is_type_kind_array(&self.types, type_kind.unwrap());
 
             if is_array && !is_typed_expression_array_literal(&self.typed_nodes, left) {
@@ -927,9 +927,13 @@ impl CodeGenerator {
             Op::Minus => " - ",
             Op::Multiply => " * ",
             Op::Divide => " / ",
-            Op::Assignment => " = ",
+            Op::Assign => " = ",
             Op::And => " && ",
             Op::Or => " || ",
+            Op::PlusAssign => " += ",
+            Op::MinusAssign => " -= ",
+            Op::MultiplyAssign => " *= ",
+            Op::DivideAssign => " /= ",
             _ => panic!("Expected binary operator"),
         });
     }

@@ -20,6 +20,10 @@ pub enum TokenKind {
     Ampersand,
     Divide,
     Equal,
+    PlusEqual,
+    MinusEqual,
+    MultiplyEqual,
+    DivideEqual,
     Less,
     Greater,
     Not,
@@ -87,6 +91,10 @@ impl Display for TokenKind {
             TokenKind::Ampersand => "&",
             TokenKind::Divide => "/",
             TokenKind::Equal => "=",
+            TokenKind::PlusEqual => "+=",
+            TokenKind::MinusEqual => "-=",
+            TokenKind::MultiplyEqual => "*=",
+            TokenKind::DivideEqual => "/=",
             TokenKind::Less => "<",
             TokenKind::Greater => ">",
             TokenKind::Not => "!",
@@ -263,6 +271,22 @@ impl Lexer {
             }
 
             if self.try_string_to_token(">=", TokenKind::GreaterEqual) {
+                continue;
+            }
+
+            if self.try_string_to_token("+=", TokenKind::PlusEqual) {
+                continue;
+            }
+
+            if self.try_string_to_token("-=", TokenKind::MinusEqual) {
+                continue;
+            }
+
+            if self.try_string_to_token("*=", TokenKind::MultiplyEqual) {
+                continue;
+            }
+
+            if self.try_string_to_token("/=", TokenKind::DivideEqual) {
                 continue;
             }
 

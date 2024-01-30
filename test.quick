@@ -9,7 +9,7 @@ fun main(): Int32 {
 
     val a = 542 + 54578 / 3;
     var b: Int = a * 2;
-    val c = b = b / 4;
+    val c = b /= b / 4;
 
     var str: String = "hello world";
     puts(str);

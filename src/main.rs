@@ -34,7 +34,6 @@ mod types;
  * for elem in array {}
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Bitwise operations.
- * Compound assignment operators.
  * Add character types and literals.
  *
  * NOTES:
