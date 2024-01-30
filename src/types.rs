@@ -1,7 +1,34 @@
+use std::collections::HashMap;
+
 use crate::{
     parser::{NodeKind, TypeKind},
     type_checker::TypedNode,
 };
+
+pub fn add_type(types: &mut Vec<TypeKind>, type_kind: TypeKind) -> usize {
+    let index = types.len();
+    types.push(type_kind);
+    index
+}
+
+pub fn get_type_kind_as_pointer(
+    types: &mut Vec<TypeKind>,
+    pointer_type_kinds: &mut HashMap<usize, usize>,
+    type_kind: usize,
+) -> usize {
+    if let Some(index) = pointer_type_kinds.get(&type_kind) {
+        *index
+    } else {
+        let index = add_type(
+            types,
+            TypeKind::Pointer {
+                inner_type_kind: type_kind,
+            },
+        );
+        pointer_type_kinds.insert(type_kind, index);
+        index
+    }
+}
 
 pub fn is_type_kind_array(types: &[TypeKind], type_kind: usize) -> bool {
     let type_kind = &types[type_kind];
@@ -9,94 +36,12 @@ pub fn is_type_kind_array(types: &[TypeKind], type_kind: usize) -> bool {
     matches!(type_kind, TypeKind::Array { .. })
 }
 
-// Looks complicated, but is really just descending to the bottom of an expression to see if it represents a single array literal.
+// TODO: When we can tell between literals and variables in the type checker this shouldn't be needed.
 pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: usize) -> bool {
-    let TypedNode {
-        node_kind:
-            NodeKind::Expression {
-                comparison,
-                trailing_comparisons,
-            },
-        ..
-    } = &typed_nodes[expression]
-    else {
-        return false;
-    };
-
-    if trailing_comparisons.len() > 0 {
-        return false;
-    }
-
-    let TypedNode {
-        node_kind:
-            NodeKind::Comparision {
-                binary,
-                trailing_binary,
-            },
-        ..
-    } = &typed_nodes[*comparison]
-    else {
-        return false;
-    };
-
-    if trailing_binary.is_some() {
-        return false;
-    }
-
-    let TypedNode {
-        node_kind: NodeKind::Binary {
-            term,
-            trailing_terms,
-        },
-        ..
-    } = &typed_nodes[*binary]
-    else {
-        return false;
-    };
-
-    if trailing_terms.len() > 0 {
-        return false;
-    }
-
-    let TypedNode {
-        node_kind: NodeKind::Term {
-            unary,
-            trailing_unaries,
-        },
-        ..
-    } = &typed_nodes[*term]
-    else {
-        return false;
-    };
-
-    if trailing_unaries.len() > 0 {
-        return false;
-    }
-
-    let TypedNode {
-        node_kind: NodeKind::UnaryPrefix { op, primary },
-        ..
-    } = typed_nodes[*unary]
-    else {
-        return false;
-    };
-
-    if op.is_some() {
-        return false;
-    }
-
-    let TypedNode {
-        node_kind: NodeKind::Primary { inner },
-        ..
-    } = typed_nodes[primary]
-    else {
-        return false;
-    };
-
     let TypedNode {
         node_kind: NodeKind::ArrayLiteral { .. },
         ..
-    } = typed_nodes[inner]
+    } = typed_nodes[expression]
     else {
         return false;
     };

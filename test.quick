@@ -7,14 +7,14 @@ fun main(): Int32 {
     //     puts("defer in main");
     // }
 
-    val a: Int = 542 + 54578 / 3;
+    val a = 542 + 54578 / 3;
     var b: Int = a * 2;
-    b = b / 4;
+    val c = b = b / 4;
 
     var str: String = "hello world";
     puts(str);
 
-    var byte: UInt8 = 255;
+    var byte: UInt8 = 255 as UInt8;
     var bytePtr: UInt8* = &byte;
     var otherByte: UInt8 = *bytePtr;
 
@@ -28,7 +28,7 @@ fun main(): Int32 {
     */
     */
 
-    var heapPoint: Point* = malloc(sizeof Point);
+    var heapPoint: Point* = malloc(sizeof Point) as Point*;
     *heapPoint = Point { x: 5, y: 5 };
     free(heapPoint);
 
@@ -63,8 +63,7 @@ fun main(): Int32 {
 
     {
         {
-            puts("in a
-            block");
+            puts("in a block"); // TODO: Spanning strings like this across mutliple lines messes up future token line numbers.
         }
     }
 

@@ -242,7 +242,10 @@ impl Lexer {
 
     fn error(&mut self, message: &str) {
         self.had_error = true;
-        println!("Syntax error at line {}, column {}: {}", self.position.line, self.position.column, message);
+        println!(
+            "Syntax error at line {}, column {}: {}",
+            self.position.line, self.position.column, message
+        );
     }
 
     pub fn lex(&mut self) {
@@ -630,7 +633,11 @@ impl Lexer {
 
                     while c != '"' {
                         if c == '\0' {
-                            self.tokens.push(Token { kind: TokenKind::Error, start, end: self.position });
+                            self.tokens.push(Token {
+                                kind: TokenKind::Error,
+                                start,
+                                end: self.position,
+                            });
                             self.error("reached end of file during string literal");
                             self.position.advance();
                             continue;
@@ -651,10 +658,14 @@ impl Lexer {
                     self.position.advance();
                 }
                 _ => {
-                    self.tokens.push(Token { kind: TokenKind::Error, start: self.position, end: self.position });
+                    self.tokens.push(Token {
+                        kind: TokenKind::Error,
+                        start: self.position,
+                        end: self.position,
+                    });
                     self.error(&format!("unexpected character \"{}\"", self.char()));
                     self.position.advance();
-                },
+                }
             }
         }
     }

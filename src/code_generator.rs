@@ -3,9 +3,7 @@ use std::sync::Arc;
 use crate::{
     emitter::Emitter,
     emitter_stack::EmitterStack,
-    parser::{
-        NodeKind, Op, TypeKind,
-    },
+    parser::{NodeKind, Op, TypeKind},
     type_checker::TypedNode,
     types::{is_type_kind_array, is_typed_expression_array_literal},
 };
@@ -40,7 +38,9 @@ impl CodeGenerator {
         };
 
         code_generator.header_emitter.emitln("#include <string.h>");
-        code_generator.header_emitter.emitln("#include <inttypes.h>");
+        code_generator
+            .header_emitter
+            .emitln("#include <inttypes.h>");
         code_generator.body_emitters.push(1);
 
         code_generator
@@ -129,9 +129,53 @@ impl CodeGenerator {
                 type_kind,
             } => self.while_loop(expression, block, type_kind),
             TypedNode {
-                node_kind: NodeKind::ForLoop { iterator, op, from, to, by, block },
+                node_kind:
+                    NodeKind::ForLoop {
+                        iterator,
+                        op,
+                        from,
+                        to,
+                        by,
+                        block,
+                    },
                 type_kind,
             } => self.for_loop(iterator, op, from, to, by, block, type_kind),
+            TypedNode {
+                node_kind: NodeKind::Binary { left, op, right },
+                type_kind,
+            } => self.binary(left, op, right, type_kind),
+            TypedNode {
+                node_kind: NodeKind::UnaryPrefix { op, right },
+                type_kind,
+            } => self.unary_prefix(op, right, type_kind),
+            TypedNode {
+                node_kind: NodeKind::Call { left, args },
+                type_kind,
+            } => self.call(left, args, type_kind),
+            TypedNode {
+                node_kind: NodeKind::IndexAccess { left, expression },
+                type_kind,
+            } => self.index_access(left, expression, type_kind),
+            TypedNode {
+                node_kind:
+                    NodeKind::FieldAccess {
+                        left,
+                        field_identifier,
+                    },
+                type_kind,
+            } => self.field_access(left, field_identifier, type_kind),
+            TypedNode {
+                node_kind: NodeKind::Cast { left, type_name },
+                type_kind,
+            } => self.cast(left, type_name, type_kind),
+            TypedNode {
+                node_kind: NodeKind::Identifier { text },
+                type_kind,
+            } => self.identifier(text, type_kind),
+            TypedNode {
+                node_kind: NodeKind::FieldIdentifier { text },
+                type_kind,
+            } => self.field_identifier(text, type_kind),
             // TypedNode {
             //     node_kind:
             //         NodeKind::Expression {
@@ -288,7 +332,13 @@ impl CodeGenerator {
 
             self.gen_node(*function);
 
-            if matches!(self.typed_nodes[*function], TypedNode { node_kind: NodeKind::Function { .. }, .. }) {
+            if matches!(
+                self.typed_nodes[*function],
+                TypedNode {
+                    node_kind: NodeKind::Function { .. },
+                    ..
+                }
+            ) {
                 i += 1;
             }
         }
@@ -466,10 +516,20 @@ impl CodeGenerator {
         }
 
         let was_last_statement_return = if let Some(last_statement) = statements.last() {
-            let TypedNode { node_kind: NodeKind::Statement { inner }, .. } = self.typed_nodes[*last_statement] else {
+            let TypedNode {
+                node_kind: NodeKind::Statement { inner },
+                ..
+            } = self.typed_nodes[*last_statement]
+            else {
                 panic!("Last statement is not a statement");
             };
-            matches!(self.typed_nodes[inner], TypedNode { node_kind: NodeKind::ReturnStatement { .. }, .. })
+            matches!(
+                self.typed_nodes[inner],
+                TypedNode {
+                    node_kind: NodeKind::ReturnStatement { .. },
+                    ..
+                }
+            )
         } else {
             false
         };
@@ -497,7 +557,6 @@ impl CodeGenerator {
                 node_kind: NodeKind::Block { .. },
                 ..
             }
-
         );
 
         self.gen_node(inner);
@@ -543,27 +602,27 @@ impl CodeGenerator {
         }
     }
 
-    fn variable_assignment(
-        &mut self,
-        dereference_count: usize,
-        variable: usize,
-        expression: usize,
-        type_kind: Option<usize>,
-    ) {
-        for _ in 0..dereference_count {
-            self.body_emitters.top().body.emit("*");
-        }
-
-        let is_array = is_type_kind_array(&self.types, type_kind.unwrap());
-
-        if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
-            self.emit_memmove_expression_to_variable(variable, expression, type_kind.unwrap());
-        } else {
-            self.gen_node(variable);
-            self.body_emitters.top().body.emit(" = ");
-            self.gen_node(expression);
-        }
-    }
+    //     fn variable_assignment(
+    //         &mut self,
+    //         dereference_count: usize,
+    //         variable: usize,
+    //         expression: usize,
+    //         type_kind: Option<usize>,
+    //     ) {
+    //         for _ in 0..dereference_count {
+    //             self.body_emitters.top().body.emit("*");
+    //         }
+    //
+    //         let is_array = is_type_kind_array(&self.types, type_kind.unwrap());
+    //
+    //         if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
+    //             self.emit_memmove_expression_to_variable(variable, expression, type_kind.unwrap());
+    //         } else {
+    //             self.gen_node(variable);
+    //             self.body_emitters.top().body.emit(" = ");
+    //             self.gen_node(expression);
+    //         }
+    //     }
 
     fn return_statement(&mut self, expression: Option<usize>, type_kind: Option<usize>) {
         self.body_emitters.exiting_all_scopes();
@@ -622,7 +681,16 @@ impl CodeGenerator {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn for_loop(&mut self, iterator: String, op: Op, from: usize, to: usize, by: Option<usize>, block: usize, _type_kind: Option<usize>) {
+    fn for_loop(
+        &mut self,
+        iterator: String,
+        op: Op,
+        from: usize,
+        to: usize,
+        by: Option<usize>,
+        block: usize,
+        _type_kind: Option<usize>,
+    ) {
         self.body_emitters.top().body.emit("for (intptr_t ");
         self.body_emitters.top().body.emit(&iterator);
         self.body_emitters.top().body.emit(" = ");
@@ -630,7 +698,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("; ");
 
         self.body_emitters.top().body.emit(&iterator);
-        self.emit_comparison_op(op);
+        self.emit_binary_op(op);
         self.gen_node(to);
         self.body_emitters.top().body.emit("; ");
 
@@ -646,160 +714,253 @@ impl CodeGenerator {
         self.gen_node(block);
     }
 
-//     fn expression(
-//         &mut self,
-//         comparison: usize,
-//         trailing_comparisons: Arc<Vec<TrailingComparison>>,
-//         _type_kind: Option<usize>,
-//     ) {
-//         self.gen_node(comparison);
-//
-//         for trailing_comparison in trailing_comparisons.iter() {
-//             if trailing_comparison.op == Op::And {
-//                 self.body_emitters.top().body.emit(" && ");
-//             } else {
-//                 self.body_emitters.top().body.emit(" || ");
-//             }
-//
-//             self.gen_node(trailing_comparison.comparison);
-//         }
-//     }
-//
-//     fn comparison(
-//         &mut self,
-//         binary: usize,
-//         trailing_binary: Option<TrailingBinary>,
-//         _type_kind: Option<usize>,
-//     ) {
-//         self.gen_node(binary);
-//
-//         if let Some(trailing_binary) = trailing_binary {
-//             self.emit_comparison_op(trailing_binary.op);
-//             self.gen_node(trailing_binary.binary);
-//         }
-//     }
-//
-//     fn binary(
-//         &mut self,
-//         term: usize,
-//         trailing_terms: Arc<Vec<TrailingTerm>>,
-//         _type_kind: Option<usize>,
-//     ) {
-//         self.gen_node(term);
-//
-//         for trailing_term in trailing_terms.iter() {
-//             if trailing_term.op == Op::Plus {
-//                 self.body_emitters.top().body.emit(" + ");
-//             } else {
-//                 self.body_emitters.top().body.emit(" - ");
-//             }
-//
-//             self.gen_node(trailing_term.term);
-//         }
-//     }
-//
-//     fn term(
-//         &mut self,
-//         unary: usize,
-//         trailing_unaries: Arc<Vec<TrailingUnary>>,
-//         _type_kind: Option<usize>,
-//     ) {
-//         self.gen_node(unary);
-//
-//         for trailing_unary in trailing_unaries.iter() {
-//             if trailing_unary.op == Op::Multiply {
-//                 self.body_emitters.top().body.emit(" * ");
-//             } else {
-//                 self.body_emitters.top().body.emit(" / ");
-//             }
-//
-//             self.gen_node(trailing_unary.unary);
-//         }
-//     }
-//
-//     fn unary(&mut self, op: Option<Op>, primary: usize, _type_kind: Option<usize>) {
-//         match op {
-//             Some(Op::Plus) => self.body_emitters.top().body.emit("+"),
-//             Some(Op::Minus) => self.body_emitters.top().body.emit("-"),
-//             Some(Op::Reference) => self.body_emitters.top().body.emit("&"),
-//             Some(Op::Dereference) => self.body_emitters.top().body.emit("*"),
-//             None => {}
-//             _ => panic!("Unexpected operator in unary, {:?}", op),
-//         }
-//
-//         self.gen_node(primary);
-//     }
-//
-//     fn primary(&mut self, inner: usize, _type_kind: Option<usize>) {
-//         self.gen_node(inner);
-//     }
-//
-//     fn parenthesized_expression(&mut self, expression: usize, _type_kind: Option<usize>) {
-//         self.body_emitters.top().body.emit("(");
-//         self.gen_node(expression);
-//         self.body_emitters.top().body.emit(")");
-//     }
+    fn binary(&mut self, left: usize, op: Op, right: usize, type_kind: Option<usize>) {
+        if op == Op::Assignment {
+            let is_array = is_type_kind_array(&self.types, type_kind.unwrap());
 
-//     fn variable(&mut self, inner: usize, _type_kind: Option<usize>) {
-//         self.gen_node(inner);
-//     }
-//
-//     fn variable_name(&mut self, name: String, _type_kind: Option<usize>) {
-//         self.body_emitters.top().body.emit(&name);
-//     }
-//
-//     fn variable_index(&mut self, parent: usize, expression: usize, _type_kind: Option<usize>) {
-//         self.gen_node(parent);
-//         self.body_emitters.top().body.emit("[");
-//         self.gen_node(expression);
-//         self.body_emitters.top().body.emit("]");
-//     }
-//
-//     fn variable_field(&mut self, parent: usize, name: String, _type_kind: Option<usize>) {
-//         self.gen_node(parent);
-//
-//         let Some(parent_type) = self.typed_nodes[parent].type_kind else {
-//             panic!("Cannot access field of untyped variable");
-//         };
-//
-//         match &self.types[parent_type] {
-//             TypeKind::Struct { .. } => self.body_emitters.top().body.emit("."),
-//             TypeKind::Pointer { .. } => self.body_emitters.top().body.emit("->"),
-//             _ => panic!("Field access is only allowed on structs or pointers to structs")
-//         }
-//
-//         self.body_emitters.top().body.emit(&name);
-//     }
+            if is_array && !is_typed_expression_array_literal(&self.typed_nodes, left) {
+                self.emit_memmove_expression_to_variable(left, right, type_kind.unwrap());
+            } else {
+                self.gen_node(left);
+                self.body_emitters.top().body.emit(" = ");
+                self.gen_node(right);
+            }
 
-//     fn function_call(&mut self, name: String, args: Arc<Vec<usize>>, type_kind: Option<usize>) {
-//         self.body_emitters.top().body.emit(&name);
-//
-//         self.body_emitters.top().body.emit("(");
-//         for (i, arg) in args.iter().enumerate() {
-//             if i > 0 {
-//                 self.body_emitters.top().body.emit(", ");
-//             }
-//
-//             self.gen_node(*arg);
-//         }
-//
-//         if is_type_kind_array(&self.types, type_kind.unwrap()) {
-//             if args.len() > 0 {
-//                 self.body_emitters.top().body.emit(", ");
-//             }
-//
-//             let return_array_name = self.temp_variable_name("returnArray");
-//
-//             self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Top, false);
-//             self.body_emitters.top().top.emit(" ");
-//             self.body_emitters.top().top.emit(&return_array_name);
-//             self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Top, false);
-//             self.body_emitters.top().top.emitln(";");
-//
-//             self.body_emitters.top().body.emit(&return_array_name);
-//         }
-//         self.body_emitters.top().body.emit(")");
-//     }
+            return;
+        }
+
+        self.gen_node(left);
+        self.emit_binary_op(op);
+        self.gen_node(right);
+    }
+
+    fn unary_prefix(&mut self, op: Op, right: usize, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit(match op {
+            Op::Plus => "+",
+            Op::Minus => "-",
+            Op::Not => "!",
+            Op::Reference => "&",
+            Op::Dereference => "*",
+            _ => panic!("Expected unary operator"),
+        });
+
+        self.gen_node(right);
+    }
+
+    fn call(&mut self, left: usize, args: Arc<Vec<usize>>, type_kind: Option<usize>) {
+        self.gen_node(left);
+
+        self.body_emitters.top().body.emit("(");
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                self.body_emitters.top().body.emit(", ");
+            }
+
+            self.gen_node(*arg);
+        }
+
+        if is_type_kind_array(&self.types, type_kind.unwrap()) {
+            if args.len() > 0 {
+                self.body_emitters.top().body.emit(", ");
+            }
+
+            let return_array_name = self.temp_variable_name("returnArray");
+
+            self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Top, false);
+            self.body_emitters.top().top.emit(" ");
+            self.body_emitters.top().top.emit(&return_array_name);
+            self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Top, false);
+            self.body_emitters.top().top.emitln(";");
+
+            self.body_emitters.top().body.emit(&return_array_name);
+        }
+        self.body_emitters.top().body.emit(")");
+    }
+
+    fn index_access(&mut self, left: usize, expression: usize, _type_kind: Option<usize>) {
+        self.gen_node(left);
+        self.body_emitters.top().body.emit("[");
+        self.gen_node(expression);
+        self.body_emitters.top().body.emit("]");
+    }
+
+    fn field_access(&mut self, left: usize, identifier: usize, _type_kind: Option<usize>) {
+        self.gen_node(left);
+        self.body_emitters.top().body.emit(".");
+        self.gen_node(identifier);
+    }
+
+    fn cast(&mut self, left: usize, type_name: usize, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit("((");
+        self.emit_type_name_left(type_name, EmitterKind::Body, false);
+        self.emit_type_name_right(type_name, EmitterKind::Body, false);
+        self.body_emitters.top().body.emit(")");
+        self.gen_node(left);
+        self.body_emitters.top().body.emit(")");
+    }
+
+    fn identifier(&mut self, text: String, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit(&text);
+    }
+
+    fn field_identifier(&mut self, text: String, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit(&text);
+    }
+
+    //     fn expression(
+    //         &mut self,
+    //         comparison: usize,
+    //         trailing_comparisons: Arc<Vec<TrailingComparison>>,
+    //         _type_kind: Option<usize>,
+    //     ) {
+    //         self.gen_node(comparison);
+    //
+    //         for trailing_comparison in trailing_comparisons.iter() {
+    //             if trailing_comparison.op == Op::And {
+    //                 self.body_emitters.top().body.emit(" && ");
+    //             } else {
+    //                 self.body_emitters.top().body.emit(" || ");
+    //             }
+    //
+    //             self.gen_node(trailing_comparison.comparison);
+    //         }
+    //     }
+    //
+    //     fn comparison(
+    //         &mut self,
+    //         binary: usize,
+    //         trailing_binary: Option<TrailingBinary>,
+    //         _type_kind: Option<usize>,
+    //     ) {
+    //         self.gen_node(binary);
+    //
+    //         if let Some(trailing_binary) = trailing_binary {
+    //             self.emit_comparison_op(trailing_binary.op);
+    //             self.gen_node(trailing_binary.binary);
+    //         }
+    //     }
+    //
+    //     fn binary(
+    //         &mut self,
+    //         term: usize,
+    //         trailing_terms: Arc<Vec<TrailingTerm>>,
+    //         _type_kind: Option<usize>,
+    //     ) {
+    //         self.gen_node(term);
+    //
+    //         for trailing_term in trailing_terms.iter() {
+    //             if trailing_term.op == Op::Plus {
+    //                 self.body_emitters.top().body.emit(" + ");
+    //             } else {
+    //                 self.body_emitters.top().body.emit(" - ");
+    //             }
+    //
+    //             self.gen_node(trailing_term.term);
+    //         }
+    //     }
+    //
+    //     fn term(
+    //         &mut self,
+    //         unary: usize,
+    //         trailing_unaries: Arc<Vec<TrailingUnary>>,
+    //         _type_kind: Option<usize>,
+    //     ) {
+    //         self.gen_node(unary);
+    //
+    //         for trailing_unary in trailing_unaries.iter() {
+    //             if trailing_unary.op == Op::Multiply {
+    //                 self.body_emitters.top().body.emit(" * ");
+    //             } else {
+    //                 self.body_emitters.top().body.emit(" / ");
+    //             }
+    //
+    //             self.gen_node(trailing_unary.unary);
+    //         }
+    //     }
+    //
+    //     fn unary(&mut self, op: Option<Op>, primary: usize, _type_kind: Option<usize>) {
+    //         match op {
+    //             Some(Op::Plus) => self.body_emitters.top().body.emit("+"),
+    //             Some(Op::Minus) => self.body_emitters.top().body.emit("-"),
+    //             Some(Op::Reference) => self.body_emitters.top().body.emit("&"),
+    //             Some(Op::Dereference) => self.body_emitters.top().body.emit("*"),
+    //             None => {}
+    //             _ => panic!("Unexpected operator in unary, {:?}", op),
+    //         }
+    //
+    //         self.gen_node(primary);
+    //     }
+    //
+    //     fn primary(&mut self, inner: usize, _type_kind: Option<usize>) {
+    //         self.gen_node(inner);
+    //     }
+    //
+    //     fn parenthesized_expression(&mut self, expression: usize, _type_kind: Option<usize>) {
+    //         self.body_emitters.top().body.emit("(");
+    //         self.gen_node(expression);
+    //         self.body_emitters.top().body.emit(")");
+    //     }
+
+    //     fn variable(&mut self, inner: usize, _type_kind: Option<usize>) {
+    //         self.gen_node(inner);
+    //     }
+    //
+    //     fn variable_name(&mut self, name: String, _type_kind: Option<usize>) {
+    //         self.body_emitters.top().body.emit(&name);
+    //     }
+    //
+    //     fn variable_index(&mut self, parent: usize, expression: usize, _type_kind: Option<usize>) {
+    //         self.gen_node(parent);
+    //         self.body_emitters.top().body.emit("[");
+    //         self.gen_node(expression);
+    //         self.body_emitters.top().body.emit("]");
+    //     }
+    //
+    //     fn variable_field(&mut self, parent: usize, name: String, _type_kind: Option<usize>) {
+    //         self.gen_node(parent);
+    //
+    //         let Some(parent_type) = self.typed_nodes[parent].type_kind else {
+    //             panic!("Cannot access field of untyped variable");
+    //         };
+    //
+    //         match &self.types[parent_type] {
+    //             TypeKind::Struct { .. } => self.body_emitters.top().body.emit("."),
+    //             TypeKind::Pointer { .. } => self.body_emitters.top().body.emit("->"),
+    //             _ => panic!("Field access is only allowed on structs or pointers to structs")
+    //         }
+    //
+    //         self.body_emitters.top().body.emit(&name);
+    //     }
+
+    //     fn function_call(&mut self, name: String, args: Arc<Vec<usize>>, type_kind: Option<usize>) {
+    //         self.body_emitters.top().body.emit(&name);
+    //
+    //         self.body_emitters.top().body.emit("(");
+    //         for (i, arg) in args.iter().enumerate() {
+    //             if i > 0 {
+    //                 self.body_emitters.top().body.emit(", ");
+    //             }
+    //
+    //             self.gen_node(*arg);
+    //         }
+    //
+    //         if is_type_kind_array(&self.types, type_kind.unwrap()) {
+    //             if args.len() > 0 {
+    //                 self.body_emitters.top().body.emit(", ");
+    //             }
+    //
+    //             let return_array_name = self.temp_variable_name("returnArray");
+    //
+    //             self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Top, false);
+    //             self.body_emitters.top().top.emit(" ");
+    //             self.body_emitters.top().top.emit(&return_array_name);
+    //             self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Top, false);
+    //             self.body_emitters.top().top.emitln(";");
+    //
+    //             self.body_emitters.top().body.emit(&return_array_name);
+    //         }
+    //         self.body_emitters.top().body.emit(")");
+    //     }
 
     fn int_literal(&mut self, text: String, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&text);
@@ -852,12 +1013,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn struct_literal(
-        &mut self,
-        _name: String,
-        fields: Arc<Vec<usize>>,
-        type_kind: Option<usize>,
-    ) {
+    fn struct_literal(&mut self, _name: String, fields: Arc<Vec<usize>>, type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("(");
         if let Some(type_kind) = type_kind {
             self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
@@ -1011,7 +1167,7 @@ impl CodeGenerator {
             TypeKind::Struct { name, .. } => {
                 self.emitter(emitter_kind).emit("struct ");
                 self.emitter(emitter_kind).emit(&name)
-            },
+            }
             TypeKind::Array {
                 element_type_kind, ..
             } => {
@@ -1023,7 +1179,7 @@ impl CodeGenerator {
             TypeKind::Pointer { inner_type_kind } => {
                 self.emit_type_kind_left(inner_type_kind, emitter_kind, do_arrays_as_pointers);
                 self.emitter(emitter_kind).emit("*");
-            },
+            }
             TypeKind::PartialStruct => panic!("Can't emit partial struct"),
         };
     }
@@ -1050,16 +1206,23 @@ impl CodeGenerator {
         };
     }
 
-    fn emit_comparison_op(&mut self, op: Op) {
-        match op {
-            Op::Equals => self.body_emitters.top().body.emit(" == "),
-            Op::NotEqual => self.body_emitters.top().body.emit(" != "),
-            Op::Less => self.body_emitters.top().body.emit(" < "),
-            Op::Greater => self.body_emitters.top().body.emit(" > "),
-            Op::LessEqual => self.body_emitters.top().body.emit(" <= "),
-            Op::GreaterEqual => self.body_emitters.top().body.emit(" >= "),
-            _ => panic!("Expected comparison operator"),
-        }
+    fn emit_binary_op(&mut self, op: Op) {
+        self.body_emitters.top().body.emit(match op {
+            Op::Equals => " == ",
+            Op::NotEqual => " != ",
+            Op::Less => " < ",
+            Op::Greater => " > ",
+            Op::LessEqual => " <= ",
+            Op::GreaterEqual => " >= ",
+            Op::Plus => " + ",
+            Op::Minus => " - ",
+            Op::Multiply => " * ",
+            Op::Divide => " / ",
+            Op::Assignment => " = ",
+            Op::And => " && ",
+            Op::Or => " || ",
+            _ => panic!("Expected binary operator"),
+        });
     }
 
     fn emitter(&mut self, kind: EmitterKind) -> &mut Emitter {

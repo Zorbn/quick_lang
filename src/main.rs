@@ -1,4 +1,11 @@
-use std::{env, ffi::OsStr, fs, io::{self, Write}, path::Path, process::ExitCode};
+use std::{
+    env,
+    ffi::OsStr,
+    fs,
+    io::{self, stdout, Write},
+    path::Path,
+    process::{Command, ExitCode},
+};
 
 use crate::{
     code_generator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker,
@@ -10,31 +17,25 @@ mod emitter_stack;
 mod environment;
 mod lexer;
 mod parser;
+mod position;
 mod type_checker;
 mod types;
-mod position;
-
 
 /*
  * BIG TODOS:
- * Replace "variable" with full-on expressions to allow for stuff like: (*a.voidptr as struct*).field = 5; Make variable assignment statement an expression (like C, C#, etc).
- * Thin and simplify the AST by not generating unecessary nodes, ie: if you just have a primary, it should not be nested in an unnecessary unary, binary, expr, etc.
- *
  * Complete type checking.
- * Simple type inference.
  * Incremental and parallel compilation.
  * Default parameters.
  * Variadic arguments.
  * Generics.
  *
  * SMALL TODOS:
- * Add casting (probably after/alongside type checking).
  * Range syntax in integer array initializer? [1<10 by 3] [1<10 by 3; 100]
  * for elem in array {}
  * Unify most functionality of function_declaration_prototype and function_declaration, make them emit (void) if the function has no params.
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Bitwise operations.
- * Assignment operators.
+ * Compound assignment operators.
  * Reverse order that defered statements are executed in.
  *
  * NOTES:
@@ -60,7 +61,8 @@ fn main() -> ExitCode {
     let mut files = Vec::new();
     let path = Path::new(&args[1]);
     if is_path_source_file(path) {
-        files.push(fs::read_to_string(path).unwrap().chars().collect());
+        let chars = read_chars_at_path(path);
+        files.push(chars);
     } else if path.is_dir() {
         collect_source_files(path, &mut files).unwrap();
     }
@@ -68,8 +70,6 @@ fn main() -> ExitCode {
     if files.is_empty() {
         return ExitCode::SUCCESS;
     }
-
-    println!("~~ Lexing ~~");
 
     let mut file_lexers = Vec::with_capacity(files.len());
     let mut had_lexing_error = false;
@@ -85,8 +85,6 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    println!("~~ Parsing ~~");
-
     let mut parser = Parser::new();
 
     let mut start_indices = Vec::with_capacity(file_lexers.len());
@@ -98,8 +96,6 @@ fn main() -> ExitCode {
     if parser.had_error {
         return ExitCode::FAILURE;
     }
-
-    println!("~~ Checking ~~");
 
     let mut type_checker = TypeChecker::new(
         parser.nodes,
@@ -123,8 +119,6 @@ fn main() -> ExitCode {
         .map(|n| n.clone().unwrap())
         .collect();
 
-    println!("~~ Generating ~~");
-
     let mut code_generator = CodeGenerator::new(typed_nodes, type_checker.types);
     for start_index in &start_indices {
         code_generator.gen(*start_index);
@@ -147,8 +141,7 @@ fn main() -> ExitCode {
         .write_all(code_generator.body_emitters.string().as_bytes())
         .unwrap();
 
-    println!("~~~ Calling system compiler ~~~");
-    match std::process::Command::new("clang")
+    match Command::new("clang")
         .args(["out/out.c", "-o", "out/out.exe"])
         .output()
     {
@@ -156,7 +149,7 @@ fn main() -> ExitCode {
         Ok(output) => {
             if !output.stderr.is_empty() {
                 println!("System compiler error:\n");
-                std::io::stdout().write_all(&output.stderr).unwrap();
+                stdout().write_all(&output.stderr).unwrap();
             }
         }
     }
@@ -172,10 +165,11 @@ fn collect_source_files(directory: &Path, files: &mut Vec<Vec<char>>) -> io::Res
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
         let path = entry.path();
+
         if path.is_dir() {
             collect_source_files(&path, files)?;
         } else if is_path_source_file(&path) {
-            let chars = fs::read_to_string(path).unwrap().chars().collect();
+            let chars = read_chars_at_path(&path);
             files.push(chars);
         }
     }
@@ -185,4 +179,8 @@ fn collect_source_files(directory: &Path, files: &mut Vec<Vec<char>>) -> io::Res
 
 fn is_path_source_file(path: &Path) -> bool {
     path.extension().is_some() && path.extension().unwrap() == OsStr::new("quick")
+}
+
+fn read_chars_at_path(path: &Path) -> Vec<char> {
+    fs::read_to_string(path).unwrap().chars().collect()
 }

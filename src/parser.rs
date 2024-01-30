@@ -3,6 +3,7 @@ use std::{collections::HashMap, hash::Hash, sync::Arc};
 use crate::{
     lexer::{Token, TokenKind},
     position::Position,
+    types::{add_type, get_type_kind_as_pointer},
 };
 
 // TODO: Should strings be refcounted strs instead?
@@ -179,13 +180,16 @@ pub enum NodeKind {
     },
     FieldAccess {
         left: usize,
-        identifier: usize,
+        field_identifier: usize,
     },
     Cast {
         left: usize,
         type_name: usize,
     },
     Identifier {
+        text: String,
+    },
+    FieldIdentifier {
         text: String,
     },
     IntLiteral {
@@ -378,9 +382,7 @@ impl Parser {
     }
 
     fn add_type(&mut self, type_kind: TypeKind) -> usize {
-        let index = self.types.len();
-        self.types.push(type_kind);
-        index
+        add_type(&mut self.types, type_kind)
     }
 
     fn error(&mut self, message: &str) {
@@ -1133,11 +1135,14 @@ impl Parser {
                 TokenKind::Period => {
                     self.position += 1;
 
-                    let identifier = self.identifier();
-                    let end = self.node_end(identifier);
+                    let field_identifier = self.field_identifier();
+                    let end = self.node_end(field_identifier);
 
                     left = self.add_node(Node {
-                        kind: NodeKind::FieldAccess { left, identifier },
+                        kind: NodeKind::FieldAccess {
+                            left,
+                            field_identifier,
+                        },
                         start,
                         end,
                     });
@@ -1180,6 +1185,11 @@ impl Parser {
         let start = self.token_start();
         match *self.token_kind() {
             TokenKind::LParen => self.parenthesized_expression(),
+            TokenKind::Identifier { .. }
+                if allow_struct_literal && *self.peek_token_kind() == TokenKind::LBrace =>
+            {
+                self.struct_literal()
+            }
             TokenKind::Identifier { .. } => self.identifier(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
             TokenKind::Float32Literal { .. } => self.float32_literal(),
@@ -1216,9 +1226,25 @@ impl Parser {
         let TokenKind::Identifier { text } = self.token_kind().clone() else {
             parse_error!(self, "expected identifier", start, end);
         };
+        self.position += 1;
 
         self.add_node(Node {
             kind: NodeKind::Identifier { text },
+            start,
+            end,
+        })
+    }
+
+    fn field_identifier(&mut self) -> usize {
+        let start = self.token_start();
+        let end = self.token_end();
+        let TokenKind::Identifier { text } = self.token_kind().clone() else {
+            parse_error!(self, "expected field identifier", start, end);
+        };
+        self.position += 1;
+
+        self.add_node(Node {
+            kind: NodeKind::FieldIdentifier { text },
             start,
             end,
         })
@@ -1781,15 +1807,11 @@ impl Parser {
                 end = self.token_end();
                 self.position += 1;
 
-                type_kind = if let Some(index) = self.pointer_type_kinds.get(&type_kind) {
-                    *index
-                } else {
-                    let index = self.add_type(TypeKind::Pointer {
-                        inner_type_kind: type_kind,
-                    });
-                    self.pointer_type_kinds.insert(type_kind, index);
-                    index
-                };
+                type_kind = get_type_kind_as_pointer(
+                    &mut self.types,
+                    &mut self.pointer_type_kinds,
+                    type_kind,
+                );
 
                 continue;
             }

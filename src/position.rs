@@ -7,7 +7,11 @@ pub struct Position {
 
 impl Position {
     pub fn new() -> Self {
-        Self { index: 0, line: 1, column: 1 }
+        Self {
+            index: 0,
+            line: 1,
+            column: 1,
+        }
     }
 
     pub fn newline(&mut self) {
