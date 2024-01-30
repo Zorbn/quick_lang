@@ -4,7 +4,7 @@ use crate::{
     emitter::Emitter,
     emitter_stack::EmitterStack,
     parser::{
-        NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm, TrailingUnary, TypeKind,
+        NodeKind, Op, TypeKind,
     },
     type_checker::TypedNode,
     types::{is_type_kind_array, is_typed_expression_array_literal},
@@ -103,15 +103,15 @@ impl CodeGenerator {
                     },
                 type_kind,
             } => self.variable_declaration(is_mutable, name, type_name, expression, type_kind),
-            TypedNode {
-                node_kind:
-                    NodeKind::VariableAssignment {
-                        dereference_count,
-                        variable,
-                        expression,
-                    },
-                type_kind,
-            } => self.variable_assignment(dereference_count, variable, expression, type_kind),
+            // TypedNode {
+            //     node_kind:
+            //         NodeKind::VariableAssignment {
+            //             dereference_count,
+            //             variable,
+            //             expression,
+            //         },
+            //     type_kind,
+            // } => self.variable_assignment(dereference_count, variable, expression, type_kind),
             TypedNode {
                 node_kind: NodeKind::ReturnStatement { expression },
                 type_kind,
@@ -132,70 +132,70 @@ impl CodeGenerator {
                 node_kind: NodeKind::ForLoop { iterator, op, from, to, by, block },
                 type_kind,
             } => self.for_loop(iterator, op, from, to, by, block, type_kind),
-            TypedNode {
-                node_kind:
-                    NodeKind::Expression {
-                        comparison,
-                        trailing_comparisons,
-                    },
-                type_kind,
-            } => self.expression(comparison, trailing_comparisons, type_kind),
-            TypedNode {
-                node_kind:
-                    NodeKind::Comparision {
-                        binary,
-                        trailing_binary,
-                    },
-                type_kind,
-            } => self.comparison(binary, trailing_binary, type_kind),
-            TypedNode {
-                node_kind:
-                    NodeKind::Binary {
-                        term,
-                        trailing_terms,
-                    },
-                type_kind,
-            } => self.binary(term, trailing_terms, type_kind),
-            TypedNode {
-                node_kind:
-                    NodeKind::Term {
-                        unary,
-                        trailing_unaries,
-                    },
-                type_kind,
-            } => self.term(unary, trailing_unaries, type_kind),
-            TypedNode {
-                node_kind: NodeKind::Unary { op, primary },
-                type_kind,
-            } => self.unary(op, primary, type_kind),
-            TypedNode {
-                node_kind: NodeKind::Primary { inner },
-                type_kind,
-            } => self.primary(inner, type_kind),
-            TypedNode {
-                node_kind: NodeKind::ParenthesizedExpression { expression },
-                type_kind,
-            } => self.parenthesized_expression(expression, type_kind),
-            TypedNode {
-                node_kind: NodeKind::Variable { inner },
-                type_kind,
-            } => self.variable(inner, type_kind),
-            TypedNode {
-                node_kind: NodeKind::VariableName { name },
-                type_kind,
-            } => self.variable_name(name, type_kind),
-            TypedNode {
-                node_kind: NodeKind::VariableIndex { parent, expression },
-                type_kind,
-            } => self.variable_index(parent, expression, type_kind),
-            TypedNode {
-                node_kind: NodeKind::VariableField { parent, name },
-                type_kind,
-            } => self.variable_field(parent, name, type_kind),
-            TypedNode {
-                node_kind: NodeKind::FunctionCall { name, args },
-                type_kind,
-            } => self.function_call(name, args, type_kind),
+            // TypedNode {
+            //     node_kind:
+            //         NodeKind::Expression {
+            //             comparison,
+            //             trailing_comparisons,
+            //         },
+            //     type_kind,
+            // } => self.expression(comparison, trailing_comparisons, type_kind),
+            // TypedNode {
+            //     node_kind:
+            //         NodeKind::Comparision {
+            //             binary,
+            //             trailing_binary,
+            //         },
+            //     type_kind,
+            // } => self.comparison(binary, trailing_binary, type_kind),
+            // TypedNode {
+            //     node_kind:
+            //         NodeKind::Binary {
+            //             term,
+            //             trailing_terms,
+            //         },
+            //     type_kind,
+            // } => self.binary(term, trailing_terms, type_kind),
+            // TypedNode {
+            //     node_kind:
+            //         NodeKind::Term {
+            //             unary,
+            //             trailing_unaries,
+            //         },
+            //     type_kind,
+            // } => self.term(unary, trailing_unaries, type_kind),
+            // TypedNode {
+            //     node_kind: NodeKind::UnaryPrefix { op, primary },
+            //     type_kind,
+            // } => self.unary(op, primary, type_kind),
+            // TypedNode {
+            //     node_kind: NodeKind::Primary { inner },
+            //     type_kind,
+            // } => self.primary(inner, type_kind),
+            // TypedNode {
+            //     node_kind: NodeKind::ParenthesizedExpression { expression },
+            //     type_kind,
+            // } => self.parenthesized_expression(expression, type_kind),
+            // TypedNode {
+            //     node_kind: NodeKind::Variable { inner },
+            //     type_kind,
+            // } => self.variable(inner, type_kind),
+            // TypedNode {
+            //     node_kind: NodeKind::VariableName { name },
+            //     type_kind,
+            // } => self.variable_name(name, type_kind),
+            // TypedNode {
+            //     node_kind: NodeKind::VariableIndex { parent, expression },
+            //     type_kind,
+            // } => self.variable_index(parent, expression, type_kind),
+            // TypedNode {
+            //     node_kind: NodeKind::VariableField { parent, name },
+            //     type_kind,
+            // } => self.variable_field(parent, name, type_kind),
+            // TypedNode {
+            //     node_kind: NodeKind::FunctionCall { name, args },
+            //     type_kind,
+            // } => self.function_call(name, args, type_kind),
             TypedNode {
                 node_kind: NodeKind::IntLiteral { text },
                 type_kind,
@@ -646,160 +646,160 @@ impl CodeGenerator {
         self.gen_node(block);
     }
 
-    fn expression(
-        &mut self,
-        comparison: usize,
-        trailing_comparisons: Arc<Vec<TrailingComparison>>,
-        _type_kind: Option<usize>,
-    ) {
-        self.gen_node(comparison);
+//     fn expression(
+//         &mut self,
+//         comparison: usize,
+//         trailing_comparisons: Arc<Vec<TrailingComparison>>,
+//         _type_kind: Option<usize>,
+//     ) {
+//         self.gen_node(comparison);
+//
+//         for trailing_comparison in trailing_comparisons.iter() {
+//             if trailing_comparison.op == Op::And {
+//                 self.body_emitters.top().body.emit(" && ");
+//             } else {
+//                 self.body_emitters.top().body.emit(" || ");
+//             }
+//
+//             self.gen_node(trailing_comparison.comparison);
+//         }
+//     }
+//
+//     fn comparison(
+//         &mut self,
+//         binary: usize,
+//         trailing_binary: Option<TrailingBinary>,
+//         _type_kind: Option<usize>,
+//     ) {
+//         self.gen_node(binary);
+//
+//         if let Some(trailing_binary) = trailing_binary {
+//             self.emit_comparison_op(trailing_binary.op);
+//             self.gen_node(trailing_binary.binary);
+//         }
+//     }
+//
+//     fn binary(
+//         &mut self,
+//         term: usize,
+//         trailing_terms: Arc<Vec<TrailingTerm>>,
+//         _type_kind: Option<usize>,
+//     ) {
+//         self.gen_node(term);
+//
+//         for trailing_term in trailing_terms.iter() {
+//             if trailing_term.op == Op::Plus {
+//                 self.body_emitters.top().body.emit(" + ");
+//             } else {
+//                 self.body_emitters.top().body.emit(" - ");
+//             }
+//
+//             self.gen_node(trailing_term.term);
+//         }
+//     }
+//
+//     fn term(
+//         &mut self,
+//         unary: usize,
+//         trailing_unaries: Arc<Vec<TrailingUnary>>,
+//         _type_kind: Option<usize>,
+//     ) {
+//         self.gen_node(unary);
+//
+//         for trailing_unary in trailing_unaries.iter() {
+//             if trailing_unary.op == Op::Multiply {
+//                 self.body_emitters.top().body.emit(" * ");
+//             } else {
+//                 self.body_emitters.top().body.emit(" / ");
+//             }
+//
+//             self.gen_node(trailing_unary.unary);
+//         }
+//     }
+//
+//     fn unary(&mut self, op: Option<Op>, primary: usize, _type_kind: Option<usize>) {
+//         match op {
+//             Some(Op::Plus) => self.body_emitters.top().body.emit("+"),
+//             Some(Op::Minus) => self.body_emitters.top().body.emit("-"),
+//             Some(Op::Reference) => self.body_emitters.top().body.emit("&"),
+//             Some(Op::Dereference) => self.body_emitters.top().body.emit("*"),
+//             None => {}
+//             _ => panic!("Unexpected operator in unary, {:?}", op),
+//         }
+//
+//         self.gen_node(primary);
+//     }
+//
+//     fn primary(&mut self, inner: usize, _type_kind: Option<usize>) {
+//         self.gen_node(inner);
+//     }
+//
+//     fn parenthesized_expression(&mut self, expression: usize, _type_kind: Option<usize>) {
+//         self.body_emitters.top().body.emit("(");
+//         self.gen_node(expression);
+//         self.body_emitters.top().body.emit(")");
+//     }
 
-        for trailing_comparison in trailing_comparisons.iter() {
-            if trailing_comparison.op == Op::And {
-                self.body_emitters.top().body.emit(" && ");
-            } else {
-                self.body_emitters.top().body.emit(" || ");
-            }
+//     fn variable(&mut self, inner: usize, _type_kind: Option<usize>) {
+//         self.gen_node(inner);
+//     }
+//
+//     fn variable_name(&mut self, name: String, _type_kind: Option<usize>) {
+//         self.body_emitters.top().body.emit(&name);
+//     }
+//
+//     fn variable_index(&mut self, parent: usize, expression: usize, _type_kind: Option<usize>) {
+//         self.gen_node(parent);
+//         self.body_emitters.top().body.emit("[");
+//         self.gen_node(expression);
+//         self.body_emitters.top().body.emit("]");
+//     }
+//
+//     fn variable_field(&mut self, parent: usize, name: String, _type_kind: Option<usize>) {
+//         self.gen_node(parent);
+//
+//         let Some(parent_type) = self.typed_nodes[parent].type_kind else {
+//             panic!("Cannot access field of untyped variable");
+//         };
+//
+//         match &self.types[parent_type] {
+//             TypeKind::Struct { .. } => self.body_emitters.top().body.emit("."),
+//             TypeKind::Pointer { .. } => self.body_emitters.top().body.emit("->"),
+//             _ => panic!("Field access is only allowed on structs or pointers to structs")
+//         }
+//
+//         self.body_emitters.top().body.emit(&name);
+//     }
 
-            self.gen_node(trailing_comparison.comparison);
-        }
-    }
-
-    fn comparison(
-        &mut self,
-        binary: usize,
-        trailing_binary: Option<TrailingBinary>,
-        _type_kind: Option<usize>,
-    ) {
-        self.gen_node(binary);
-
-        if let Some(trailing_binary) = trailing_binary {
-            self.emit_comparison_op(trailing_binary.op);
-            self.gen_node(trailing_binary.binary);
-        }
-    }
-
-    fn binary(
-        &mut self,
-        term: usize,
-        trailing_terms: Arc<Vec<TrailingTerm>>,
-        _type_kind: Option<usize>,
-    ) {
-        self.gen_node(term);
-
-        for trailing_term in trailing_terms.iter() {
-            if trailing_term.op == Op::Plus {
-                self.body_emitters.top().body.emit(" + ");
-            } else {
-                self.body_emitters.top().body.emit(" - ");
-            }
-
-            self.gen_node(trailing_term.term);
-        }
-    }
-
-    fn term(
-        &mut self,
-        unary: usize,
-        trailing_unaries: Arc<Vec<TrailingUnary>>,
-        _type_kind: Option<usize>,
-    ) {
-        self.gen_node(unary);
-
-        for trailing_unary in trailing_unaries.iter() {
-            if trailing_unary.op == Op::Multiply {
-                self.body_emitters.top().body.emit(" * ");
-            } else {
-                self.body_emitters.top().body.emit(" / ");
-            }
-
-            self.gen_node(trailing_unary.unary);
-        }
-    }
-
-    fn unary(&mut self, op: Option<Op>, primary: usize, _type_kind: Option<usize>) {
-        match op {
-            Some(Op::Plus) => self.body_emitters.top().body.emit("+"),
-            Some(Op::Minus) => self.body_emitters.top().body.emit("-"),
-            Some(Op::Reference) => self.body_emitters.top().body.emit("&"),
-            Some(Op::Dereference) => self.body_emitters.top().body.emit("*"),
-            None => {}
-            _ => panic!("Unexpected operator in unary, {:?}", op),
-        }
-
-        self.gen_node(primary);
-    }
-
-    fn primary(&mut self, inner: usize, _type_kind: Option<usize>) {
-        self.gen_node(inner);
-    }
-
-    fn parenthesized_expression(&mut self, expression: usize, _type_kind: Option<usize>) {
-        self.body_emitters.top().body.emit("(");
-        self.gen_node(expression);
-        self.body_emitters.top().body.emit(")");
-    }
-
-    fn variable(&mut self, inner: usize, _type_kind: Option<usize>) {
-        self.gen_node(inner);
-    }
-
-    fn variable_name(&mut self, name: String, _type_kind: Option<usize>) {
-        self.body_emitters.top().body.emit(&name);
-    }
-
-    fn variable_index(&mut self, parent: usize, expression: usize, _type_kind: Option<usize>) {
-        self.gen_node(parent);
-        self.body_emitters.top().body.emit("[");
-        self.gen_node(expression);
-        self.body_emitters.top().body.emit("]");
-    }
-
-    fn variable_field(&mut self, parent: usize, name: String, _type_kind: Option<usize>) {
-        self.gen_node(parent);
-
-        let Some(parent_type) = self.typed_nodes[parent].type_kind else {
-            panic!("Cannot access field of untyped variable");
-        };
-
-        match &self.types[parent_type] {
-            TypeKind::Struct { .. } => self.body_emitters.top().body.emit("."),
-            TypeKind::Pointer { .. } => self.body_emitters.top().body.emit("->"),
-            _ => panic!("Field access is only allowed on structs or pointers to structs")
-        }
-
-        self.body_emitters.top().body.emit(&name);
-    }
-
-    fn function_call(&mut self, name: String, args: Arc<Vec<usize>>, type_kind: Option<usize>) {
-        self.body_emitters.top().body.emit(&name);
-
-        self.body_emitters.top().body.emit("(");
-        for (i, arg) in args.iter().enumerate() {
-            if i > 0 {
-                self.body_emitters.top().body.emit(", ");
-            }
-
-            self.gen_node(*arg);
-        }
-
-        if is_type_kind_array(&self.types, type_kind.unwrap()) {
-            if args.len() > 0 {
-                self.body_emitters.top().body.emit(", ");
-            }
-
-            let return_array_name = self.temp_variable_name("returnArray");
-
-            self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Top, false);
-            self.body_emitters.top().top.emit(" ");
-            self.body_emitters.top().top.emit(&return_array_name);
-            self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Top, false);
-            self.body_emitters.top().top.emitln(";");
-
-            self.body_emitters.top().body.emit(&return_array_name);
-        }
-        self.body_emitters.top().body.emit(")");
-    }
+//     fn function_call(&mut self, name: String, args: Arc<Vec<usize>>, type_kind: Option<usize>) {
+//         self.body_emitters.top().body.emit(&name);
+//
+//         self.body_emitters.top().body.emit("(");
+//         for (i, arg) in args.iter().enumerate() {
+//             if i > 0 {
+//                 self.body_emitters.top().body.emit(", ");
+//             }
+//
+//             self.gen_node(*arg);
+//         }
+//
+//         if is_type_kind_array(&self.types, type_kind.unwrap()) {
+//             if args.len() > 0 {
+//                 self.body_emitters.top().body.emit(", ");
+//             }
+//
+//             let return_array_name = self.temp_variable_name("returnArray");
+//
+//             self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Top, false);
+//             self.body_emitters.top().top.emit(" ");
+//             self.body_emitters.top().top.emit(&return_array_name);
+//             self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Top, false);
+//             self.body_emitters.top().top.emitln(";");
+//
+//             self.body_emitters.top().body.emit(&return_array_name);
+//         }
+//         self.body_emitters.top().body.emit(")");
+//     }
 
     fn int_literal(&mut self, text: String, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&text);
@@ -1052,7 +1052,7 @@ impl CodeGenerator {
 
     fn emit_comparison_op(&mut self, op: Op) {
         match op {
-            Op::EqualEqual => self.body_emitters.top().body.emit(" == "),
+            Op::Equals => self.body_emitters.top().body.emit(" == "),
             Op::NotEqual => self.body_emitters.top().body.emit(" != "),
             Op::Less => self.body_emitters.top().body.emit(" < "),
             Op::Greater => self.body_emitters.top().body.emit(" > "),

@@ -74,7 +74,7 @@ pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: 
     }
 
     let TypedNode {
-        node_kind: NodeKind::Unary { op, primary },
+        node_kind: NodeKind::UnaryPrefix { op, primary },
         ..
     } = typed_nodes[*unary]
     else {

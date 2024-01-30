@@ -40,6 +40,7 @@ pub enum TokenKind {
     For,
     In,
     By,
+    As,
     Defer,
     Sizeof,
     Int,
@@ -106,6 +107,7 @@ impl Display for TokenKind {
             TokenKind::For => "for",
             TokenKind::In => "in",
             TokenKind::By => "by",
+            TokenKind::As => "as",
             TokenKind::Defer => "defer",
             TokenKind::Sizeof => "sizeof",
             TokenKind::Int => "int",
@@ -320,6 +322,10 @@ impl Lexer {
             }
 
             if self.try_string_to_token("by", TokenKind::By) {
+                continue;
+            }
+
+            if self.try_string_to_token("as", TokenKind::As) {
                 continue;
             }
 

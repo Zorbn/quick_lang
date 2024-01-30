@@ -14,7 +14,9 @@ pub enum Op {
     Multiply,
     Divide,
     Not,
-    EqualEqual,
+    Assignment,
+    // TODO: Rename Equals to Equal?
+    Equals,
     NotEqual,
     Less,
     Greater,
@@ -24,30 +26,6 @@ pub enum Op {
     Or,
     Reference,
     Dereference,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct TrailingComparison {
-    pub op: Op,
-    pub comparison: usize,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct TrailingBinary {
-    pub op: Op,
-    pub binary: usize,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct TrailingTerm {
-    pub op: Op,
-    pub term: usize,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct TrailingUnary {
-    pub op: Op,
-    pub unary: usize,
 }
 
 #[derive(Debug)]
@@ -137,11 +115,6 @@ pub enum NodeKind {
         type_name: Option<usize>,
         expression: usize,
     },
-    VariableAssignment {
-        dereference_count: usize,
-        variable: usize,
-        expression: usize,
-    },
     ReturnStatement {
         expression: Option<usize>,
     },
@@ -164,49 +137,56 @@ pub enum NodeKind {
         by: Option<usize>,
         block: usize,
     },
-    Expression {
-        comparison: usize,
-        trailing_comparisons: Arc<Vec<TrailingComparison>>,
-    },
-    Comparision {
-        binary: usize,
-        trailing_binary: Option<TrailingBinary>,
-    },
+    // Expression {
+    //     comparison: usize,
+    //     trailing_comparisons: Arc<Vec<TrailingComparison>>,
+    // },
+    // Comparision {
+    //     binary: usize,
+    //     trailing_binary: Option<TrailingBinary>,
+    // },
+    // Binary {
+    //     term: usize,
+    //     trailing_terms: Arc<Vec<TrailingTerm>>,
+    // },
+    // Term {
+    //     unary: usize,
+    //     trailing_unaries: Arc<Vec<TrailingUnary>>,
+    // },
+    // Unary {
+    //     op: Option<Op>,
+    //     suffix: usize,
+    // },
+    // Primary {
+    //     inner: usize,
+    // },
     Binary {
-        term: usize,
-        trailing_terms: Arc<Vec<TrailingTerm>>,
+        left: usize,
+        op: Op,
+        right: usize,
     },
-    Term {
-        unary: usize,
-        trailing_unaries: Arc<Vec<TrailingUnary>>,
+    UnaryPrefix {
+        op: Op,
+        right: usize,
     },
-    Unary {
-        op: Option<Op>,
-        primary: usize,
-    },
-    Primary {
-        inner: usize,
-    },
-    ParenthesizedExpression {
-        expression: usize,
-    },
-    Variable {
-        inner: usize,
-    },
-    VariableName {
-        name: String,
-    },
-    VariableIndex {
-        parent: usize,
-        expression: usize,
-    },
-    VariableField {
-        parent: usize,
-        name: String,
-    },
-    FunctionCall {
-        name: String,
+    Call {
+        left: usize,
         args: Arc<Vec<usize>>,
+    },
+    IndexAccess {
+        left: usize,
+        expression: usize,
+    },
+    FieldAccess {
+        left: usize,
+        identifier: usize,
+    },
+    Cast {
+        left: usize,
+        type_name: usize,
+    },
+    Identifier {
+        text: String,
     },
     IntLiteral {
         text: String,
@@ -699,16 +679,13 @@ impl Parser {
 
         let inner = match self.token_kind() {
             TokenKind::Var | TokenKind::Val => self.variable_declaration(),
-            TokenKind::Identifier { .. } if *self.peek_token_kind() == TokenKind::LParen => {
-                self.function_call()
-            }
             TokenKind::Return => self.return_statement(),
             TokenKind::Defer => self.defer_statement(),
             TokenKind::If => self.if_statement(),
             TokenKind::While => self.while_loop(),
             TokenKind::For => self.for_loop(),
             TokenKind::LBrace => self.block(),
-            _ => self.variable_assignment(),
+            _ => self.expression(true),
         };
         let mut end = self.node_end(inner);
 
@@ -730,16 +707,25 @@ impl Parser {
         let is_mutable = match self.token_kind() {
             TokenKind::Var => true,
             TokenKind::Val => false,
-            _ => parse_error!(self, "expected var or val keyword in declaration", start, self.token_end()),
+            _ => parse_error!(
+                self,
+                "expected var or val keyword in declaration",
+                start,
+                self.token_end()
+            ),
         };
         self.position += 1;
 
         let name = match self.token_kind() {
             TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(self, "expected variable name in declaration", start, self.token_end()),
+            _ => parse_error!(
+                self,
+                "expected variable name in declaration",
+                start,
+                self.token_end()
+            ),
         };
         self.position += 1;
-
 
         let type_name = if *self.token_kind() == TokenKind::Colon {
             self.position += 1;
@@ -766,32 +752,32 @@ impl Parser {
         })
     }
 
-    fn variable_assignment(&mut self) -> usize {
-        let start = self.token_start();
-        let mut dereference_count = 0;
-        while *self.token_kind() == TokenKind::Asterisk {
-            dereference_count += 1;
-            self.position += 1;
-        }
-
-        let variable = self.variable();
-
-        assert_token!(self, TokenKind::Equal, start, self.token_end());
-        self.position += 1;
-
-        let expression = self.expression(true);
-        let end = self.node_end(expression);
-
-        self.add_node(Node {
-            kind: NodeKind::VariableAssignment {
-                dereference_count,
-                variable,
-                expression,
-            },
-            start,
-            end,
-        })
-    }
+    //     fn variable_assignment(&mut self) -> usize {
+    //         let start = self.token_start();
+    //         let mut dereference_count = 0;
+    //         while *self.token_kind() == TokenKind::Asterisk {
+    //             dereference_count += 1;
+    //             self.position += 1;
+    //         }
+    //
+    //         let variable = self.variable();
+    //
+    //         assert_token!(self, TokenKind::Equal, start, self.token_end());
+    //         self.position += 1;
+    //
+    //         let expression = self.expression(true);
+    //         let end = self.node_end(expression);
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::VariableAssignment {
+    //                 dereference_count,
+    //                 variable,
+    //                 expression,
+    //             },
+    //             start,
+    //             end,
+    //         })
+    //     }
 
     fn return_statement(&mut self) -> usize {
         let start = self.token_start();
@@ -875,25 +861,30 @@ impl Parser {
         assert_token!(self, TokenKind::In, start, self.token_end());
         self.position += 1;
 
-        let from = self.binary(true);
+        let from = self.term(true);
 
         let op = match *self.token_kind() {
             TokenKind::Less => Op::Less,
             TokenKind::LessEqual => Op::LessEqual,
             TokenKind::Greater => Op::Greater,
             TokenKind::GreaterEqual => Op::GreaterEqual,
-            _ => parse_error!(self, "expected comparison operator", start, self.token_end()),
+            _ => parse_error!(
+                self,
+                "expected comparison operator",
+                start,
+                self.token_end()
+            ),
         };
         self.position += 1;
 
-        let to = self.binary(true);
+        let to = self.term(true);
 
         let mut by = None;
 
         if *self.token_kind() == TokenKind::By {
             self.position += 1;
 
-            by = Some(self.binary(true));
+            by = Some(self.term(true));
         }
 
         let block = self.block();
@@ -913,11 +904,52 @@ impl Parser {
         })
     }
 
+    /*
+     * Precedence (highest to lowest):
+     *
+     * Primary: Literals, identifiers, parenthesized expressions
+     *
+     * (Nestable, eg. *&pointer)
+     * UnarySuffix: [], (), ., as
+     * UnaryPrefix: *, &, !, +, -
+     *
+     * (Chainable, eg. a * b / c)
+     * Factor: *, /
+     * Term: +, -
+     * Inequality: <, <=, >, >=
+     * Equality: ==, !=
+     * Compound: &&, ||
+     * Assignment: =
+     */
     fn expression(&mut self, allow_struct_literal: bool) -> usize {
+        self.assignment(allow_struct_literal)
+    }
+
+    fn assignment(&mut self, allow_struct_literal: bool) -> usize {
         let start = self.token_start();
-        let comparison = self.comparison(allow_struct_literal);
-        let mut end = self.node_end(comparison);
-        let mut trailing_comparisons = Vec::new();
+        let mut left = self.compound(allow_struct_literal);
+
+        while *self.token_kind() == TokenKind::Equal {
+            self.position += 1;
+            let right = self.assignment(true);
+            let end = self.node_end(right);
+            left = self.add_node(Node {
+                kind: NodeKind::Binary {
+                    left,
+                    op: Op::Assignment,
+                    right,
+                },
+                start,
+                end,
+            })
+        }
+
+        left
+    }
+
+    fn compound(&mut self, allow_struct_literal: bool) -> usize {
+        let start = self.token_start();
+        let mut left = self.equality(allow_struct_literal);
 
         while *self.token_kind() == TokenKind::And || *self.token_kind() == TokenKind::Or {
             let op = if *self.token_kind() == TokenKind::And {
@@ -927,59 +959,76 @@ impl Parser {
             };
             self.position += 1;
 
-            let comparison = self.comparison(true);
-            end = self.node_end(comparison);
-            trailing_comparisons.push(TrailingComparison { op, comparison });
+            let right = self.compound(true);
+            let end = self.node_end(right);
+            left = self.add_node(Node {
+                kind: NodeKind::Binary { left, op, right },
+                start,
+                end,
+            })
         }
 
-        self.add_node(Node {
-            kind: NodeKind::Expression {
-                comparison,
-                trailing_comparisons: Arc::new(trailing_comparisons),
-            },
-            start,
-            end,
-        })
+        left
     }
 
-    fn comparison(&mut self, allow_struct_literal: bool) -> usize {
+    fn equality(&mut self, allow_struct_literal: bool) -> usize {
         let start = self.token_start();
-        let binary = self.binary(allow_struct_literal);
-        let mut end = self.node_end(binary);
-        let mut trailing_binary = None;
+        let mut left = self.inequality(allow_struct_literal);
 
-        let op = match *self.token_kind() {
-            TokenKind::Less => Some(Op::Less),
-            TokenKind::Greater => Some(Op::Greater),
-            TokenKind::EqualEqual => Some(Op::EqualEqual),
-            TokenKind::NotEqual => Some(Op::NotEqual),
-            TokenKind::LessEqual => Some(Op::LessEqual),
-            TokenKind::GreaterEqual => Some(Op::GreaterEqual),
-            _ => None,
-        };
-
-        if let Some(op) = op {
+        while *self.token_kind() == TokenKind::EqualEqual
+            || *self.token_kind() == TokenKind::NotEqual
+        {
+            let op = if *self.token_kind() == TokenKind::EqualEqual {
+                Op::Equals
+            } else {
+                Op::NotEqual
+            };
             self.position += 1;
-            let binary = self.binary(true);
-            end = self.node_end(binary);
-            trailing_binary = Some(TrailingBinary { op, binary });
+
+            let right = self.equality(true);
+            let end = self.node_end(right);
+            left = self.add_node(Node {
+                kind: NodeKind::Binary { left, op, right },
+                start,
+                end,
+            })
         }
 
-        self.add_node(Node {
-            kind: NodeKind::Comparision {
-                binary,
-                trailing_binary,
-            },
-            start,
-            end,
-        })
+        left
     }
 
-    fn binary(&mut self, allow_struct_literal: bool) -> usize {
+    fn inequality(&mut self, allow_struct_literal: bool) -> usize {
         let start = self.token_start();
-        let term = self.term(allow_struct_literal);
-        let mut end = self.node_end(term);
-        let mut trailing_terms = Vec::new();
+        let mut left = self.term(allow_struct_literal);
+
+        while *self.token_kind() == TokenKind::Less
+            || *self.token_kind() == TokenKind::LessEqual
+            || *self.token_kind() == TokenKind::Greater
+            || *self.token_kind() == TokenKind::GreaterEqual
+        {
+            let op = match *self.token_kind() {
+                TokenKind::Less => Op::Less,
+                TokenKind::LessEqual => Op::LessEqual,
+                TokenKind::Greater => Op::Greater,
+                _ => Op::GreaterEqual,
+            };
+            self.position += 1;
+
+            let right = self.inequality(true);
+            let end = self.node_end(right);
+            left = self.add_node(Node {
+                kind: NodeKind::Binary { left, op, right },
+                start,
+                end,
+            })
+        }
+
+        left
+    }
+
+    fn term(&mut self, allow_struct_literal: bool) -> usize {
+        let start = self.token_start();
+        let mut left = self.factor(allow_struct_literal);
 
         while *self.token_kind() == TokenKind::Plus || *self.token_kind() == TokenKind::Minus {
             let op = if *self.token_kind() == TokenKind::Plus {
@@ -989,26 +1038,21 @@ impl Parser {
             };
             self.position += 1;
 
-            let term = self.term(true);
-            end = self.node_end(term);
-            trailing_terms.push(TrailingTerm { op, term });
+            let right = self.term(true);
+            let end = self.node_end(right);
+            left = self.add_node(Node {
+                kind: NodeKind::Binary { left, op, right },
+                start,
+                end,
+            })
         }
 
-        self.add_node(Node {
-            kind: NodeKind::Binary {
-                term,
-                trailing_terms: Arc::new(trailing_terms),
-            },
-            start,
-            end,
-        })
+        left
     }
 
-    fn term(&mut self, allow_struct_literal: bool) -> usize {
+    fn factor(&mut self, allow_struct_literal: bool) -> usize {
         let start = self.token_start();
-        let unary = self.unary(allow_struct_literal);
-        let mut end = self.node_end(unary);
-        let mut trailing_unaries = Vec::new();
+        let mut left = self.unary_prefix(allow_struct_literal);
 
         while *self.token_kind() == TokenKind::Asterisk || *self.token_kind() == TokenKind::Divide {
             let op = if *self.token_kind() == TokenKind::Asterisk {
@@ -1018,85 +1062,138 @@ impl Parser {
             };
             self.position += 1;
 
-            let unary = self.unary(true);
-            end = self.node_end(unary);
-            trailing_unaries.push(TrailingUnary { op, unary });
+            let right = self.factor(true);
+            let end = self.node_end(right);
+            left = self.add_node(Node {
+                kind: NodeKind::Binary { left, op, right },
+                start,
+                end,
+            })
         }
 
+        left
+    }
+
+    fn unary_prefix(&mut self, allow_struct_literal: bool) -> usize {
+        let start = self.token_start();
+        let op = match *self.token_kind() {
+            TokenKind::Asterisk => Op::Dereference,
+            TokenKind::Ampersand => Op::Reference,
+            TokenKind::Not => Op::Not,
+            TokenKind::Plus => Op::Plus,
+            TokenKind::Minus => Op::Minus,
+            _ => return self.unary_suffix(allow_struct_literal),
+        };
+        self.position += 1;
+
+        let right = self.unary_prefix(true);
+        let end = self.node_end(right);
         self.add_node(Node {
-            kind: NodeKind::Term {
-                unary,
-                trailing_unaries: Arc::new(trailing_unaries),
-            },
+            kind: NodeKind::UnaryPrefix { op, right },
             start,
             end,
         })
     }
 
-    fn unary(&mut self, allow_struct_literal: bool) -> usize {
+    fn unary_suffix(&mut self, allow_struct_literal: bool) -> usize {
         let start = self.token_start();
-        let op = match *self.token_kind() {
-            TokenKind::Plus => {
-                self.position += 1;
-                Some(Op::Plus)
-            }
-            TokenKind::Minus => {
-                self.position += 1;
-                Some(Op::Minus)
-            }
-            TokenKind::Not => {
-                self.position += 1;
-                Some(Op::Not)
-            }
-            TokenKind::Ampersand => {
-                self.position += 1;
-                Some(Op::Reference)
-            }
-            TokenKind::Asterisk => {
-                self.position += 1;
-                Some(Op::Dereference)
-            }
-            _ => None,
-        };
+        let mut left = self.primary(allow_struct_literal);
 
-        let primary = self.primary(allow_struct_literal);
-        let end = self.node_end(primary);
+        loop {
+            match *self.token_kind() {
+                TokenKind::LParen => {
+                    self.position += 1;
 
-        self.add_node(Node {
-            kind: NodeKind::Unary { op, primary },
-            start,
-            end,
-        })
+                    let mut args = Vec::new();
+
+                    while *self.token_kind() != TokenKind::RParen {
+                        args.push(self.expression(true));
+
+                        if *self.token_kind() != TokenKind::Comma {
+                            break;
+                        }
+
+                        assert_token!(self, TokenKind::Comma, start, self.token_end());
+                        self.position += 1;
+                    }
+
+                    let end = self.token_end();
+                    assert_token!(self, TokenKind::RParen, start, end);
+                    self.position += 1;
+
+                    left = self.add_node(Node {
+                        kind: NodeKind::Call {
+                            left,
+                            args: Arc::new(args),
+                        },
+                        start,
+                        end,
+                    });
+                }
+                TokenKind::Period => {
+                    self.position += 1;
+
+                    let identifier = self.identifier();
+                    let end = self.node_end(identifier);
+
+                    left = self.add_node(Node {
+                        kind: NodeKind::FieldAccess { left, identifier },
+                        start,
+                        end,
+                    });
+                }
+                TokenKind::LBracket => {
+                    self.position += 1;
+
+                    let expression = self.expression(true);
+
+                    let end = self.token_end();
+                    assert_token!(self, TokenKind::RBracket, start, end);
+                    self.position += 1;
+
+                    left = self.add_node(Node {
+                        kind: NodeKind::IndexAccess { left, expression },
+                        start,
+                        end,
+                    });
+                }
+                TokenKind::As => {
+                    self.position += 1;
+
+                    let type_name = self.type_name();
+                    let end = self.node_end(type_name);
+
+                    left = self.add_node(Node {
+                        kind: NodeKind::Cast { left, type_name },
+                        start,
+                        end,
+                    });
+                }
+                _ => break,
+            }
+        }
+
+        left
     }
 
     fn primary(&mut self, allow_struct_literal: bool) -> usize {
         let start = self.token_start();
-        let inner = match *self.token_kind() {
+        match *self.token_kind() {
             TokenKind::LParen => self.parenthesized_expression(),
-            TokenKind::Identifier { .. } if *self.peek_token_kind() == TokenKind::LParen => {
-                self.function_call()
-            }
-            TokenKind::Identifier { .. }
-                if allow_struct_literal && *self.peek_token_kind() == TokenKind::LBrace =>
-            {
-                self.struct_literal()
-            }
-            TokenKind::Identifier { .. } => self.variable(),
+            TokenKind::Identifier { .. } => self.identifier(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
             TokenKind::Float32Literal { .. } => self.float32_literal(),
             TokenKind::StringLiteral { .. } => self.string_literal(),
             TokenKind::True | TokenKind::False => self.bool_literal(),
             TokenKind::LBracket { .. } => self.array_literal(),
             TokenKind::Sizeof { .. } => self.type_size(),
-            _ => parse_error!(self, "invalid token in primary value", start, self.token_end()),
-        };
-        let end = self.node_end(inner);
-
-        self.add_node(Node {
-            kind: NodeKind::Primary { inner },
-            start,
-            end,
-        })
+            _ => parse_error!(
+                self,
+                "invalid token in primary value",
+                start,
+                self.token_end()
+            ),
+        }
     }
 
     fn parenthesized_expression(&mut self) -> usize {
@@ -1110,115 +1207,329 @@ impl Parser {
         assert_token!(self, TokenKind::RParen, start, end);
         self.position += 1;
 
-        self.add_node(Node {
-            kind: NodeKind::ParenthesizedExpression { expression },
-            start,
-            end,
-        })
+        expression
     }
 
-    fn variable(&mut self) -> usize {
+    fn identifier(&mut self) -> usize {
         let start = self.token_start();
-        let mut end = self.token_end();
-        let name = match self.token_kind() {
-            TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(self, "expected variable name", start, end),
-        };
-        self.position += 1;
-
-        let mut inner = self.add_node(Node {
-            kind: NodeKind::VariableName { name },
-            start,
-            end,
-        });
-
-        loop {
-            if *self.token_kind() == TokenKind::LBracket {
-                self.position += 1;
-                let expression = self.expression(true);
-                end = self.token_end();
-                assert_token!(self, TokenKind::RBracket, start, end);
-                self.position += 1;
-
-                inner = self.add_node(Node {
-                    kind: NodeKind::VariableIndex {
-                        parent: inner,
-                        expression,
-                    },
-                    start,
-                    end,
-                });
-                continue;
-            }
-
-            if *self.token_kind() == TokenKind::Period {
-                self.position += 1;
-                end = self.token_end();
-
-                let field_name = match self.token_kind() {
-                    TokenKind::Identifier { text } => text.clone(),
-                    _ => parse_error!(self, "expected field name", start, end),
-                };
-                self.position += 1;
-
-                inner = self.add_node(Node {
-                    kind: NodeKind::VariableField {
-                        parent: inner,
-                        name: field_name,
-                    },
-                    start,
-                    end,
-                });
-                continue;
-            }
-
-            break;
-        }
-
-        self.add_node(Node {
-            kind: NodeKind::Variable { inner },
-            start,
-            end,
-        })
-    }
-
-    fn function_call(&mut self) -> usize {
-        let start = self.token_start();
-        let name = match self.token_kind() {
-            TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(self, "expected function name", start, self.token_end()),
-        };
-        self.position += 1;
-
-        assert_token!(self, TokenKind::LParen, start, self.token_end());
-        self.position += 1;
-
-        let mut args = Vec::new();
-
-        while *self.token_kind() != TokenKind::RParen {
-            args.push(self.expression(true));
-
-            if *self.token_kind() != TokenKind::Comma {
-                break;
-            }
-
-            assert_token!(self, TokenKind::Comma, start, self.token_end());
-            self.position += 1;
-        }
-
         let end = self.token_end();
-        assert_token!(self, TokenKind::RParen, start, end);
-        self.position += 1;
+        let TokenKind::Identifier { text } = self.token_kind().clone() else {
+            parse_error!(self, "expected identifier", start, end);
+        };
 
         self.add_node(Node {
-            kind: NodeKind::FunctionCall {
-                name,
-                args: Arc::new(args),
-            },
+            kind: NodeKind::Identifier { text },
             start,
             end,
         })
     }
+
+    //     fn expression(&mut self, allow_struct_literal: bool) -> usize {
+    //         let start = self.token_start();
+    //         let comparison = self.comparison(allow_struct_literal);
+    //         let mut end = self.node_end(comparison);
+    //         let mut trailing_comparisons = Vec::new();
+    //
+    //         while *self.token_kind() == TokenKind::And || *self.token_kind() == TokenKind::Or {
+    //             let op = if *self.token_kind() == TokenKind::And {
+    //                 Op::And
+    //             } else {
+    //                 Op::Or
+    //             };
+    //             self.position += 1;
+    //
+    //             let comparison = self.comparison(true);
+    //             end = self.node_end(comparison);
+    //             trailing_comparisons.push(TrailingComparison { op, comparison });
+    //         }
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::Expression {
+    //                 comparison,
+    //                 trailing_comparisons: Arc::new(trailing_comparisons),
+    //             },
+    //             start,
+    //             end,
+    //         })
+    //     }
+    //
+    //     fn comparison(&mut self, allow_struct_literal: bool) -> usize {
+    //         let start = self.token_start();
+    //         let binary = self.binary(allow_struct_literal);
+    //         let mut end = self.node_end(binary);
+    //         let mut trailing_binary = None;
+    //
+    //         let op = match *self.token_kind() {
+    //             TokenKind::Less => Some(Op::Less),
+    //             TokenKind::Greater => Some(Op::Greater),
+    //             TokenKind::EqualEqual => Some(Op::EqualEqual),
+    //             TokenKind::NotEqual => Some(Op::NotEqual),
+    //             TokenKind::LessEqual => Some(Op::LessEqual),
+    //             TokenKind::GreaterEqual => Some(Op::GreaterEqual),
+    //             _ => None,
+    //         };
+    //
+    //         if let Some(op) = op {
+    //             self.position += 1;
+    //             let binary = self.binary(true);
+    //             end = self.node_end(binary);
+    //             trailing_binary = Some(TrailingBinary { op, binary });
+    //         }
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::Comparision {
+    //                 binary,
+    //                 trailing_binary,
+    //             },
+    //             start,
+    //             end,
+    //         })
+    //     }
+    //
+    //     fn binary(&mut self, allow_struct_literal: bool) -> usize {
+    //         let start = self.token_start();
+    //         let term = self.term(allow_struct_literal);
+    //         let mut end = self.node_end(term);
+    //         let mut trailing_terms = Vec::new();
+    //
+    //         while *self.token_kind() == TokenKind::Plus || *self.token_kind() == TokenKind::Minus {
+    //             let op = if *self.token_kind() == TokenKind::Plus {
+    //                 Op::Plus
+    //             } else {
+    //                 Op::Minus
+    //             };
+    //             self.position += 1;
+    //
+    //             let term = self.term(true);
+    //             end = self.node_end(term);
+    //             trailing_terms.push(TrailingTerm { op, term });
+    //         }
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::Binary {
+    //                 term,
+    //                 trailing_terms: Arc::new(trailing_terms),
+    //             },
+    //             start,
+    //             end,
+    //         })
+    //     }
+    //
+    //     fn term(&mut self, allow_struct_literal: bool) -> usize {
+    //         let start = self.token_start();
+    //         let unary = self.unary(allow_struct_literal);
+    //         let mut end = self.node_end(unary);
+    //         let mut trailing_unaries = Vec::new();
+    //
+    //         while *self.token_kind() == TokenKind::Asterisk || *self.token_kind() == TokenKind::Divide {
+    //             let op = if *self.token_kind() == TokenKind::Asterisk {
+    //                 Op::Multiply
+    //             } else {
+    //                 Op::Divide
+    //             };
+    //             self.position += 1;
+    //
+    //             let unary = self.unary(true);
+    //             end = self.node_end(unary);
+    //             trailing_unaries.push(TrailingUnary { op, unary });
+    //         }
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::Term {
+    //                 unary,
+    //                 trailing_unaries: Arc::new(trailing_unaries),
+    //             },
+    //             start,
+    //             end,
+    //         })
+    //     }
+    //
+    //     fn unary(&mut self, allow_struct_literal: bool) -> usize {
+    //         let start = self.token_start();
+    //         let op = match *self.token_kind() {
+    //             TokenKind::Plus => {
+    //                 self.position += 1;
+    //                 Some(Op::Plus)
+    //             }
+    //             TokenKind::Minus => {
+    //                 self.position += 1;
+    //                 Some(Op::Minus)
+    //             }
+    //             TokenKind::Not => {
+    //                 self.position += 1;
+    //                 Some(Op::Not)
+    //             }
+    //             TokenKind::Ampersand => {
+    //                 self.position += 1;
+    //                 Some(Op::Reference)
+    //             }
+    //             TokenKind::Asterisk => {
+    //                 self.position += 1;
+    //                 Some(Op::Dereference)
+    //             }
+    //             _ => None,
+    //         };
+    //
+    //         let primary = self.primary(allow_struct_literal);
+    //         let end = self.node_end(primary);
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::Unary { op, primary },
+    //             start,
+    //             end,
+    //         })
+    //     }
+    //
+    //     fn primary(&mut self, allow_struct_literal: bool) -> usize {
+    //         let start = self.token_start();
+    //         let inner = match *self.token_kind() {
+    //             TokenKind::LParen => self.parenthesized_expression(),
+    //             TokenKind::Identifier { .. } if *self.peek_token_kind() == TokenKind::LParen => {
+    //                 self.function_call()
+    //             }
+    //             TokenKind::Identifier { .. }
+    //                 if allow_struct_literal && *self.peek_token_kind() == TokenKind::LBrace =>
+    //             {
+    //                 self.struct_literal()
+    //             }
+    //             TokenKind::Identifier { .. } => self.variable(),
+    //             TokenKind::IntLiteral { .. } => self.int_literal(),
+    //             TokenKind::Float32Literal { .. } => self.float32_literal(),
+    //             TokenKind::StringLiteral { .. } => self.string_literal(),
+    //             TokenKind::True | TokenKind::False => self.bool_literal(),
+    //             TokenKind::LBracket { .. } => self.array_literal(),
+    //             TokenKind::Sizeof { .. } => self.type_size(),
+    //             _ => parse_error!(self, "invalid token in primary value", start, self.token_end()),
+    //         };
+    //         let end = self.node_end(inner);
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::Primary { inner },
+    //             start,
+    //             end,
+    //         })
+    //     }
+    //
+    //     fn parenthesized_expression(&mut self) -> usize {
+    //         let start = self.token_start();
+    //         assert_token!(self, TokenKind::LParen, start, self.token_end());
+    //         self.position += 1;
+    //
+    //         let expression = self.expression(true);
+    //
+    //         let end = self.token_end();
+    //         assert_token!(self, TokenKind::RParen, start, end);
+    //         self.position += 1;
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::ParenthesizedExpression { expression },
+    //             start,
+    //             end,
+    //         })
+    //     }
+    //
+    //     fn variable(&mut self) -> usize {
+    //         let start = self.token_start();
+    //         let mut end = self.token_end();
+    //         let name = match self.token_kind() {
+    //             TokenKind::Identifier { text } => text.clone(),
+    //             _ => parse_error!(self, "expected variable name", start, end),
+    //         };
+    //         self.position += 1;
+    //
+    //         let mut inner = self.add_node(Node {
+    //             kind: NodeKind::VariableName { name },
+    //             start,
+    //             end,
+    //         });
+    //
+    //         loop {
+    //             if *self.token_kind() == TokenKind::LBracket {
+    //                 self.position += 1;
+    //                 let expression = self.expression(true);
+    //                 end = self.token_end();
+    //                 assert_token!(self, TokenKind::RBracket, start, end);
+    //                 self.position += 1;
+    //
+    //                 inner = self.add_node(Node {
+    //                     kind: NodeKind::VariableIndex {
+    //                         parent: inner,
+    //                         expression,
+    //                     },
+    //                     start,
+    //                     end,
+    //                 });
+    //                 continue;
+    //             }
+    //
+    //             if *self.token_kind() == TokenKind::Period {
+    //                 self.position += 1;
+    //                 end = self.token_end();
+    //
+    //                 let field_name = match self.token_kind() {
+    //                     TokenKind::Identifier { text } => text.clone(),
+    //                     _ => parse_error!(self, "expected field name", start, end),
+    //                 };
+    //                 self.position += 1;
+    //
+    //                 inner = self.add_node(Node {
+    //                     kind: NodeKind::VariableField {
+    //                         parent: inner,
+    //                         name: field_name,
+    //                     },
+    //                     start,
+    //                     end,
+    //                 });
+    //                 continue;
+    //             }
+    //
+    //             break;
+    //         }
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::Variable { inner },
+    //             start,
+    //             end,
+    //         })
+    //     }
+    //
+    //     fn function_call(&mut self) -> usize {
+    //         let start = self.token_start();
+    //         let name = match self.token_kind() {
+    //             TokenKind::Identifier { text } => text.clone(),
+    //             _ => parse_error!(self, "expected function name", start, self.token_end()),
+    //         };
+    //         self.position += 1;
+    //
+    //         assert_token!(self, TokenKind::LParen, start, self.token_end());
+    //         self.position += 1;
+    //
+    //         let mut args = Vec::new();
+    //
+    //         while *self.token_kind() != TokenKind::RParen {
+    //             args.push(self.expression(true));
+    //
+    //             if *self.token_kind() != TokenKind::Comma {
+    //                 break;
+    //             }
+    //
+    //             assert_token!(self, TokenKind::Comma, start, self.token_end());
+    //             self.position += 1;
+    //         }
+    //
+    //         let end = self.token_end();
+    //         assert_token!(self, TokenKind::RParen, start, end);
+    //         self.position += 1;
+    //
+    //         self.add_node(Node {
+    //             kind: NodeKind::FunctionCall {
+    //                 name,
+    //                 args: Arc::new(args),
+    //             },
+    //             start,
+    //             end,
+    //         })
+    //     }
 
     fn int_literal(&mut self) -> usize {
         let start = self.token_start();
@@ -1308,7 +1619,9 @@ impl Parser {
         if *self.token_kind() == TokenKind::Semicolon {
             self.position += 1;
 
-            repeat_count = self.parse_uint_literal().unwrap_or_else(|| parse_error!(self, "expected uint literal", start, self.token_end()));
+            repeat_count = self.parse_uint_literal().unwrap_or_else(|| {
+                parse_error!(self, "expected uint literal", start, self.token_end())
+            });
             self.position += 1;
         }
 
@@ -1436,7 +1749,9 @@ impl Parser {
             if *self.token_kind() == TokenKind::LBracket {
                 self.position += 1;
 
-                let length = self.parse_uint_literal().unwrap_or_else(|| parse_error!(self, "expected uint literal", start, end));
+                let length = self
+                    .parse_uint_literal()
+                    .unwrap_or_else(|| parse_error!(self, "expected uint literal", start, end));
                 self.position += 1;
 
                 end = self.token_end();

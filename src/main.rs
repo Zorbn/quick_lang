@@ -14,8 +14,12 @@ mod type_checker;
 mod types;
 mod position;
 
+
 /*
  * BIG TODOS:
+ * Replace "variable" with full-on expressions to allow for stuff like: (*a.voidptr as struct*).field = 5; Make variable assignment statement an expression (like C, C#, etc).
+ * Thin and simplify the AST by not generating unecessary nodes, ie: if you just have a primary, it should not be nested in an unnecessary unary, binary, expr, etc.
+ *
  * Complete type checking.
  * Simple type inference.
  * Incremental and parallel compilation.
@@ -31,6 +35,7 @@ mod position;
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Bitwise operations.
  * Assignment operators.
+ * Reverse order that defered statements are executed in.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.

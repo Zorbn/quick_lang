@@ -3,8 +3,7 @@ use std::{collections::{HashMap, HashSet}, sync::Arc};
 use crate::{
     environment::Environment,
     parser::{
-        ArrayLayout, Field, Node, NodeKind, Op, TrailingBinary, TrailingComparison, TrailingTerm,
-        TrailingUnary, TypeKind, BOOL_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX,
+        ArrayLayout, Field, Node, NodeKind, Op, TypeKind, BOOL_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX,
         INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, UINT16_INDEX, UINT32_INDEX,
         UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
     },
@@ -111,11 +110,11 @@ impl TypeChecker {
                 type_name,
                 expression,
             } => self.variable_declaration(is_mutable, name, type_name, expression),
-            NodeKind::VariableAssignment {
-                dereference_count,
-                variable,
-                expression,
-            } => self.variable_assignment(dereference_count, variable, expression),
+            // NodeKind::VariableAssignment {
+            //     dereference_count,
+            //     variable,
+            //     expression,
+            // } => self.variable_assignment(dereference_count, variable, expression),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
             NodeKind::IfStatement { expression, block } => self.if_statement(expression, block),
@@ -128,34 +127,34 @@ impl TypeChecker {
                 by,
                 block,
             } => self.for_loop(iterator, op, from, to, by, block),
-            NodeKind::Expression {
-                comparison,
-                trailing_comparisons,
-            } => self.expression(comparison, trailing_comparisons),
-            NodeKind::Comparision {
-                binary,
-                trailing_binary,
-            } => self.comparison(binary, trailing_binary),
-            NodeKind::Binary {
-                term,
-                trailing_terms,
-            } => self.binary(term, trailing_terms),
-            NodeKind::Term {
-                unary,
-                trailing_unaries,
-            } => self.term(unary, trailing_unaries),
-            NodeKind::Unary { op, primary } => self.unary(op, primary),
-            NodeKind::Primary { inner } => self.primary(inner),
-            NodeKind::ParenthesizedExpression { expression } => {
-                self.parenthesized_expression(expression)
-            }
-            NodeKind::Variable { inner } => self.variable(inner),
-            NodeKind::VariableName { name } => self.variable_name(name),
-            NodeKind::VariableIndex { parent, expression } => {
-                self.variable_index(parent, expression)
-            }
-            NodeKind::VariableField { parent, name } => self.variable_field(parent, name),
-            NodeKind::FunctionCall { name, args } => self.function_call(name, args),
+            // NodeKind::Expression {
+            //     comparison,
+            //     trailing_comparisons,
+            // } => self.expression(comparison, trailing_comparisons),
+            // NodeKind::Comparision {
+            //     binary,
+            //     trailing_binary,
+            // } => self.comparison(binary, trailing_binary),
+            // NodeKind::Binary {
+            //     term,
+            //     trailing_terms,
+            // } => self.binary(term, trailing_terms),
+            // NodeKind::Term {
+            //     unary,
+            //     trailing_unaries,
+            // } => self.term(unary, trailing_unaries),
+            // NodeKind::UnaryPrefix { op, primary } => self.unary(op, primary),
+            // NodeKind::Primary { inner } => self.primary(inner),
+            // NodeKind::ParenthesizedExpression { expression } => {
+            //     self.parenthesized_expression(expression)
+            // }
+            // NodeKind::Variable { inner } => self.variable(inner),
+            // NodeKind::VariableName { name } => self.variable_name(name),
+            // NodeKind::VariableIndex { parent, expression } => {
+            //     self.variable_index(parent, expression)
+            // }
+            // NodeKind::VariableField { parent, name } => self.variable_field(parent, name),
+            // NodeKind::FunctionCall { name, args } => self.function_call(name, args),
             NodeKind::IntLiteral { text } => self.int_literal(text),
             NodeKind::Float32Literal { text } => self.float32_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
@@ -287,34 +286,34 @@ impl TypeChecker {
         type_kind
     }
 
-    fn variable_assignment(
-        &mut self,
-        dereference_count: usize,
-        variable: usize,
-        expression: usize,
-    ) -> Option<usize> {
-        let Some(mut type_kind) = self.check_node(variable) else {
-            type_error!(self, "cannot assign to untyped variable");
-        };
-
-        for _ in 0..dereference_count {
-            let TypeKind::Pointer { inner_type_kind } = &self.types[type_kind] else {
-                type_error!(self, "only pointers can be dereferenced");
-            };
-
-            type_kind = *inner_type_kind;
-        }
-
-        let Some(expression_type_kind) = self.check_node(expression) else {
-            type_error!(self, "cannot assign an untyped value to a variable");
-        };
-
-        if type_kind != expression_type_kind {
-            type_error!(self, "type mismatch in assignment");
-        }
-
-        Some(type_kind)
-    }
+//     fn variable_assignment(
+//         &mut self,
+//         dereference_count: usize,
+//         variable: usize,
+//         expression: usize,
+//     ) -> Option<usize> {
+//         let Some(mut type_kind) = self.check_node(variable) else {
+//             type_error!(self, "cannot assign to untyped variable");
+//         };
+//
+//         for _ in 0..dereference_count {
+//             let TypeKind::Pointer { inner_type_kind } = &self.types[type_kind] else {
+//                 type_error!(self, "only pointers can be dereferenced");
+//             };
+//
+//             type_kind = *inner_type_kind;
+//         }
+//
+//         let Some(expression_type_kind) = self.check_node(expression) else {
+//             type_error!(self, "cannot assign an untyped value to a variable");
+//         };
+//
+//         if type_kind != expression_type_kind {
+//             type_error!(self, "type mismatch in assignment");
+//         }
+//
+//         Some(type_kind)
+//     }
 
     fn return_statement(&mut self, expression: Option<usize>) -> Option<usize> {
         self.check_node(expression?)
@@ -351,190 +350,190 @@ impl TypeChecker {
         self.check_node(block)
     }
 
-    fn expression(
-        &mut self,
-        comparison: usize,
-        trailing_comparisons: Arc<Vec<TrailingComparison>>,
-    ) -> Option<usize> {
-        let type_kind = self.check_node(comparison);
+//     fn expression(
+//         &mut self,
+//         comparison: usize,
+//         trailing_comparisons: Arc<Vec<TrailingComparison>>,
+//     ) -> Option<usize> {
+//         let type_kind = self.check_node(comparison);
+//
+//         for trailing_comparison in trailing_comparisons.iter() {
+//             if self.check_node(trailing_comparison.comparison) != Some(BOOL_INDEX) {
+//                 type_error!(self, "attempted to perform a boolean operation on a non-boolean");
+//             }
+//         }
+//
+//         type_kind
+//     }
+//
+//     fn comparison(
+//         &mut self,
+//         binary: usize,
+//         trailing_binary: Option<TrailingBinary>,
+//     ) -> Option<usize> {
+//         let type_kind = self.check_node(binary);
+//
+//         if let Some(trailing_binary) = trailing_binary {
+//             if type_kind != self.check_node(trailing_binary.binary) {
+//                 type_error!(self, "cannot compare values with different types");
+//             }
+//
+//             if matches!(trailing_binary.op, Op::Less | Op::Greater | Op::LessEqual | Op::GreaterEqual) && !TypeChecker::is_type_numeric(type_kind) {
+//                 type_error!(self, "only numeric types can be compared by magnitude");
+//             }
+//
+//             return Some(BOOL_INDEX);
+//         }
+//
+//         type_kind
+//     }
+//
+//     fn binary(&mut self, term: usize, trailing_terms: Arc<Vec<TrailingTerm>>) -> Option<usize> {
+//         let type_kind = self.check_node(term);
+//
+//         for trailing_term in trailing_terms.iter() {
+//             if type_kind != self.check_node(trailing_term.term) {
+//                 type_error!(self, "cannot perform binary operation on values with different types");
+//             }
+//
+//             if !TypeChecker::is_type_numeric(type_kind) {
+//                 type_error!(self, "binary operations can only be performed on numeric types");
+//             }
+//         }
+//
+//         type_kind
+//     }
+//
+//     fn term(&mut self, unary: usize, trailing_unaries: Arc<Vec<TrailingUnary>>) -> Option<usize> {
+//         let type_kind = self.check_node(unary);
+//
+//         for trailing_unary in trailing_unaries.iter() {
+//             if type_kind != self.check_node(trailing_unary.unary) {
+//                 type_error!(self, "cannot perform binary operation on values with different types");
+//             }
+//
+//             if !TypeChecker::is_type_numeric(type_kind) {
+//                 type_error!(self, "binary operations can only be performed on numeric types");
+//             }
+//         }
+//
+//         type_kind
+//     }
+//
+//     fn unary(&mut self, op: Option<Op>, primary: usize) -> Option<usize> {
+//         let type_kind = self.check_node(primary);
+//
+//         if let Some(op) = op {
+//             let Some(type_kind) = type_kind else {
+//                 type_error!(self, "cannot apply unary operator to untyped value");
+//             };
+//
+//             match op {
+//                 Op::Plus | Op::Minus => if !TypeChecker::is_type_numeric(Some(type_kind)) {
+//                     type_error!(self, "numeric operations can only be performed on numeric types");
+//                 },
+//                 Op::Not => if type_kind != BOOL_INDEX {
+//                     type_error!(self, "not operator can only be used on booleans");
+//                 },
+//                 Op::Reference => if !matches!(self.typed_nodes[primary], Some(TypedNode { node_kind: NodeKind::Variable { .. }, .. })) {
+//                     type_error!(self, "references must refer to a variable");
+//                 }
+//                 Op::Dereference => if !self.pointer_type_kind_set.contains(&type_kind) {
+//                     type_error!(self, "cannot dereference non-pointer type");
+//                 },
+//                 _ => type_error!(self, "unexpected operator in unary expression")
+//             }
+//         }
+//
+//         type_kind
+//     }
+//
+//     fn primary(&mut self, inner: usize) -> Option<usize> {
+//         self.check_node(inner)
+//     }
 
-        for trailing_comparison in trailing_comparisons.iter() {
-            if self.check_node(trailing_comparison.comparison) != Some(BOOL_INDEX) {
-                type_error!(self, "attempted to perform a boolean operation on a non-boolean");
-            }
-        }
-
-        type_kind
-    }
-
-    fn comparison(
-        &mut self,
-        binary: usize,
-        trailing_binary: Option<TrailingBinary>,
-    ) -> Option<usize> {
-        let type_kind = self.check_node(binary);
-
-        if let Some(trailing_binary) = trailing_binary {
-            if type_kind != self.check_node(trailing_binary.binary) {
-                type_error!(self, "cannot compare values with different types");
-            }
-
-            if matches!(trailing_binary.op, Op::Less | Op::Greater | Op::LessEqual | Op::GreaterEqual) && !TypeChecker::is_type_numeric(type_kind) {
-                type_error!(self, "only numeric types can be compared by magnitude");
-            }
-
-            return Some(BOOL_INDEX);
-        }
-
-        type_kind
-    }
-
-    fn binary(&mut self, term: usize, trailing_terms: Arc<Vec<TrailingTerm>>) -> Option<usize> {
-        let type_kind = self.check_node(term);
-
-        for trailing_term in trailing_terms.iter() {
-            if type_kind != self.check_node(trailing_term.term) {
-                type_error!(self, "cannot perform binary operation on values with different types");
-            }
-
-            if !TypeChecker::is_type_numeric(type_kind) {
-                type_error!(self, "binary operations can only be performed on numeric types");
-            }
-        }
-
-        type_kind
-    }
-
-    fn term(&mut self, unary: usize, trailing_unaries: Arc<Vec<TrailingUnary>>) -> Option<usize> {
-        let type_kind = self.check_node(unary);
-
-        for trailing_unary in trailing_unaries.iter() {
-            if type_kind != self.check_node(trailing_unary.unary) {
-                type_error!(self, "cannot perform binary operation on values with different types");
-            }
-
-            if !TypeChecker::is_type_numeric(type_kind) {
-                type_error!(self, "binary operations can only be performed on numeric types");
-            }
-        }
-
-        type_kind
-    }
-
-    fn unary(&mut self, op: Option<Op>, primary: usize) -> Option<usize> {
-        let type_kind = self.check_node(primary);
-
-        if let Some(op) = op {
-            let Some(type_kind) = type_kind else {
-                type_error!(self, "cannot apply unary operator to untyped value");
-            };
-
-            match op {
-                Op::Plus | Op::Minus => if !TypeChecker::is_type_numeric(Some(type_kind)) {
-                    type_error!(self, "numeric operations can only be performed on numeric types");
-                },
-                Op::Not => if type_kind != BOOL_INDEX {
-                    type_error!(self, "not operator can only be used on booleans");
-                },
-                Op::Reference => if !matches!(self.typed_nodes[primary], Some(TypedNode { node_kind: NodeKind::Variable { .. }, .. })) {
-                    type_error!(self, "references must refer to a variable");
-                }
-                Op::Dereference => if !self.pointer_type_kind_set.contains(&type_kind) {
-                    type_error!(self, "cannot dereference non-pointer type");
-                },
-                _ => type_error!(self, "unexpected operator in unary expression")
-            }
-        }
-
-        type_kind
-    }
-
-    fn primary(&mut self, inner: usize) -> Option<usize> {
-        self.check_node(inner)
-    }
-
-    fn parenthesized_expression(&mut self, expression: usize) -> Option<usize> {
-        self.check_node(expression)
-    }
-
-    fn variable(&mut self, inner: usize) -> Option<usize> {
-        self.check_node(inner)
-    }
-
-    fn variable_name(&mut self, name: String) -> Option<usize> {
-        self.environment.get(&name)
-    }
-
-    fn variable_index(&mut self, parent: usize, expression: usize) -> Option<usize> {
-        let parent_type = self.check_node(parent).unwrap();
-        let element_type_kind = if let TypeKind::Array {
-            element_type_kind, ..
-        } = &self.types[parent_type]
-        {
-            *element_type_kind
-        } else {
-            type_error!(self, "indexing is only allowed on arrays");
-        };
-
-        self.check_node(expression);
-
-        Some(element_type_kind)
-    }
-
-    fn variable_field(&mut self, parent: usize, name: String) -> Option<usize> {
-        let parent_type = self.check_node(parent).unwrap();
-        let field_kinds = match &self.types[parent_type] {
-            TypeKind::Struct { field_kinds, .. } => field_kinds,
-            TypeKind::Pointer { inner_type_kind } => {
-                let TypeKind::Struct { field_kinds, .. } = &self.types[*inner_type_kind] else {
-                    type_error!(
-                        self,
-                        "field access is not allowed on pointers to non-struct types"
-                    );
-                };
-
-                field_kinds
-            }
-            _ => type_error!(
-                self,
-                "field access is only allowed on structs or pointers to structs"
-            ),
-        };
-
-        for Field {
-            name: field_name,
-            type_kind: field_kind,
-        } in field_kinds.iter()
-        {
-            if *field_name == name {
-                return Some(*field_kind);
-            }
-        }
-
-        type_error!(self, "field doesn't exist in struct");
-    }
-
-    fn function_call(&mut self, name: String, args: Arc<Vec<usize>>) -> Option<usize> {
-        for arg in args.iter() {
-            self.check_node(*arg);
-        }
-
-        let Some(declaration_index) = self.function_declaration_indices.get(&name) else {
-            type_error!(
-                self,
-                &format!("function with name \"{}\" does not exist", name)
-            );
-        };
-
-        let NodeKind::FunctionDeclaration {
-            return_type_name, ..
-        } = self.nodes[*declaration_index].kind
-        else {
-            return None;
-        };
-
-        self.check_node(return_type_name)
-    }
+//     fn parenthesized_expression(&mut self, expression: usize) -> Option<usize> {
+//         self.check_node(expression)
+//     }
+//
+//     fn variable(&mut self, inner: usize) -> Option<usize> {
+//         self.check_node(inner)
+//     }
+//
+//     fn variable_name(&mut self, name: String) -> Option<usize> {
+//         self.environment.get(&name)
+//     }
+//
+//     fn variable_index(&mut self, parent: usize, expression: usize) -> Option<usize> {
+//         let parent_type = self.check_node(parent).unwrap();
+//         let element_type_kind = if let TypeKind::Array {
+//             element_type_kind, ..
+//         } = &self.types[parent_type]
+//         {
+//             *element_type_kind
+//         } else {
+//             type_error!(self, "indexing is only allowed on arrays");
+//         };
+//
+//         self.check_node(expression);
+//
+//         Some(element_type_kind)
+//     }
+//
+//     fn variable_field(&mut self, parent: usize, name: String) -> Option<usize> {
+//         let parent_type = self.check_node(parent).unwrap();
+//         let field_kinds = match &self.types[parent_type] {
+//             TypeKind::Struct { field_kinds, .. } => field_kinds,
+//             TypeKind::Pointer { inner_type_kind } => {
+//                 let TypeKind::Struct { field_kinds, .. } = &self.types[*inner_type_kind] else {
+//                     type_error!(
+//                         self,
+//                         "field access is not allowed on pointers to non-struct types"
+//                     );
+//                 };
+//
+//                 field_kinds
+//             }
+//             _ => type_error!(
+//                 self,
+//                 "field access is only allowed on structs or pointers to structs"
+//             ),
+//         };
+//
+//         for Field {
+//             name: field_name,
+//             type_kind: field_kind,
+//         } in field_kinds.iter()
+//         {
+//             if *field_name == name {
+//                 return Some(*field_kind);
+//             }
+//         }
+//
+//         type_error!(self, "field doesn't exist in struct");
+//     }
+//
+//     fn function_call(&mut self, name: String, args: Arc<Vec<usize>>) -> Option<usize> {
+//         for arg in args.iter() {
+//             self.check_node(*arg);
+//         }
+//
+//         let Some(declaration_index) = self.function_declaration_indices.get(&name) else {
+//             type_error!(
+//                 self,
+//                 &format!("function with name \"{}\" does not exist", name)
+//             );
+//         };
+//
+//         let NodeKind::FunctionDeclaration {
+//             return_type_name, ..
+//         } = self.nodes[*declaration_index].kind
+//         else {
+//             return None;
+//         };
+//
+//         self.check_node(return_type_name)
+//     }
 
     fn int_literal(&mut self, _text: String) -> Option<usize> {
         Some(INT_INDEX)
