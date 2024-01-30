@@ -11,7 +11,6 @@ pub enum TokenKind {
     LBracket,
     RBracket,
     Comma,
-    Colon,
     Semicolon,
     Period,
     Plus,
@@ -82,7 +81,6 @@ impl Display for TokenKind {
             TokenKind::LBracket => "[",
             TokenKind::RBracket => "]",
             TokenKind::Comma => ",",
-            TokenKind::Colon => ":",
             TokenKind::Semicolon => ";",
             TokenKind::Period => ".",
             TokenKind::Plus => "+",
@@ -549,14 +547,6 @@ impl Lexer {
                 ',' => {
                     self.tokens.push(Token {
                         kind: TokenKind::Comma,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                ':' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Colon,
                         start: self.position,
                         end: self.position,
                     });

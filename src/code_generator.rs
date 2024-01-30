@@ -256,12 +256,6 @@ impl CodeGenerator {
 
         let mut i = 0;
         for function in functions.iter() {
-            if i > 0 {
-                self.body_emitters.top().body.newline();
-            }
-
-            self.gen_node(*function);
-
             if matches!(
                 self.typed_nodes[*function],
                 TypedNode {
@@ -269,8 +263,14 @@ impl CodeGenerator {
                     ..
                 }
             ) {
+                if i > 0 {
+                    self.body_emitters.top().body.newline();
+                }
+
                 i += 1;
             }
+
+            self.gen_node(*function);
         }
     }
 

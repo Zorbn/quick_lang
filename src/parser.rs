@@ -512,9 +512,6 @@ impl Parser {
         };
         self.position += 1;
 
-        assert_token!(self, TokenKind::Colon, start, self.token_end());
-        self.position += 1;
-
         let type_name = self.type_name();
         let end = self.node_end(type_name);
 
@@ -553,9 +550,6 @@ impl Parser {
         }
 
         assert_token!(self, TokenKind::RParen, start, self.token_end());
-        self.position += 1;
-
-        assert_token!(self, TokenKind::Colon, start, self.token_end());
         self.position += 1;
 
         let return_type_name = self.type_name();
@@ -609,9 +603,6 @@ impl Parser {
             TokenKind::Identifier { text } => text.clone(),
             _ => parse_error!(self, "expected param name", start, self.token_end()),
         };
-        self.position += 1;
-
-        assert_token!(self, TokenKind::Colon, start, self.token_end());
         self.position += 1;
 
         let type_name = self.type_name();
@@ -709,8 +700,7 @@ impl Parser {
         };
         self.position += 1;
 
-        let type_name = if *self.token_kind() == TokenKind::Colon {
-            self.position += 1;
+        let type_name = if *self.token_kind() != TokenKind::Equal {
             Some(self.type_name())
         } else {
             None
@@ -1361,7 +1351,7 @@ impl Parser {
         };
         self.position += 1;
 
-        assert_token!(self, TokenKind::Colon, start, self.token_end());
+        assert_token!(self, TokenKind::Equal, start, self.token_end());
         self.position += 1;
 
         let expression = self.expression(true);

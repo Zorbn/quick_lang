@@ -1,22 +1,22 @@
-extern fun puts(str: String): UInt
-extern fun malloc(size: UInt): Void*
-extern fun free(ptr: Void*): Void
+extern fun puts(str String) UInt
+extern fun malloc(size UInt) Void*
+extern fun free(ptr Void*) Void
 
-fun main(): Int32 {
+fun main() Int32 {
     defer {
         puts("defer in main");
     }
 
     val a = 542 + 54578 / 3;
-    var b: Int = a * 2;
+    var b Int = a * 2;
     val c = b /= b / 4;
 
-    var str: String = "hello world";
+    var str String = "hello world";
     puts(str);
 
-    var byte: UInt8 = 255 as UInt8;
-    var bytePtr: UInt8* = &byte;
-    var otherByte: UInt8 = *bytePtr;
+    var byte UInt8 = 255 as UInt8;
+    var bytePtr UInt8* = &byte;
+    var otherByte UInt8 = *bytePtr;
 
     /*
     /*
@@ -28,38 +28,38 @@ fun main(): Int32 {
     */
     */
 
-    var heapPoint: Point* = malloc(sizeof Point) as Point*;
-    *heapPoint = Point { x: 5, y: 5 };
+    var heapPoint Point* = malloc(sizeof Point) as Point*;
+    *heapPoint = Point { x = 5, y = 5 };
     free(heapPoint);
 
-    var twoD: Int[2] = [1, 5];
-    var myArray: Int[3] = makeArray(1, 777, 3);
-    var myArrayCopy: Int[3] = takeArray(myArray);
-    var otherCopy: Int[3] = myArrayCopy;
-    var repeatArray: Int[400] = [1, 2, 3, 4; 100];
-    var repeatStringArray: String[400] = ["a", "bb", "ccc", "dddd"; 100];
+    var twoD Int[2] = [1, 5];
+    var myArray Int[3] = makeArray(1, 777, 3);
+    var myArrayCopy Int[3] = takeArray(myArray);
+    var otherCopy Int[3] = myArrayCopy;
+    var repeatArray Int[400] = [1, 2, 3, 4; 100];
+    var repeatStringArray String[400] = ["a", "bb", "ccc", "dddd"; 100];
     repeatStringArray[0] = "hello";
     puts(repeatStringArray[377]);
 
-    var multiA: String[3][2] = [["a", "b", "ccc"], ["d", "e", "f"]];
-    var multiB: String[3][2] = multiA;
+    var multiA String[3][2] = [["a", "b", "ccc"], ["d", "e", "f"]];
+    var multiB String[3][2] = multiA;
     puts(multiA[1][2]);
 
-    var xy: Point[2] = [
+    var xy Point[2] = [
         Point {
-            x: 5,
-            y: 7,
+            x = 5,
+            y = 7,
         },
         Point {
-            x: 5,
-            y: 7,
+            x = 5,
+            y = 7,
         },
     ];
 
-    var x: Int = (xy[0].x);
-    var y: Int = xy[0].y;
+    var x Int = (xy[0].x);
+    var y Int = xy[0].y;
 
-    var boolean: Bool = true && false || (5 <= 88);
+    var boolean Bool = true && false || (5 <= 88);
 
     {
         {
@@ -113,23 +113,23 @@ fun main(): Int32 {
     return 0;
 }
 
-fun zero(): Int {
+fun zero() Int {
     return 0;
 }
 
-fun print(msg: String): Void {
+fun print(msg String) Void {
     puts("Hello");
 }
 
-fun hello(num: Int, othernum: Int): Int {
-    val sum: Int = num + othernum;
+fun hello(num Int, othernum Int) Int {
+    val sum Int = num + othernum;
     return sum;
 }
 
-fun makeArray(a: Int, b: Int, c: Int): Int[3] {
+fun makeArray(a Int, b Int, c Int) Int[3] {
     return [a, b, c];
 }
 
-fun takeArray(a: Int[3]): Int[3] {
+fun takeArray(a Int[3]) Int[3] {
     return a;
 }
