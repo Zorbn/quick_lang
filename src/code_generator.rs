@@ -305,29 +305,8 @@ impl CodeGenerator {
         params: Arc<Vec<usize>>,
         type_kind: Option<usize>,
     ) {
-        self.emit_type_name_left(return_type_name, EmitterKind::Prototype, true);
-        self.emit_type_name_right(return_type_name, EmitterKind::Prototype, true);
-
-        self.prototype_emitter.emit(" ");
-        self.prototype_emitter.emit(&name);
-
-        self.prototype_emitter.emit("(");
-        for (i, param) in params.iter().enumerate() {
-            if i > 0 {
-                self.prototype_emitter.emit(", ");
-            }
-
-            self.gen_node_prototype(*param);
-        }
-
-        if is_type_kind_array(&self.types, type_kind.unwrap()) {
-            if params.len() > 0 {
-                self.prototype_emitter.emit(", ");
-            }
-
-            self.param_prototype("__return".into(), return_type_name, type_kind);
-        }
-        self.prototype_emitter.emitln(");");
+        self.emit_function_declaration(EmitterKind::Prototype, &name, return_type_name, &params, type_kind);
+        self.prototype_emitter.emitln(";");
     }
 
     fn param_prototype(&mut self, name: String, type_name: usize, _type_kind: Option<usize>) {
@@ -350,28 +329,8 @@ impl CodeGenerator {
         params: Arc<Vec<usize>>,
         type_kind: Option<usize>,
     ) {
-        self.emit_type_name_left(return_type_name, EmitterKind::Body, true);
-        self.emit_type_name_right(return_type_name, EmitterKind::Body, true);
+        self.emit_function_declaration(EmitterKind::Body, &name, return_type_name, &params, type_kind);
         self.body_emitters.top().body.emit(" ");
-        self.body_emitters.top().body.emit(&name);
-
-        self.body_emitters.top().body.emit("(");
-        for (i, param) in params.iter().enumerate() {
-            if i > 0 {
-                self.body_emitters.top().body.emit(", ");
-            }
-
-            self.gen_node(*param);
-        }
-
-        if is_type_kind_array(&self.types, type_kind.unwrap()) {
-            if params.len() > 0 {
-                self.body_emitters.top().body.emit(", ");
-            }
-
-            self.param("__return".into(), return_type_name, type_kind);
-        }
-        self.body_emitters.top().body.emit(") ");
 
         self.function_declaration_prototype(name, return_type_name, params, type_kind);
     }
@@ -973,6 +932,60 @@ impl CodeGenerator {
             Op::Or => " || ",
             _ => panic!("Expected binary operator"),
         });
+    }
+
+    fn emit_function_declaration(
+        &mut self,
+        kind: EmitterKind,
+        name: &str,
+        return_type_name: usize,
+        params: &Arc<Vec<usize>>,
+        type_kind: Option<usize>,
+    ) {
+        self.emit_type_name_left(return_type_name, kind, true);
+        self.emit_type_name_right(return_type_name, kind, true);
+        self.emitter(kind).emit(" ");
+        self.emitter(kind).emit(name);
+
+        let mut param_count = 0;
+
+        self.emitter(kind).emit("(");
+        for param in params.iter() {
+            if param_count > 0 {
+                self.emitter(kind).emit(", ");
+            }
+
+            param_count += 1;
+
+            match kind {
+                EmitterKind::Prototype => self.gen_node_prototype(*param),
+                EmitterKind::Body => self.gen_node(*param),
+                _ => panic!("Unexpected emitter kind for function declaration"),
+            }
+        }
+
+        if is_type_kind_array(&self.types, type_kind.unwrap()) {
+            if param_count > 0 {
+                self.emitter(kind).emit(", ");
+            }
+
+            param_count += 1;
+
+            let param_name = "__return".to_string();
+            match kind {
+                EmitterKind::Prototype => {
+                    self.param_prototype(param_name, return_type_name, type_kind)
+                }
+                EmitterKind::Body => self.param(param_name, return_type_name, type_kind),
+                _ => panic!("Unexpected emitter kind for function declaration"),
+            }
+        }
+
+        if param_count == 0 {
+            self.emitter(kind).emit("void");
+        }
+
+        self.emitter(kind).emit(")");
     }
 
     fn emitter(&mut self, kind: EmitterKind) -> &mut Emitter {

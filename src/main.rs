@@ -32,7 +32,6 @@ mod types;
  * SMALL TODOS:
  * Range syntax in integer array initializer? [1<10 by 3] [1<10 by 3; 100]
  * for elem in array {}
- * Unify most functionality of function_declaration_prototype and function_declaration, make them emit (void) if the function has no params.
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Bitwise operations.
  * Compound assignment operators.
