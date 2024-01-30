@@ -3,9 +3,9 @@ extern fun malloc(size: UInt): Void*
 extern fun free(ptr: Void*): Void
 
 fun main(): Int32 {
-    // defer {
-    //     puts("defer in main");
-    // }
+    defer {
+        puts("defer in main");
+    }
 
     val a = 542 + 54578 / 3;
     var b: Int = a * 2;
@@ -77,11 +77,18 @@ fun main(): Int32 {
     }
 
     for i in -10 < 10 {
-        defer puts("defer in loop");
+        defer puts("defer in loop1");
+        defer puts("defer in loop2");
     }
 
     for i in zero() <= 10 {
         defer puts("defer in loop");
+
+        {
+            defer puts("defer in block in loop");
+        }
+
+        defer puts("defer later in loop");
 
         return 0;
     }

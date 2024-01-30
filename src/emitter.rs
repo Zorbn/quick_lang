@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::io::Write;
+
 pub struct Emitter {
     pub string: String,
     indent_count: usize,
@@ -37,7 +40,7 @@ impl Emitter {
             self.is_on_newline = false;
         }
 
-        self.append(str);
+        self.string.push_str(str);
     }
 
     pub fn newline(&mut self) {
@@ -60,5 +63,13 @@ impl Emitter {
 
     pub fn unindent(&mut self) {
         self.indent_count -= 1;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.string.is_empty()
+    }
+
+    pub fn write(&self, file: &mut File) {
+        writeln!(file, "{}", self.string).unwrap();
     }
 }

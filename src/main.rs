@@ -36,7 +36,7 @@ mod types;
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Bitwise operations.
  * Compound assignment operators.
- * Reverse order that defered statements are executed in.
+ * Add character types and literals.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.
@@ -125,21 +125,18 @@ fn main() -> ExitCode {
     }
 
     let mut output_file = fs::File::create("out/out.c").unwrap();
-    output_file
-        .write_all(code_generator.header_emitter.string.as_bytes())
-        .unwrap();
-    if !code_generator.header_emitter.string.is_empty() {
+
+    if !code_generator.header_emitter.is_empty() {
+        code_generator.header_emitter.write(&mut output_file);
         output_file.write_all("\n".as_bytes()).unwrap();
     }
-    output_file
-        .write_all(code_generator.prototype_emitter.string.as_bytes())
-        .unwrap();
-    if !code_generator.prototype_emitter.string.is_empty() {
+
+    if !code_generator.prototype_emitter.is_empty() {
+        code_generator.prototype_emitter.write(&mut output_file);
         output_file.write_all("\n".as_bytes()).unwrap();
     }
-    output_file
-        .write_all(code_generator.body_emitters.string().as_bytes())
-        .unwrap();
+
+    code_generator.body_emitters.write(&mut output_file);
 
     match Command::new("clang")
         .args(["out/out.c", "-o", "out/out.exe"])

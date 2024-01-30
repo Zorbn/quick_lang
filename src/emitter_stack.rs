@@ -1,19 +1,15 @@
+use std::fs::File;
+
 use crate::emitter::Emitter;
 
 pub struct EmitterSet {
     pub top: Emitter,
     pub body: Emitter,
-    bottom: Emitter,
+    bottom: Vec<Emitter>,
 }
 
 pub struct EmitterStack {
     stack: Vec<EmitterSet>,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum EmitterKind {
-    Body,
-    Bottom,
 }
 
 impl EmitterStack {
@@ -31,7 +27,7 @@ impl EmitterStack {
         self.stack.push(EmitterSet {
             top: Emitter::new(indent_count),
             body: Emitter::new(indent_count),
-            bottom: Emitter::new(0),
+            bottom: Vec::new(),
         });
     }
 
@@ -40,46 +36,62 @@ impl EmitterStack {
     }
 
     pub fn exiting_all_scopes(&mut self) {
-        for i in 0..self.stack.len() {
-            if self.stack[i].bottom.string.is_empty() {
+        let Some((destination, sources)) = self.stack.split_last_mut() else {
+            return;
+        };
+
+        for segment in destination.bottom.iter().rev() {
+            destination.body.append(&segment.string);
+        }
+
+        for source in sources.iter().rev() {
+            if source.bottom.is_empty() {
                 continue;
             }
 
-            let indent_amount = self.top().body.indent_count() - self.stack[i].body.indent_count();
-            let string = self.stack[i].bottom.string.clone();
-            self.top().body.append_indented(&string, indent_amount);
+            let indent_amount = destination.body.indent_count() - source.body.indent_count();
+            for segment in source.bottom.iter().rev() {
+                destination.body.append_indented(&segment.string, indent_amount);
+            }
         }
+
     }
 
     pub fn pop(&mut self, needs_bottom: bool) {
-        self.pop_to(EmitterKind::Body, needs_bottom);
-    }
-
-    pub fn pop_to_bottom(&mut self) {
-        self.pop_to(EmitterKind::Bottom, true);
-    }
-
-    fn pop_to(&mut self, kind: EmitterKind, needs_bottom: bool) {
         let Some(source) = self.stack.pop() else {
             return;
         };
 
         let destination = self.stack.last_mut().unwrap();
 
-        let emitter = match kind {
-            EmitterKind::Body => &mut destination.body,
-            EmitterKind::Bottom => &mut destination.bottom,
-        };
-
-        emitter.append(&source.top.string);
-        emitter.append(&source.body.string);
+        destination.body.append(&source.top.string);
+        destination.body.append(&source.body.string);
 
         if needs_bottom {
-            emitter.append(&source.bottom.string);
+            for segment in source.bottom.iter().rev() {
+                destination.body.append(&segment.string);
+            }
         }
     }
 
-    pub fn string(&self) -> &str {
+    pub fn pop_to_bottom(&mut self) {
+        let Some(source) = self.stack.pop() else {
+            return;
+        };
+
+        let mut destination = Emitter::new(0);
+
+        destination.append(&source.top.string);
+        destination.append(&source.body.string);
+
+        for segment in source.bottom.iter().rev() {
+            destination.append(&segment.string);
+        }
+
+        self.stack.last_mut().unwrap().bottom.push(destination);
+    }
+
+    pub fn write(&self, file: &mut File) {
         if self.stack.len() != 1 {
             panic!(
                 "Invalid stack length while trying to get result of emitter stack: {}",
@@ -87,6 +99,6 @@ impl EmitterStack {
             );
         }
 
-        &self.stack[0].body.string
+        self.stack[0].body.write(file);
     }
 }
