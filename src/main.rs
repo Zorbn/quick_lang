@@ -30,8 +30,9 @@ mod types;
  * Generics.
  *
  * SMALL TODOS:
+ * Consider removing need for colons before type names.
  * Range syntax in integer array initializer? [1<10 by 3] [1<10 by 3; 100]
- * for elem in array {}
+ * for elem in array {} (both this and range syntax in arrays probably require making ranges part of expressions, and giving them a special type, maybe this work can be reused for varargs too)
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Bitwise operations.
  * Add character types and literals.
@@ -136,7 +137,21 @@ fn main() -> ExitCode {
 
     code_generator.body_emitters.write(&mut output_file);
 
-    match Command::new("clang")
+    let mut command_builder = Command::new("clang");
+
+    let mut c_args_start = None;
+    for (i, arg) in args.iter().enumerate() {
+        if *arg == "-C" {
+            c_args_start = Some(i + 1);
+            break;
+        }
+    }
+
+    if let Some(c_args_start) = c_args_start {
+        command_builder.args(&args[c_args_start..]);
+    }
+
+    match command_builder
         .args(["bin/out.c", "-o", "bin/out.exe"])
         .output()
     {
@@ -145,6 +160,7 @@ fn main() -> ExitCode {
             if !output.stderr.is_empty() {
                 println!("System compiler error:\n");
                 stdout().write_all(&output.stderr).unwrap();
+                return ExitCode::FAILURE;
             }
         }
     }

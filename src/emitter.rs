@@ -70,6 +70,6 @@ impl Emitter {
     }
 
     pub fn write(&self, file: &mut File) {
-        writeln!(file, "{}", self.string).unwrap();
+        write!(file, "{}", self.string).unwrap();
     }
 }

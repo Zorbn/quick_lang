@@ -41,6 +41,9 @@ impl CodeGenerator {
         code_generator
             .header_emitter
             .emitln("#include <inttypes.h>");
+        code_generator
+            .header_emitter
+            .emitln("#include <stdbool.h>");
         code_generator.body_emitters.push(1);
 
         code_generator
@@ -694,9 +697,9 @@ impl CodeGenerator {
 
     fn bool_literal(&mut self, value: bool, _type_kind: Option<usize>) {
         if value {
-            self.body_emitters.top().body.emit("1");
+            self.body_emitters.top().body.emit("true");
         } else {
-            self.body_emitters.top().body.emit("0");
+            self.body_emitters.top().body.emit("false");
         }
     }
 
@@ -860,7 +863,7 @@ impl CodeGenerator {
         match type_kind.clone() {
             TypeKind::Int => self.emitter(emitter_kind).emit("intptr_t"),
             TypeKind::String => self.emitter(emitter_kind).emit("char*"),
-            TypeKind::Bool => self.emitter(emitter_kind).emit("int32_t"),
+            TypeKind::Bool => self.emitter(emitter_kind).emit("bool"),
             TypeKind::Void => self.emitter(emitter_kind).emit("void"),
             TypeKind::UInt => self.emitter(emitter_kind).emit("uintptr_t"),
             TypeKind::Int8 => self.emitter(emitter_kind).emit("int8_t"),
