@@ -310,6 +310,8 @@ impl TypeChecker {
             type_error!(self, "type mismatch");
         }
 
+        // TODO: Make sure assignments have a variable on the left side, rather than a literal.
+
         match op {
             Op::Plus
             | Op::Minus

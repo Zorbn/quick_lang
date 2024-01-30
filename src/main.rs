@@ -122,7 +122,7 @@ fn main() -> ExitCode {
         code_generator.gen(*start_index);
     }
 
-    let mut output_file = fs::File::create("out/out.c").unwrap();
+    let mut output_file = fs::File::create("bin/out.c").unwrap();
 
     if !code_generator.header_emitter.is_empty() {
         code_generator.header_emitter.write(&mut output_file);
@@ -137,7 +137,7 @@ fn main() -> ExitCode {
     code_generator.body_emitters.write(&mut output_file);
 
     match Command::new("clang")
-        .args(["out/out.c", "-o", "out/out.exe"])
+        .args(["bin/out.c", "-o", "bin/out.exe"])
         .output()
     {
         Err(_) => panic!("Couldn't compile using the system compiler!"),
