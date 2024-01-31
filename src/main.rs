@@ -34,7 +34,7 @@ mod types;
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Bitwise operations.
  * Add character types and literals.
- * Switch statement.
+ * Switch statement. switch x case 1 {} case 2 {} case 3 {} else {}
  * Make sure all non-void functions return, and that all functions return the correct value.
  *
  * NOTES:
