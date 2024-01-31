@@ -50,6 +50,7 @@ pub enum TypeKind {
     Int,
     String,
     Bool,
+    Char,
     Void,
     UInt,
     Int8,
@@ -194,6 +195,9 @@ pub enum NodeKind {
     BoolLiteral {
         value: bool,
     },
+    CharLiteral {
+        value: char,
+    },
     ArrayLiteral {
         elements: Arc<Vec<usize>>,
         repeat_count: usize,
@@ -225,18 +229,19 @@ pub struct Node {
 pub const INT_INDEX: usize = 0;
 pub const STRING_INDEX: usize = 1;
 pub const BOOL_INDEX: usize = 2;
-pub const VOID_INDEX: usize = 3;
-pub const UINT_INDEX: usize = 4;
-pub const INT8_INDEX: usize = 5;
-pub const UINT8_INDEX: usize = 6;
-pub const INT16_INDEX: usize = 7;
-pub const UINT16_INDEX: usize = 8;
-pub const INT32_INDEX: usize = 9;
-pub const UINT32_INDEX: usize = 10;
-pub const INT64_INDEX: usize = 11;
-pub const UINT64_INDEX: usize = 12;
-pub const FLOAT32_INDEX: usize = 13;
-pub const FLOAT64_INDEX: usize = 14;
+pub const CHAR_INDEX: usize = 3;
+pub const VOID_INDEX: usize = 4;
+pub const UINT_INDEX: usize = 5;
+pub const INT8_INDEX: usize = 6;
+pub const UINT8_INDEX: usize = 7;
+pub const INT16_INDEX: usize = 8;
+pub const UINT16_INDEX: usize = 9;
+pub const INT32_INDEX: usize = 10;
+pub const UINT32_INDEX: usize = 11;
+pub const INT64_INDEX: usize = 12;
+pub const UINT64_INDEX: usize = 13;
+pub const FLOAT32_INDEX: usize = 14;
+pub const FLOAT64_INDEX: usize = 15;
 
 macro_rules! assert_token {
     ($self:ident, $token:expr, $start:expr, $end:expr) => {
@@ -302,6 +307,7 @@ impl Parser {
         parser.add_type(TypeKind::Int);
         parser.add_type(TypeKind::String);
         parser.add_type(TypeKind::Bool);
+        parser.add_type(TypeKind::Char);
         parser.add_type(TypeKind::Void);
         parser.add_type(TypeKind::UInt);
         parser.add_type(TypeKind::Int8);
@@ -1338,6 +1344,23 @@ impl Parser {
         })
     }
 
+    fn char_literal(&mut self) -> usize {
+        let start = self.token_start();
+        let end = self.token_end();
+        let value = match self.token_kind() {
+            TokenKind::True => true,
+            TokenKind::False => false,
+            _ => parse_error!(self, "expected bool literal", start, end),
+        };
+        self.position += 1;
+
+        self.add_node(Node {
+            kind: NodeKind::BoolLiteral { value },
+            start,
+            end,
+        })
+    }
+
     fn array_literal(&mut self) -> usize {
         let start = self.token_start();
         assert_token!(self, TokenKind::LBracket, start, self.token_end());
@@ -1462,6 +1485,7 @@ impl Parser {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
             TokenKind::Bool => BOOL_INDEX,
+            TokenKind::Char => CHAR_INDEX,
             TokenKind::Void => VOID_INDEX,
             TokenKind::UInt => UINT_INDEX,
             TokenKind::Int8 => INT8_INDEX,

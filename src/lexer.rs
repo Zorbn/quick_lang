@@ -52,6 +52,7 @@ pub enum TokenKind {
     Int,
     String,
     Bool,
+    Char,
     Void,
     UInt,
     Int8,
@@ -68,6 +69,7 @@ pub enum TokenKind {
     False,
     IntLiteral { text: String },
     Float32Literal { text: String },
+    CharLiteral { value: char },
     StringLiteral { text: String },
     Identifier { text: String },
     Eof,
@@ -76,6 +78,8 @@ pub enum TokenKind {
 
 impl Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut char_buffer = [0u8];
+
         let str = match self {
             TokenKind::LParen => "(",
             TokenKind::RParen => ")",
@@ -125,6 +129,7 @@ impl Display for TokenKind {
             TokenKind::Int => "int",
             TokenKind::String => "string",
             TokenKind::Bool => "bool",
+            TokenKind::Char => "char",
             TokenKind::Void => "void",
             TokenKind::UInt => "UInt",
             TokenKind::Int8 => "Int8",
@@ -141,6 +146,7 @@ impl Display for TokenKind {
             TokenKind::False => "false",
             TokenKind::IntLiteral { text } => text,
             TokenKind::Float32Literal { text } => text,
+            TokenKind::CharLiteral { value } => value.encode_utf8(&mut char_buffer),
             TokenKind::StringLiteral { text } => text,
             TokenKind::Identifier { text } => text,
             TokenKind::Eof => "EOF",
@@ -385,6 +391,10 @@ impl Lexer {
             }
 
             if self.try_string_to_token("Bool", TokenKind::Bool) {
+                continue;
+            }
+
+            if self.try_string_to_token("Char", TokenKind::Char) {
                 continue;
             }
 
@@ -657,6 +667,30 @@ impl Lexer {
                         end: self.position,
                     });
                     self.position.advance();
+                }
+                '\'' => {
+                    let start = self.position;
+                    self.position.advance();
+                    let value = self.char();
+                    self.position.advance();
+
+                    if self.char() != '\'' {
+                        self.error("expected end of char literal");
+                        self.tokens.push(Token {
+                            kind: TokenKind::Error,
+                            start,
+                            end: self.position,
+                        });
+                        continue;
+                    }
+                    
+                    self.position.advance();
+
+                    self.tokens.push(Token {
+                        kind: TokenKind::CharLiteral { value },
+                        start,
+                        end: self.position,
+                    });
                 }
                 '"' => {
                     self.position.advance();

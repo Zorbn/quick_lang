@@ -927,6 +927,7 @@ impl CodeGenerator {
             TypeKind::Int => self.emitter(emitter_kind).emit("intptr_t"),
             TypeKind::String => self.emitter(emitter_kind).emit("char*"),
             TypeKind::Bool => self.emitter(emitter_kind).emit("bool"),
+            TypeKind::Char => self.emitter(emitter_kind).emit("char"),
             TypeKind::Void => self.emitter(emitter_kind).emit("void"),
             TypeKind::UInt => self.emitter(emitter_kind).emit("uintptr_t"),
             TypeKind::Int8 => self.emitter(emitter_kind).emit("int8_t"),
