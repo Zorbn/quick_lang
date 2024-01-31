@@ -72,6 +72,14 @@ fun main() Int32 {
         puts("boolean is true");
     }
 
+    if boolean && boolean {
+        puts("boolean is true");
+    } else if boolean {
+
+    } else {
+
+    }
+
     while x == 5 && y == 7 {
         x = 3;
     }

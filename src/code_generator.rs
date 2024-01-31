@@ -115,9 +115,9 @@ impl CodeGenerator {
                 type_kind,
             } => self.defer_statement(statement, type_kind),
             TypedNode {
-                node_kind: NodeKind::IfStatement { expression, block },
+                node_kind: NodeKind::IfStatement { expression, block, next },
                 type_kind,
-            } => self.if_statement(expression, block, type_kind),
+            } => self.if_statement(expression, block, next, type_kind),
             TypedNode {
                 node_kind: NodeKind::WhileLoop { expression, block },
                 type_kind,
@@ -323,6 +323,7 @@ impl CodeGenerator {
         self.gen_node(declaration);
         self.function_declaration_needing_init = Some(declaration);
         self.gen_node(block);
+        self.body_emitters.top().body.newline();
     }
 
     fn function_declaration(
@@ -424,7 +425,7 @@ impl CodeGenerator {
         };
 
         self.body_emitters.pop(!was_last_statement_return);
-        self.body_emitters.top().body.emitln("}");
+        self.body_emitters.top().body.emit("}");
     }
 
     fn statement(&mut self, inner: usize, _type_kind: Option<usize>) {
@@ -448,10 +449,22 @@ impl CodeGenerator {
             }
         );
 
+        let needs_newline = matches!(
+            self.typed_nodes[inner],
+            TypedNode {
+                node_kind: NodeKind::Block { .. },
+                ..
+            }
+        );
+
         self.gen_node(inner);
 
         if needs_semicolon {
             self.body_emitters.top().body.emitln(";");
+        }
+
+        if needs_newline {
+            self.body_emitters.top().body.newline();
         }
     }
 
@@ -533,11 +546,22 @@ impl CodeGenerator {
         self.body_emitters.pop_to_bottom();
     }
 
-    fn if_statement(&mut self, expression: usize, block: usize, _type_kind: Option<usize>) {
+    fn if_statement(&mut self, expression: usize, block: usize, next: Option<usize>, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("if (");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
         self.gen_node(block);
+
+        if let Some(next) = next {
+            self.body_emitters.top().body.emit(" else ");
+            self.gen_node(next);
+
+            if matches!(self.typed_nodes[next].node_kind, NodeKind::Block { .. }) {
+                self.body_emitters.top().body.newline();
+            }
+        } else {
+            self.body_emitters.top().body.newline();
+        }
     }
 
     fn while_loop(&mut self, expression: usize, block: usize, _type_kind: Option<usize>) {
@@ -545,6 +569,7 @@ impl CodeGenerator {
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
         self.gen_node(block);
+        self.body_emitters.top().body.newline();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -579,6 +604,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(") ");
 
         self.gen_node(block);
+        self.body_emitters.top().body.newline();
     }
 
     fn binary(&mut self, left: usize, op: Op, right: usize, type_kind: Option<usize>) {

@@ -31,7 +31,7 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.control.quick",
-				"match": "\\b(var|val|fun|struct|return|extern|if|while|for|of|by|as|defer|sizeof|true|false)\\b"
+				"match": "\\b(var|val|fun|struct|return|extern|if|else|while|for|of|by|as|defer|sizeof|true|false)\\b"
 			}]
 		},
 		"strings": {

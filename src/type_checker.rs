@@ -116,7 +116,7 @@ impl TypeChecker {
             } => self.variable_declaration(is_mutable, name, type_name, expression),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
-            NodeKind::IfStatement { expression, block } => self.if_statement(expression, block),
+            NodeKind::IfStatement { expression, block, next } => self.if_statement(expression, block, next),
             NodeKind::WhileLoop { expression, block } => self.while_loop(expression, block),
             NodeKind::ForLoop {
                 iterator,
@@ -276,9 +276,15 @@ impl TypeChecker {
         self.check_node(statement)
     }
 
-    fn if_statement(&mut self, expression: usize, block: usize) -> Option<usize> {
+    fn if_statement(&mut self, expression: usize, block: usize, next: Option<usize>) -> Option<usize> {
         self.check_node(expression);
-        self.check_node(block)
+        self.check_node(block);
+
+        if let Some(next) = next {
+            self.check_node(next);
+        }
+
+        None
     }
 
     fn while_loop(&mut self, expression: usize, block: usize) -> Option<usize> {

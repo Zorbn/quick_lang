@@ -30,11 +30,12 @@ mod types;
  * Generics.
  *
  * SMALL TODOS:
- * Range syntax in integer array initializer? [1<10 by 3] [1<10 by 3; 100]
- * for elem in array {} (both this and range syntax in arrays probably require making ranges part of expressions, and giving them a special type, maybe this work can be reused for varargs too)
+ * for elem in array {}
  * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Bitwise operations.
  * Add character types and literals.
+ * Switch statement.
+ * Make sure all non-void functions return, and that all functions return the correct value.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.

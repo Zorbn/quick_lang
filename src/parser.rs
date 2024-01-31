@@ -128,6 +128,7 @@ pub enum NodeKind {
     IfStatement {
         expression: usize,
         block: usize,
+        next: Option<usize>,
     },
     WhileLoop {
         expression: usize,
@@ -766,10 +767,26 @@ impl Parser {
 
         let expression = self.expression(false);
         let block = self.block();
-        let end = self.node_end(block);
+        let mut end = self.node_end(block);
+
+        let next = if *self.token_kind() == TokenKind::Else {
+            self.position += 1;
+
+            let next = if *self.token_kind() == TokenKind::If {
+                self.if_statement()
+            } else {
+                self.block()
+            };
+
+            end = self.node_end(next);
+
+            Some(next)
+        } else {
+            None
+        };
 
         self.add_node(Node {
-            kind: NodeKind::IfStatement { expression, block },
+            kind: NodeKind::IfStatement { expression, block, next },
             start,
             end,
         })
@@ -885,7 +902,7 @@ impl Parser {
             };
 
             self.position += 1;
-            let right = self.assignment(true);
+            let right = self.assignment(allow_struct_literal);
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary {
@@ -913,7 +930,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.compound(true);
+            let right = self.compound(allow_struct_literal);
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -937,7 +954,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.equality(true);
+            let right = self.equality(allow_struct_literal);
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -963,7 +980,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.inequality(true);
+            let right = self.inequality(allow_struct_literal);
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -987,7 +1004,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.term(true);
+            let right = self.term(allow_struct_literal);
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1011,7 +1028,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.factor(true);
+            let right = self.factor(allow_struct_literal);
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1035,7 +1052,7 @@ impl Parser {
         };
         self.position += 1;
 
-        let right = self.unary_prefix(true);
+        let right = self.unary_prefix(allow_struct_literal);
         let end = self.node_end(right);
         self.add_node(Node {
             kind: NodeKind::UnaryPrefix { op, right },
@@ -1056,7 +1073,7 @@ impl Parser {
                     let mut args = Vec::new();
 
                     while *self.token_kind() != TokenKind::RParen {
-                        args.push(self.expression(true));
+                        args.push(self.expression(allow_struct_literal));
 
                         if *self.token_kind() != TokenKind::Comma {
                             break;
@@ -1097,7 +1114,7 @@ impl Parser {
                 TokenKind::LBracket => {
                     self.position += 1;
 
-                    let expression = self.expression(true);
+                    let expression = self.expression(allow_struct_literal);
 
                     let end = self.token_end();
                     assert_token!(self, TokenKind::RBracket, start, end);
