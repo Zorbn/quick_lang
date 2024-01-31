@@ -187,6 +187,10 @@ impl CodeGenerator {
                 type_kind,
             } => self.float32_literal(text, type_kind),
             TypedNode {
+                node_kind: NodeKind::CharLiteral { value },
+                type_kind,
+            } => self.char_literal(value, type_kind),
+            TypedNode {
                 node_kind: NodeKind::StringLiteral { text },
                 type_kind,
             } => self.string_literal(text, type_kind),
@@ -744,6 +748,14 @@ impl CodeGenerator {
     fn float32_literal(&mut self, text: String, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&text);
         self.body_emitters.top().body.emit("f");
+    }
+
+    fn char_literal(&mut self, value: char, _type_kind: Option<usize>) {
+        let mut char_buffer = [0u8];
+
+        self.body_emitters.top().body.emit("'");
+        self.body_emitters.top().body.emit(value.encode_utf8(&mut char_buffer));
+        self.body_emitters.top().body.emit("'");
     }
 
     fn string_literal(&mut self, text: String, _type_kind: Option<usize>) {

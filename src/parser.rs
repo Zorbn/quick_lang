@@ -1222,6 +1222,7 @@ impl Parser {
             TokenKind::Identifier { .. } => self.identifier(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
             TokenKind::Float32Literal { .. } => self.float32_literal(),
+            TokenKind::CharLiteral { .. } => self.char_literal(),
             TokenKind::StringLiteral { .. } => self.string_literal(),
             TokenKind::True | TokenKind::False => self.bool_literal(),
             TokenKind::LBracket { .. } => self.array_literal(),
@@ -1348,14 +1349,13 @@ impl Parser {
         let start = self.token_start();
         let end = self.token_end();
         let value = match self.token_kind() {
-            TokenKind::True => true,
-            TokenKind::False => false,
-            _ => parse_error!(self, "expected bool literal", start, end),
+            TokenKind::CharLiteral { value } => *value,
+            _ => parse_error!(self, "expected char literal", start, self.token_end()),
         };
         self.position += 1;
 
         self.add_node(Node {
-            kind: NodeKind::BoolLiteral { value },
+            kind: NodeKind::CharLiteral { value },
             start,
             end,
         })

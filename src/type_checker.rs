@@ -6,9 +6,7 @@ use std::{
 use crate::{
     environment::Environment,
     parser::{
-        ArrayLayout, Field, Node, NodeKind, Op, TypeKind, BOOL_INDEX, FLOAT32_INDEX, FLOAT64_INDEX,
-        INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, UINT16_INDEX,
-        UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
+        ArrayLayout, Field, Node, NodeKind, Op, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX
     },
     types::get_type_kind_as_pointer,
 };
@@ -143,6 +141,7 @@ impl TypeChecker {
             NodeKind::Float32Literal { text } => self.float32_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
             NodeKind::BoolLiteral { value } => self.bool_literal(value),
+            NodeKind::CharLiteral { value } => self.char_literal(value),
             NodeKind::ArrayLiteral {
                 elements,
                 repeat_count,
@@ -531,6 +530,10 @@ impl TypeChecker {
 
     fn bool_literal(&mut self, _value: bool) -> Option<usize> {
         Some(BOOL_INDEX)
+    }
+
+    fn char_literal(&mut self, _value: char) -> Option<usize> {
+        Some(CHAR_INDEX)
     }
 
     fn array_literal(&mut self, elements: Arc<Vec<usize>>, repeat_count: usize) -> Option<usize> {
