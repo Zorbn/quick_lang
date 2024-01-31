@@ -117,6 +117,8 @@ impl TypeChecker {
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
             NodeKind::IfStatement { expression, block, next } => self.if_statement(expression, block, next),
+            NodeKind::SwitchStatement { expression, case_block } => self.switch_statement(expression, case_block),
+            NodeKind::CaseBlock { expression, block, next } => self.case_block(expression, block, next),
             NodeKind::WhileLoop { expression, block } => self.while_loop(expression, block),
             NodeKind::ForLoop {
                 iterator,
@@ -277,6 +279,24 @@ impl TypeChecker {
     }
 
     fn if_statement(&mut self, expression: usize, block: usize, next: Option<usize>) -> Option<usize> {
+        self.check_node(expression);
+        self.check_node(block);
+
+        if let Some(next) = next {
+            self.check_node(next);
+        }
+
+        None
+    }
+
+    fn switch_statement(&mut self, expression: usize, case_block: usize) -> Option<usize> {
+        self.check_node(expression);
+        self.check_node(case_block);
+
+        None
+    }
+
+    fn case_block(&mut self, expression: usize, block: usize, next: Option<usize>) -> Option<usize> {
         self.check_node(expression);
         self.check_node(block);
 

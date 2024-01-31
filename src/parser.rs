@@ -130,6 +130,15 @@ pub enum NodeKind {
         block: usize,
         next: Option<usize>,
     },
+    SwitchStatement {
+        expression: usize,
+        case_block: usize,
+    },
+    CaseBlock {
+        expression: usize,
+        block: usize,
+        next: Option<usize>,
+    },
     WhileLoop {
         expression: usize,
         block: usize,
@@ -646,6 +655,7 @@ impl Parser {
             self.token_kind(),
             TokenKind::Defer
                 | TokenKind::If
+                | TokenKind::Switch
                 | TokenKind::While
                 | TokenKind::For
                 | TokenKind::LBrace
@@ -656,6 +666,7 @@ impl Parser {
             TokenKind::Return => self.return_statement(),
             TokenKind::Defer => self.defer_statement(),
             TokenKind::If => self.if_statement(),
+            TokenKind::Switch => self.switch_statement(),
             TokenKind::While => self.while_loop(),
             TokenKind::For => self.for_loop(),
             TokenKind::LBrace => self.block(),
@@ -787,6 +798,54 @@ impl Parser {
 
         self.add_node(Node {
             kind: NodeKind::IfStatement { expression, block, next },
+            start,
+            end,
+        })
+    }
+
+    fn switch_statement(&mut self) -> usize {
+        let start = self.token_start();
+        assert_token!(self, TokenKind::Switch, start, self.token_end());
+        self.position += 1;
+
+        let expression = self.expression(false);
+        let case_block = self.case_block();
+        let end = self.node_end(case_block);
+
+        self.add_node(Node {
+            kind: NodeKind::SwitchStatement { expression, case_block },
+            start,
+            end,
+        })
+    }
+
+    fn case_block(&mut self) -> usize {
+        let start = self.token_start();
+        assert_token!(self, TokenKind::Case, start, self.token_end());
+        self.position += 1;
+
+        let expression = self.expression(false);
+        let block = self.block();
+        let mut end = self.node_end(block);
+
+        let next = if *self.token_kind() == TokenKind::Case {
+            let next = self.case_block();
+            end = self.node_end(next);
+
+            Some(next)
+        } else if *self.token_kind() == TokenKind::Else {
+            self.position += 1;
+
+            let next = self.block();
+            end = self.node_end(next);
+
+            Some(next)
+        } else {
+            None
+        };
+
+        self.add_node(Node {
+            kind: NodeKind::CaseBlock { expression, block, next },
             start,
             end,
         })

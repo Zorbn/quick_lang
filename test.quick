@@ -113,6 +113,15 @@ fun main() Int32 {
 
     }
 
+    val si = 1;
+    switch si case 1 {
+        puts("1");
+    } case 2 {
+        puts("2");
+    } else {
+        puts("other");
+    }
+
     hello(
         a,
         b,

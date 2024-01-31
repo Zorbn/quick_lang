@@ -40,6 +40,8 @@ pub enum TokenKind {
     Extern,
     If,
     Else,
+    Switch,
+    Case,
     While,
     For,
     Of,
@@ -111,6 +113,8 @@ impl Display for TokenKind {
             TokenKind::Extern => "extern",
             TokenKind::If => "if",
             TokenKind::Else => "else",
+            TokenKind::Switch => "switch",
+            TokenKind::Case => "case",
             TokenKind::While => "while",
             TokenKind::For => "for",
             TokenKind::Of => "of",
@@ -337,6 +341,14 @@ impl Lexer {
             }
 
             if self.try_string_to_token("else", TokenKind::Else) {
+                continue;
+            }
+
+            if self.try_string_to_token("switch", TokenKind::Switch) {
+                continue;
+            }
+
+            if self.try_string_to_token("case", TokenKind::Case) {
                 continue;
             }
 

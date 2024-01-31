@@ -119,6 +119,14 @@ impl CodeGenerator {
                 type_kind,
             } => self.if_statement(expression, block, next, type_kind),
             TypedNode {
+                node_kind: NodeKind::SwitchStatement { expression, case_block },
+                type_kind,
+            } => self.switch_statement(expression, case_block, type_kind),
+            TypedNode {
+                node_kind: NodeKind::CaseBlock { expression, block, next },
+                type_kind,
+            } => self.case_block(expression, block, next, type_kind),
+            TypedNode {
                 node_kind: NodeKind::WhileLoop { expression, block },
                 type_kind,
             } => self.while_loop(expression, block, type_kind),
@@ -438,6 +446,9 @@ impl CodeGenerator {
                 node_kind: NodeKind::IfStatement { .. },
                 ..
             } | TypedNode {
+                node_kind: NodeKind::SwitchStatement { .. },
+                ..
+            } | TypedNode {
                 node_kind: NodeKind::WhileLoop { .. },
                 ..
             } | TypedNode {
@@ -561,6 +572,32 @@ impl CodeGenerator {
             }
         } else {
             self.body_emitters.top().body.newline();
+        }
+    }
+
+    fn switch_statement(&mut self, expression: usize, case_block: usize, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit("switch (");
+        self.gen_node(expression);
+        self.body_emitters.top().body.emitln(") {");
+        self.gen_node(case_block);
+        self.body_emitters.top().body.emitln("}");
+    }
+
+    fn case_block(&mut self, expression: usize, block: usize, next: Option<usize>, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit("case ");
+        self.gen_node(expression);
+        self.body_emitters.top().body.emit(": ");
+        self.gen_node(block);
+        self.body_emitters.top().body.emitln(" break;");
+
+        if let Some(next) = next {
+            if matches!(self.typed_nodes[next].node_kind, NodeKind::Block { .. }) {
+                self.body_emitters.top().body.emit("default: ");
+                self.gen_node(next);
+                self.body_emitters.top().body.emitln(" break;");
+            } else {
+                self.gen_node(next);
+            }
         }
     }
 
