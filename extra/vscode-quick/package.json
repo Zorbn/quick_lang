@@ -1,0 +1,25 @@
+{
+  "name": "vscode-quick",
+  "displayName": "Quick",
+  "description": "Language support for Quick",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "quick",
+      "aliases": ["Quick", "quick"],
+      "extensions": [".quick"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "quick",
+      "scopeName": "source.quick",
+      "path": "./syntaxes/quick.tmLanguage.json"
+    }]
+  }
+}

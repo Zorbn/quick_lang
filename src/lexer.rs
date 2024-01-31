@@ -41,7 +41,7 @@ pub enum TokenKind {
     If,
     While,
     For,
-    In,
+    Of,
     By,
     As,
     Defer,
@@ -111,7 +111,7 @@ impl Display for TokenKind {
             TokenKind::If => "if",
             TokenKind::While => "while",
             TokenKind::For => "for",
-            TokenKind::In => "in",
+            TokenKind::Of => "of",
             TokenKind::By => "by",
             TokenKind::As => "as",
             TokenKind::Defer => "defer",
@@ -342,7 +342,7 @@ impl Lexer {
                 continue;
             }
 
-            if self.try_string_to_token("in", TokenKind::In) {
+            if self.try_string_to_token("of", TokenKind::Of) {
                 continue;
             }
 

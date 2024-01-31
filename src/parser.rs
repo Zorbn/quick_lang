@@ -803,7 +803,7 @@ impl Parser {
         };
         self.position += 1;
 
-        assert_token!(self, TokenKind::In, start, self.token_end());
+        assert_token!(self, TokenKind::Of, start, self.token_end());
         self.position += 1;
 
         let from = self.term(true);

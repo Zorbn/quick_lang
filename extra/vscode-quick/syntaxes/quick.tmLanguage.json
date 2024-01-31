@@ -1,0 +1,86 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Quick",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#single-line-comment"
+		},
+		{
+			"include": "#multi-line-comment"
+		},
+		{
+			"include": "#decimal-literal"
+		},
+		{
+			"include": "#function"
+		},
+		{
+			"include": "#type"
+		},
+		{
+			"include": "#variable"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.quick",
+				"match": "\\b(var|val|fun|struct|return|extern|if|while|for|of|by|as|defer|sizeof|true|false)\\b"
+			}]
+		},
+		"strings": {
+			"name": "string.quoted.double.quick",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.quick",
+					"match": "\\\\."
+				}
+			]
+		},
+		"single-line-comment": {
+			"name": "comment.line.double-slash.quick",
+			"begin": "//",
+			"end": "$"
+		},
+		"multi-line-comment": {
+			"name": "comment.block.quick",
+			"begin": "/\\*",
+			"end": "\\*/",
+			"patterns": [
+				{
+					"include": "#multi-line-comment"
+				}
+			]
+		},
+		"decimal-literal": {
+			"name": "constant.numeric.decimal.quick",
+			"match": "\\b\\d\\d*(\\.\\d*)?\\b"
+		},
+		"function": {
+			"match": "(\\w+)\\(",
+			"captures": {
+				"1": {
+					"name": "entity.name.function"
+				}
+			}
+		},
+		"type": {
+			"name": "entity.name.type.quick",
+			"match": "\\b[A-Z]\\w*\\b"
+		},
+		"variable": {
+			"name": "entity.name.variable.quick",
+			"match": "\\b[a-z]\\w*\\b"
+		}
+
+	},
+	"scopeName": "source.quick"
+}

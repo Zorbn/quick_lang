@@ -76,12 +76,12 @@ fun main() Int32 {
         x = 3;
     }
 
-    for i in -10 < 10 {
+    for i of -10 < 10 {
         defer puts("defer in loop1");
         defer puts("defer in loop2");
     }
 
-    for i in zero() <= 10 {
+    for i of zero() <= 10 {
         defer puts("defer in loop");
 
         {
@@ -93,15 +93,15 @@ fun main() Int32 {
         return 0;
     }
 
-    for i in 10 >= 0 by -1 {
+    for i of 10 >= 0 by -1 {
 
     }
 
-    for i in 10 >= 0 by -1 {
+    for i of 10 >= 0 by -1 {
 
     }
 
-    for i in 10.0 >= 0.0 by -1.0 {
+    for i of 10.0 >= 0.0 by -1.0 {
 
     }
 
