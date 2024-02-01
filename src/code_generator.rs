@@ -590,28 +590,24 @@ impl CodeGenerator {
         };
 
         let is_array = is_type_kind_array(&self.types, type_kind);
+        let needs_const = !is_mutable && !is_array;
 
-        if !is_mutable && !is_array {
-            self.body_emitters.top().body.emit("const ");
+        self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
+        if needs_const {
+            self.body_emitters.top().body.emit(" const");
         }
+        self.body_emitters.top().body.emit(" ");
+        self.gen_node(name);
+        self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
 
         if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
-            self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
-            self.body_emitters.top().body.emit(" ");
-            self.gen_node(name);
-            self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emitln(";");
 
-            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
-            else {
+            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
                 panic!("Invalid variable name");
             };
             self.emit_memmove_expression_to_name(&name_text, expression, type_kind);
         } else {
-            self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
-            self.body_emitters.top().body.emit(" ");
-            self.gen_node(name);
-            self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" = ");
             self.gen_node(expression);
         }
@@ -1059,7 +1055,7 @@ impl CodeGenerator {
 
         match type_kind.clone() {
             TypeKind::Int => self.emitter(emitter_kind).emit("intptr_t"),
-            TypeKind::String => self.emitter(emitter_kind).emit("char*"),
+            TypeKind::String => self.emitter(emitter_kind).emit("const char*"),
             TypeKind::Bool => self.emitter(emitter_kind).emit("bool"),
             TypeKind::Char => self.emitter(emitter_kind).emit("char"),
             TypeKind::Void => self.emitter(emitter_kind).emit("void"),

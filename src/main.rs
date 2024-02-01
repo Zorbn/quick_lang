@@ -41,10 +41,6 @@ mod types;
  * Of course, there will still need to be some equivalent of void* for direct malloc without having to first initialize the value
  * on the stack like the alloc<T> method would. eg, if you're creating an array that is too big for the stack you need to
  * allocate the memory on the heap then write into it directly.
- *
- * There should be const versions of pointer types that you can't free,
- * including strings, ie: const String = "hello"; String = ... some allocation ...
- * or maybe String should be the const version of a character pointer?
  */
 
 fn main() -> ExitCode {

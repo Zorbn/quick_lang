@@ -11,7 +11,7 @@ fun main() Int32 {
     var b Int = a * 2;
     val c = b /= b / 4;
 
-    var str String = "hello world";
+    val str String = "hello world";
     puts(str);
 
     var byte UInt8 = 255 as UInt8;
