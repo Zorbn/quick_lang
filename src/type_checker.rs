@@ -39,7 +39,7 @@ pub struct TypeChecker {
     pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: Vec<usize>,
-    pub struct_definition_indices: HashMap<String, usize>,
+    pub struct_definition_indices: HashMap<Arc<str>, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub had_error: bool,
@@ -54,7 +54,7 @@ impl TypeChecker {
         nodes: Vec<Node>,
         types: Vec<TypeKind>,
         function_declaration_indices: Vec<usize>,
-        struct_definition_indices: HashMap<String, usize>,
+        struct_definition_indices: HashMap<Arc<str>, usize>,
         array_type_kinds: HashMap<ArrayLayout, usize>,
         pointer_type_kinds: HashMap<usize, usize>,
     ) -> Self {
@@ -584,7 +584,7 @@ impl TypeChecker {
         self.check_node(type_name)
     }
 
-    fn name(&mut self, _text: String) -> Option<usize> {
+    fn name(&mut self, _text: Arc<str>) -> Option<usize> {
         None
     }
 
@@ -602,15 +602,15 @@ impl TypeChecker {
         Some(type_kind)
     }
 
-    fn int_literal(&mut self, _text: String) -> Option<usize> {
+    fn int_literal(&mut self, _text: Arc<str>) -> Option<usize> {
         Some(INT_INDEX)
     }
 
-    fn float32_literal(&mut self, _text: String) -> Option<usize> {
+    fn float32_literal(&mut self, _text: Arc<str>) -> Option<usize> {
         Some(FLOAT32_INDEX)
     }
 
-    fn string_literal(&mut self, _text: String) -> Option<usize> {
+    fn string_literal(&mut self, _text: Arc<str>) -> Option<usize> {
         Some(STRING_INDEX)
     }
 

@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 pub struct SubEnvironment {
-    variable_type_kinds: HashMap<String, usize>,
+    variable_type_kinds: HashMap<Arc<str>, usize>,
 }
 
 pub struct Environment {
@@ -23,7 +23,7 @@ impl Environment {
         self.stack.pop();
     }
 
-    pub fn insert(&mut self, name: String, type_kind: usize) {
+    pub fn insert(&mut self, name: Arc<str>, type_kind: usize) {
         self.stack
             .last_mut()
             .unwrap()

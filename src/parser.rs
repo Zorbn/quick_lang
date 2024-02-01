@@ -88,7 +88,7 @@ pub enum TypeKind {
 #[derive(Clone, Debug)]
 pub enum NodeKind {
     Name {
-        text: String,
+        text: Arc<str>,
     },
     TopLevel {
         functions: Arc<Vec<usize>>,
@@ -197,13 +197,13 @@ pub enum NodeKind {
         name: usize,
     },
     IntLiteral {
-        text: String,
+        text: Arc<str>,
     },
     Float32Literal {
-        text: String,
+        text: Arc<str>,
     },
     StringLiteral {
-        text: String,
+        text: Arc<str>,
     },
     BoolLiteral {
         value: bool,
@@ -292,10 +292,10 @@ pub struct Parser {
     pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: Vec<usize>,
-    pub struct_definition_indices: HashMap<String, usize>,
+    pub struct_definition_indices: HashMap<Arc<str>, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
-    pub struct_type_kinds: HashMap<String, usize>,
+    pub struct_type_kinds: HashMap<Arc<str>, usize>,
     pub function_type_kinds: HashMap<FunctionLayout, usize>,
     pub had_error: bool,
 

@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, sync::Arc};
 
 use crate::position::Position;
 
@@ -68,19 +68,17 @@ pub enum TokenKind {
     Float64,
     True,
     False,
-    IntLiteral { text: String },
-    Float32Literal { text: String },
+    IntLiteral { text: Arc<str> },
+    Float32Literal { text: Arc<str> },
     CharLiteral { value: char },
-    StringLiteral { text: String },
-    Identifier { text: String },
+    StringLiteral { text: Arc<str> },
+    Identifier { text: Arc<str> },
     Eof,
     Error,
 }
 
 impl Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut char_buffer = [0u8];
-
         let str = match self {
             TokenKind::LParen => "(",
             TokenKind::RParen => ")",
@@ -146,11 +144,11 @@ impl Display for TokenKind {
             TokenKind::Float64 => "Float64",
             TokenKind::True => "true",
             TokenKind::False => "false",
-            TokenKind::IntLiteral { text } => text,
-            TokenKind::Float32Literal { text } => text,
-            TokenKind::CharLiteral { value } => value.encode_utf8(&mut char_buffer),
-            TokenKind::StringLiteral { text } => text,
-            TokenKind::Identifier { text } => text,
+            TokenKind::IntLiteral { .. } => "int literal",
+            TokenKind::Float32Literal { .. } => "float32 literal",
+            TokenKind::CharLiteral { .. } => "char literal",
+            TokenKind::StringLiteral { .. } => "string literal",
+            TokenKind::Identifier { .. } => "identifier",
             TokenKind::Eof => "EOF",
             TokenKind::Error => "error",
         };
@@ -266,6 +264,10 @@ impl Lexer {
             "Syntax error at line {}, column {}: {}",
             self.position.line, self.position.column, message
         );
+    }
+    
+    fn collect_chars(&self, start: Position, end: Position) -> Arc<str> {
+        Arc::from(self.chars[start.index..end.index].iter().collect::<String>())
     }
 
     pub fn lex(&mut self) {
@@ -476,7 +478,7 @@ impl Lexer {
                 let end = self.position;
                 self.tokens.push(Token {
                     kind: TokenKind::Identifier {
-                        text: self.chars[start.index..end.index].iter().collect(),
+                        text: self.collect_chars(start, end),
                     },
                     start,
                     end,
@@ -500,7 +502,7 @@ impl Lexer {
                 }
 
                 let end = self.position;
-                let text = self.chars[start.index..end.index].iter().collect();
+                let text = self.collect_chars(start, end);
 
                 if has_decimal_point {
                     self.tokens.push(Token {
@@ -733,7 +735,7 @@ impl Lexer {
                     let end = self.position;
                     self.tokens.push(Token {
                         kind: TokenKind::StringLiteral {
-                            text: self.chars[start.index..end.index].iter().collect(),
+                            text: self.collect_chars(start, end),
                         },
                         start,
                         end,

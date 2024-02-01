@@ -18,8 +18,8 @@ enum EmitterKind {
     Top,
 }
 
-fn reserved_names() -> &'static HashSet<String> {
-    static NAMES: OnceLock<HashSet<String>> = OnceLock::new();
+fn reserved_names() -> &'static HashSet<Arc<str>> {
+    static NAMES: OnceLock<HashSet<Arc<str>>> = OnceLock::new();
     NAMES.get_or_init(|| {
         [
             "alignas",
@@ -83,7 +83,7 @@ fn reserved_names() -> &'static HashSet<String> {
             "_Thread_local",
         ]
         .iter()
-        .map(|s| s.to_string())
+        .map(|s| Arc::from(*s))
         .collect()
     })
 }
@@ -865,7 +865,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn name(&mut self, text: String, _type_kind: Option<usize>) {
+    fn name(&mut self, text: Arc<str>, _type_kind: Option<usize>) {
         self.emit_name(text, EmitterKind::Body);
     }
 
@@ -873,15 +873,15 @@ impl CodeGenerator {
         self.gen_node(name);
     }
 
-    fn name_prototype(&mut self, text: String, _type_kind: Option<usize>) {
+    fn name_prototype(&mut self, text: Arc<str>, _type_kind: Option<usize>) {
         self.emit_name(text, EmitterKind::Prototype);
     }
 
-    fn int_literal(&mut self, text: String, _type_kind: Option<usize>) {
+    fn int_literal(&mut self, text: Arc<str>, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&text);
     }
 
-    fn float32_literal(&mut self, text: String, _type_kind: Option<usize>) {
+    fn float32_literal(&mut self, text: Arc<str>, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&text);
         self.body_emitters.top().body.emit("f");
     }
@@ -897,7 +897,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("'");
     }
 
-    fn string_literal(&mut self, text: String, _type_kind: Option<usize>) {
+    fn string_literal(&mut self, text: Arc<str>, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("\"");
         for (i, line) in text.lines().enumerate() {
             if i > 0 {
@@ -1253,7 +1253,7 @@ impl CodeGenerator {
         self.emit_type_name_right(type_name, kind, false);
     }
 
-    fn emit_name(&mut self, text: String, kind: EmitterKind) {
+    fn emit_name(&mut self, text: Arc<str>, kind: EmitterKind) {
         if reserved_names().contains(&text) {
             self.emitter(kind).emit("__");
         }
@@ -1269,10 +1269,10 @@ impl CodeGenerator {
         }
     }
 
-    fn temp_variable_name(&mut self, prefix: &str) -> String {
+    fn temp_variable_name(&mut self, prefix: &str) -> Arc<str> {
         let temp_variable_index = self.temp_variable_count;
         self.temp_variable_count += 1;
 
-        format!("__{}{}", prefix, temp_variable_index)
+        Arc::from(format!("__{}{}", prefix, temp_variable_index))
     }
 }
