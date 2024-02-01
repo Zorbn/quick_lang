@@ -45,6 +45,12 @@ pub struct ArrayLayout {
     pub element_count: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FunctionLayout {
+    pub param_type_kinds: Arc<Vec<usize>>,
+    pub return_type_kind: usize,
+}
+
 #[derive(Clone, Debug)]
 pub enum TypeKind {
     Int,
@@ -75,6 +81,10 @@ pub enum TypeKind {
         field_kinds: Arc<Vec<Field>>,
     },
     PartialStruct,
+    Function {
+        param_kinds: Arc<Vec<usize>>,
+        return_type_kind: usize,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -99,6 +109,7 @@ pub enum NodeKind {
         name: usize,
         params: Arc<Vec<usize>>,
         return_type_name: usize,
+        type_kind: usize,
     },
     Function {
         declaration: usize,
@@ -283,6 +294,7 @@ pub struct Parser {
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub struct_type_kinds: HashMap<String, usize>,
+    pub function_type_kinds: HashMap<FunctionLayout, usize>,
     pub had_error: bool,
 
     pub tokens: Option<Vec<Token>>,
@@ -300,6 +312,7 @@ impl Parser {
             array_type_kinds: HashMap::new(),
             pointer_type_kinds: HashMap::new(),
             struct_type_kinds: HashMap::new(),
+            function_type_kinds: HashMap::new(),
             had_error: false,
             position: 0,
         };
@@ -349,6 +362,15 @@ impl Parser {
     fn token_start(&self) -> Position {
         let tokens = self.tokens.as_ref().unwrap();
         tokens[self.position].start
+    }
+
+    fn last_token_end(&self) -> Position {
+        if self.position < 1 {
+            return self.token_end();
+        }
+
+        let tokens = self.tokens.as_ref().unwrap();
+        tokens[self.position - 1].end
     }
 
     fn token_end(&self) -> Position {
@@ -516,7 +538,8 @@ impl Parser {
             end,
         });
 
-        self.struct_definition_indices.insert(name_text.clone(), index);
+        self.struct_definition_indices
+            .insert(name_text.clone(), index);
 
         index
     }
@@ -546,9 +569,19 @@ impl Parser {
         self.position += 1;
 
         let mut params = Vec::new();
+        let mut param_type_kinds = Vec::new();
 
         while *self.token_kind() != TokenKind::RParen {
-            params.push(self.param());
+            let param = self.param();
+            params.push(param);
+
+            let NodeKind::Param { type_name: param_type_name, .. } = self.nodes[param].kind else {
+                parse_error!(self, "invalid parameter", start, self.token_end());
+            };
+            let NodeKind::TypeName { type_kind: param_type_kind } = self.nodes[param_type_name].kind else {
+                parse_error!(self, "invalid parameter type kind", start, self.token_end());
+            };
+            param_type_kinds.push(param_type_kind);
 
             if *self.token_kind() != TokenKind::Comma {
                 break;
@@ -564,11 +597,29 @@ impl Parser {
         let return_type_name = self.type_name();
         let end = self.node_end(return_type_name);
 
+        let NodeKind::TypeName { type_kind: return_type_kind } = self.nodes[return_type_name].kind else {
+            parse_error!(self, "invalid parameter type kind", start, self.token_end());
+        };
+
+        let function_layout = FunctionLayout { param_type_kinds: Arc::new(param_type_kinds), return_type_kind };
+
+        let type_kind = if let Some(type_kind) = self.function_type_kinds.get(&function_layout) {
+            *type_kind
+        } else {
+            let type_kind = self.add_type(TypeKind::Function {
+                param_kinds: function_layout.param_type_kinds.clone(),
+                return_type_kind: function_layout.return_type_kind,
+            });
+            self.function_type_kinds.insert(function_layout, type_kind);
+            type_kind
+        };
+
         let index = self.add_node(Node {
             kind: NodeKind::FunctionDeclaration {
                 name,
                 return_type_name,
                 params: Arc::new(params),
+                type_kind,
             },
             start,
             end,
@@ -787,7 +838,11 @@ impl Parser {
         };
 
         self.add_node(Node {
-            kind: NodeKind::IfStatement { expression, block, next },
+            kind: NodeKind::IfStatement {
+                expression,
+                block,
+                next,
+            },
             start,
             end,
         })
@@ -803,7 +858,10 @@ impl Parser {
         let end = self.node_end(case_block);
 
         self.add_node(Node {
-            kind: NodeKind::SwitchStatement { expression, case_block },
+            kind: NodeKind::SwitchStatement {
+                expression,
+                case_block,
+            },
             start,
             end,
         })
@@ -835,7 +893,11 @@ impl Parser {
         };
 
         self.add_node(Node {
-            kind: NodeKind::CaseBlock { expression, block, next },
+            kind: NodeKind::CaseBlock {
+                expression,
+                block,
+                next,
+            },
             start,
             end,
         })
@@ -942,18 +1004,14 @@ impl Parser {
                 TokenKind::MinusEqual => Op::MinusAssign,
                 TokenKind::MultiplyEqual => Op::MultiplyAssign,
                 TokenKind::DivideEqual => Op::DivideAssign,
-                _ => break
+                _ => break,
             };
 
             self.position += 1;
             let right = self.assignment(allow_struct_literal);
             let end = self.node_end(right);
             left = self.add_node(Node {
-                kind: NodeKind::Binary {
-                    left,
-                    op,
-                    right,
-                },
+                kind: NodeKind::Binary { left, op, right },
                 start,
                 end,
             })
@@ -1020,7 +1078,7 @@ impl Parser {
                 TokenKind::LessEqual => Op::LessEqual,
                 TokenKind::Greater => Op::Greater,
                 TokenKind::GreaterEqual => Op::GreaterEqual,
-                _ => break
+                _ => break,
             };
             self.position += 1;
 
@@ -1147,10 +1205,7 @@ impl Parser {
                     let end = self.node_end(name);
 
                     left = self.add_node(Node {
-                        kind: NodeKind::FieldAccess {
-                            left,
-                            name,
-                        },
+                        kind: NodeKind::FieldAccess { left, name },
                         start,
                         end,
                     });
@@ -1448,8 +1503,113 @@ impl Parser {
 
     fn type_name(&mut self) -> usize {
         let start = self.token_start();
-        let mut end = self.token_end();
-        let mut type_kind = match self.token_kind().clone() {
+        let type_kind = self.type_kind();
+        let end = self.last_token_end();
+
+        self.add_node(Node {
+            kind: NodeKind::TypeName { type_kind },
+            start,
+            end,
+        })
+    }
+
+    fn type_kind(&mut self) -> usize {
+        let start = self.token_start();
+        let token_kind = self.token_kind().clone();
+
+        match token_kind {
+            TokenKind::Fun => {
+                self.position += 1;
+
+                assert_token!(self, TokenKind::LParen, start, self.token_end());
+                self.position += 1;
+
+                let mut param_type_kinds = Vec::new();
+
+                while *self.token_kind() != TokenKind::RParen {
+                    let param_type_kind = self.type_kind();
+
+                    param_type_kinds.push(param_type_kind);
+
+                    if *self.token_kind() != TokenKind::Comma {
+                        break;
+                    }
+
+                    assert_token!(self, TokenKind::Comma, start, self.token_end());
+                    self.position += 1;
+                }
+
+                assert_token!(self, TokenKind::RParen, start, self.token_end());
+                self.position += 1;
+
+                let return_type_kind = self.type_kind();
+
+                let function_layout = FunctionLayout {
+                    param_type_kinds: Arc::new(param_type_kinds),
+                    return_type_kind,
+                };
+
+                let type_kind = if let Some(type_kind) = self.function_type_kinds.get(&function_layout) {
+                    *type_kind
+                } else {
+                    let type_kind = self.add_type(TypeKind::Function {
+                        param_kinds: function_layout.param_type_kinds.clone(),
+                        return_type_kind: function_layout.return_type_kind,
+                    });
+                    self.function_type_kinds.insert(function_layout, type_kind);
+                    type_kind
+                };
+
+                return type_kind;
+            }
+            TokenKind::LBracket => {
+                self.position += 1;
+
+                let length = self
+                    .parse_uint_literal()
+                    .unwrap_or_else(|| parse_error!(self, "expected uint literal", start, self.token_end()));
+                self.position += 1;
+
+                assert_token!(self, TokenKind::RBracket, start, self.token_end());
+                self.position += 1;
+
+                let element_type_kind = self.type_kind();
+
+                let array_layout = ArrayLayout {
+                    element_type_kind,
+                    element_count: length,
+                };
+
+                let type_kind = if let Some(type_kind) = self.array_type_kinds.get(&array_layout) {
+                    *type_kind
+                } else {
+                    let type_kind = self.add_type(TypeKind::Array {
+                        element_type_kind,
+                        element_count: length,
+                    });
+                    self.array_type_kinds.insert(array_layout, type_kind);
+                    type_kind
+                };
+
+                return type_kind;
+            }
+            TokenKind::Asterisk => {
+                self.position += 1;
+
+                let inner_type_kind = self.type_kind();
+
+                let type_kind = get_type_kind_as_pointer(
+                    &mut self.types,
+                    &mut self.pointer_type_kinds,
+                    inner_type_kind,
+                );
+
+                return type_kind
+            }
+            _ => {}
+        }
+
+        let type_kind = match token_kind {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
             TokenKind::Bool => BOOL_INDEX,
@@ -1475,62 +1635,10 @@ impl Parser {
                     type_kind
                 }
             }
-            _ => parse_error!(self, "expected type name", start, end),
+            _ => parse_error!(self, "expected type name", start, self.token_end()),
         };
         self.position += 1;
 
-        loop {
-            if *self.token_kind() == TokenKind::LBracket {
-                self.position += 1;
-
-                let length = self
-                    .parse_uint_literal()
-                    .unwrap_or_else(|| parse_error!(self, "expected uint literal", start, end));
-                self.position += 1;
-
-                end = self.token_end();
-                assert_token!(self, TokenKind::RBracket, start, end);
-                self.position += 1;
-
-                let array_layout = ArrayLayout {
-                    element_type_kind: type_kind,
-                    element_count: length,
-                };
-
-                type_kind = if let Some(index) = self.array_type_kinds.get(&array_layout) {
-                    *index
-                } else {
-                    let index = self.add_type(TypeKind::Array {
-                        element_type_kind: type_kind,
-                        element_count: length,
-                    });
-                    self.array_type_kinds.insert(array_layout, index);
-                    index
-                };
-
-                continue;
-            }
-
-            if *self.token_kind() == TokenKind::Asterisk {
-                end = self.token_end();
-                self.position += 1;
-
-                type_kind = get_type_kind_as_pointer(
-                    &mut self.types,
-                    &mut self.pointer_type_kinds,
-                    type_kind,
-                );
-
-                continue;
-            }
-
-            break;
-        }
-
-        self.add_node(Node {
-            kind: NodeKind::TypeName { type_kind },
-            start,
-            end,
-        })
+        type_kind
     }
 }

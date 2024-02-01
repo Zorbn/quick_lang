@@ -1,8 +1,10 @@
 extern fun puts(str String) UInt
-extern fun malloc(size UInt) Void*
-extern fun free(ptr Void*) Void
+extern fun malloc(size UInt) *Void
+extern fun free(ptr *Void) Void
 
 fun main() Int32 {
+    var function *fun(Int, Int) Int = &add;
+
     defer {
         puts("defer in main");
     }
@@ -15,7 +17,7 @@ fun main() Int32 {
     puts(str);
 
     var byte UInt8 = 255 as UInt8;
-    var bytePtr UInt8* = &byte;
+    var bytePtr *UInt8 = &byte;
     var otherByte UInt8 = *bytePtr;
 
     /*
@@ -28,24 +30,24 @@ fun main() Int32 {
     */
     */
 
-    var heapPoint Point* = malloc(sizeof Point) as Point*;
+    var heapPoint *Point = malloc(sizeof Point) as *Point;
     *heapPoint = Point { x = 5, y = 5 };
     free(heapPoint);
 
-    var twoD Int[2] = [1, 5];
-    var myArray Int[3] = makeArray(1, 777, 3);
-    var myArrayCopy Int[3] = takeArray(myArray);
-    var otherCopy Int[3] = myArrayCopy;
-    var repeatArray Int[400] = [1, 2, 3, 4; 100];
-    var repeatStringArray String[400] = ["a", "bb", "ccc", "dddd"; 100];
+    var twoD [2]Int = [1, 5];
+    var myArray [3]Int = makeArray(1, 777, 3);
+    var myArrayCopy [3]Int = takeArray(myArray);
+    var otherCopy [3]Int = myArrayCopy;
+    var repeatArray [400]Int = [1, 2, 3, 4; 100];
+    var repeatStringArray [400]String = ["a", "bb", "ccc", "dddd"; 100];
     repeatStringArray[0] = "hello";
     puts(repeatStringArray[377]);
 
-    var multiA String[3][2] = [["a", "b", "ccc"], ["d", "e", "f"]];
-    var multiB String[3][2] = multiA;
+    var multiA [2][3]String = [["a", "b", "ccc"], ["d", "e", "f"]];
+    var multiB [2][3]String = multiA;
     puts(multiA[1][2]);
 
-    var xy Point[2] = [
+    var xy [2]Point = [
         Point {
             x = 5,
             y = 7,
@@ -132,6 +134,10 @@ fun main() Int32 {
     return 0;
 }
 
+fun add(a Int, b Int) Int {
+    return a + b;
+}
+
 fun zero() Int {
     return 0;
 }
@@ -145,10 +151,14 @@ fun hello(num Int, othernum Int) Int {
     return sum;
 }
 
-fun makeArray(a Int, b Int, c Int) Int[3] {
+fun makeArray(a Int, b Int, c Int) [3]Int {
     return [a, b, c];
 }
 
-fun takeArray(a Int[3]) Int[3] {
+fun takeArray(a [3]Int) [3]Int {
     return a;
+}
+
+fun returnFunPtr() *fun(Int, Int) Int {
+    return &add;
 }

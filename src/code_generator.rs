@@ -148,6 +148,7 @@ impl CodeGenerator {
                         name,
                         return_type_name,
                         params,
+                        ..
                     },
                 type_kind,
             } => self.function_declaration(name, return_type_name, params, type_kind),
@@ -318,6 +319,7 @@ impl CodeGenerator {
                         name,
                         return_type_name,
                         params,
+                        ..
                     },
                 type_kind,
             } => self.function_declaration_prototype(name, return_type_name, params, type_kind),
@@ -1087,6 +1089,11 @@ impl CodeGenerator {
                 self.emitter(emitter_kind).emit("*");
             }
             TypeKind::PartialStruct => panic!("Can't emit partial struct"),
+            TypeKind::Function { return_type_kind, .. } => {
+                self.emit_type_kind_left(return_type_kind, emitter_kind, true);
+                self.emit_type_kind_right(return_type_kind, emitter_kind, true);
+                self.emitter(emitter_kind).emit(" (");
+            }
         };
     }
 
@@ -1098,18 +1105,32 @@ impl CodeGenerator {
     ) {
         let type_kind = self.types[type_kind].clone();
 
-        if let TypeKind::Array {
-            element_type_kind,
-            element_count,
-        } = type_kind
-        {
-            if !do_arrays_as_pointers {
-                self.emitter(emitter_kind).emit("[");
-                self.emitter(emitter_kind).emit(&element_count.to_string());
-                self.emitter(emitter_kind).emit("]");
+        match type_kind {
+            TypeKind::Array { element_type_kind, element_count } => {
+                if !do_arrays_as_pointers {
+                    self.emitter(emitter_kind).emit("[");
+                    self.emitter(emitter_kind).emit(&element_count.to_string());
+                    self.emitter(emitter_kind).emit("]");
+                }
+                self.emit_type_kind_right(element_type_kind, emitter_kind, do_arrays_as_pointers);
             }
-            self.emit_type_kind_right(element_type_kind, emitter_kind, do_arrays_as_pointers);
-        };
+            TypeKind::Pointer { inner_type_kind } => {
+                self.emit_type_kind_right(inner_type_kind, emitter_kind, do_arrays_as_pointers);
+            }
+            TypeKind::Function { param_kinds, .. } => {
+                self.emitter(emitter_kind).emit(")(");
+                for (i, param_kind) in param_kinds.iter().enumerate() {
+                    if i > 0 {
+                        self.emitter(emitter_kind).emit(", ");
+                    }
+
+                    self.emit_type_kind_left(*param_kind, emitter_kind, false);
+                    self.emit_type_kind_right(*param_kind, emitter_kind, false);
+                }
+                self.emitter(emitter_kind).emit(")");
+            }
+            _ => {}
+        }
     }
 
     fn emit_binary_op(&mut self, op: Op) {
@@ -1144,7 +1165,6 @@ impl CodeGenerator {
         type_kind: Option<usize>,
     ) {
         self.emit_type_name_left(return_type_name, kind, true);
-        self.emit_type_name_right(return_type_name, kind, true);
         self.emitter(kind).emit(" ");
 
         match kind {
@@ -1170,7 +1190,11 @@ impl CodeGenerator {
             }
         }
 
-        if is_type_kind_array(&self.types, type_kind.unwrap()) {
+        let TypeKind::Function { return_type_kind, .. } = self.types[type_kind.unwrap()] else {
+            panic!("Tried to emit function declaration for non-function type");
+        };
+
+        if is_type_kind_array(&self.types, return_type_kind) {
             if param_count > 0 {
                 self.emitter(kind).emit(", ");
             }
@@ -1186,6 +1210,8 @@ impl CodeGenerator {
         }
 
         self.emitter(kind).emit(")");
+
+        self.emit_type_name_right(return_type_name, kind, true);
     }
 
     fn emit_param(&mut self, name: usize, type_name: usize, kind: EmitterKind) {

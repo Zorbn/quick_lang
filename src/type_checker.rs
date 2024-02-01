@@ -103,7 +103,8 @@ impl TypeChecker {
                 name,
                 return_type_name,
                 params,
-            } => self.function_declaration(name, return_type_name, params),
+                type_kind,
+            } => self.function_declaration(name, return_type_name, params, type_kind),
             NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
             NodeKind::Param { name, type_name } => self.param(name, type_name),
             NodeKind::Block { statements } => self.block(statements),
@@ -217,6 +218,7 @@ impl TypeChecker {
         name: usize,
         return_type_name: usize,
         params: Arc<Vec<usize>>,
+        type_kind: usize,
     ) -> Option<usize> {
         self.check_node(name);
 
@@ -224,7 +226,9 @@ impl TypeChecker {
             self.check_node(*param);
         }
 
-        self.check_node(return_type_name)
+        self.check_node(return_type_name);
+
+        Some(type_kind)
     }
 
     fn extern_function(&mut self, declaration: usize) -> Option<usize> {
@@ -292,6 +296,14 @@ impl TypeChecker {
             type_error!(self, "mismatched types in variable declaration");
         }
 
+        let Some(type_kind) = type_kind else {
+            type_error!(self, "cannot declare untyped variable");
+        };
+
+        if let TypeKind::Function { .. } = self.types[type_kind] {
+            type_error!(self, "variables can't have a function type, try a function pointer instead");
+        }
+
         let Node {
             kind: NodeKind::Name { text: name_text },
             ..
@@ -300,9 +312,9 @@ impl TypeChecker {
             type_error!(self, "invalid variable name");
         };
 
-        self.environment.insert(name_text, type_kind.unwrap());
+        self.environment.insert(name_text, type_kind);
 
-        type_kind
+        Some(type_kind)
     }
 
     fn return_statement(&mut self, expression: Option<usize>) -> Option<usize> {
@@ -462,15 +474,19 @@ impl TypeChecker {
     }
 
     fn call(&mut self, left: usize, args: Arc<Vec<usize>>) -> Option<usize> {
-        // TODO: Make sure only function types can be called. At the time of writing, we don't have proper function types,
-        // but that will probably be added when we add first class functions (function pointers).
-        let type_kind = self.check_node(left);
+        let Some(type_kind) = self.check_node(left) else {
+            type_error!(self, "cannot call untyped value");
+        };
 
         for arg in args.iter() {
             self.check_node(*arg);
         }
 
-        type_kind
+        let TypeKind::Function { return_type_kind, .. } = self.types[type_kind] else {
+            type_error!(self, "only functions can be called");
+        };
+
+        Some(return_type_kind)
     }
 
     fn index_access(&mut self, left: usize, expression: usize) -> Option<usize> {
@@ -559,14 +575,15 @@ impl TypeChecker {
         };
 
         if let Some(declaration_index) = self.function_declaration_indices.get(text) {
+            // TODO: This won't be necessary once functions are added to the environment like variables.
             let NodeKind::FunctionDeclaration {
-                return_type_name, ..
+                type_kind, ..
             } = self.nodes[*declaration_index].kind
             else {
                 return None;
             };
 
-            return self.check_node(return_type_name);
+            return Some(type_kind);
         };
 
         let Some(type_kind) = self.environment.get(text) else {
