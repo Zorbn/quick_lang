@@ -392,8 +392,7 @@ impl CodeGenerator {
     }
 
     fn field(&mut self, name: usize, _type_name: usize, type_kind: Option<usize>) {
-        self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Prototype, false);
-        self.prototype_emitter.emit(" ");
+        self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Prototype, false, true);
         self.gen_node_prototype(name);
         self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Prototype, false);
         self.prototype_emitter.emitln(";");
@@ -480,7 +479,6 @@ impl CodeGenerator {
             let copy_name = format!("__{}", name);
 
             self.emit_type_name_left(type_name, EmitterKind::Body, false);
-            self.body_emitters.top().body.emit(" ");
             self.body_emitters.top().body.emit(&copy_name);
             self.emit_type_name_right(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emitln(";");
@@ -594,11 +592,10 @@ impl CodeGenerator {
         let is_array = is_type_kind_array(&self.types, type_kind);
         let needs_const = !is_mutable && !is_array;
 
-        self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
+        self.emit_type_kind_left(type_kind, EmitterKind::Body, false, true);
         if needs_const {
-            self.body_emitters.top().body.emit(" const");
+            self.body_emitters.top().body.emit("const ");
         }
-        self.body_emitters.top().body.emit(" ");
         self.gen_node(name);
         self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
 
@@ -629,8 +626,7 @@ impl CodeGenerator {
             if is_typed_expression_array_literal(&self.typed_nodes, expression) {
                 let temp_name = self.temp_variable_name("temp");
 
-                self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Body, false);
-                self.body_emitters.top().body.emit(" ");
+                self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Body, false, true);
                 self.body_emitters.top().body.emit(&temp_name);
                 self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Body, false);
                 self.body_emitters.top().body.emit(" = ");
@@ -813,8 +809,7 @@ impl CodeGenerator {
 
             let return_array_name = self.temp_variable_name("returnArray");
 
-            self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Top, false);
-            self.body_emitters.top().top.emit(" ");
+            self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Top, false, true);
             self.body_emitters.top().top.emit(&return_array_name);
             self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Top, false);
             self.body_emitters.top().top.emitln(";");
@@ -923,7 +918,7 @@ impl CodeGenerator {
     fn struct_literal(&mut self, _name: usize, fields: Arc<Vec<usize>>, type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("(");
         if let Some(type_kind) = type_kind {
-            self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
+            self.emit_type_kind_left(type_kind, EmitterKind::Body, false, true);
             self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
         } else {
             panic!("Can't generate struct literal without a type");
@@ -1008,7 +1003,7 @@ impl CodeGenerator {
             }
             _ => {
                 self.body_emitters.top().body.emit("sizeof(");
-                self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
+                self.emit_type_kind_left(type_kind, EmitterKind::Body, false, true);
                 self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
                 self.body_emitters.top().body.emit(")");
             }
@@ -1028,7 +1023,7 @@ impl CodeGenerator {
         else {
             panic!("Tried to emit node that wasn't a type name");
         };
-        self.emit_type_kind_left(type_kind, emitter_kind, do_arrays_as_pointers);
+        self.emit_type_kind_left(type_kind, emitter_kind, do_arrays_as_pointers, true);
     }
 
     fn emit_type_name_right(
@@ -1052,8 +1047,10 @@ impl CodeGenerator {
         type_kind: usize,
         emitter_kind: EmitterKind,
         do_arrays_as_pointers: bool,
+        is_prefix: bool,
     ) {
         let type_kind = &self.types[type_kind];
+        let needs_trailing_space = is_prefix && !matches!(type_kind, TypeKind::Array { .. } | TypeKind::Pointer { .. } | TypeKind::Function { .. });
 
         match type_kind.clone() {
             TypeKind::Int => self.emitter(emitter_kind).emit("intptr_t"),
@@ -1075,26 +1072,31 @@ impl CodeGenerator {
             TypeKind::Struct { name, .. } => {
                 self.emitter(emitter_kind).emit("struct ");
                 self.gen_node(name);
+                self.emitter(emitter_kind).emit(" ");
             }
             TypeKind::Array {
                 element_type_kind, ..
             } => {
-                self.emit_type_kind_left(element_type_kind, emitter_kind, do_arrays_as_pointers);
+                self.emit_type_kind_left(element_type_kind, emitter_kind, do_arrays_as_pointers, true);
                 if do_arrays_as_pointers {
                     self.emitter(emitter_kind).emit("*");
                 }
             }
             TypeKind::Pointer { inner_type_kind } => {
-                self.emit_type_kind_left(inner_type_kind, emitter_kind, do_arrays_as_pointers);
+                self.emit_type_kind_left(inner_type_kind, emitter_kind, do_arrays_as_pointers, true);
                 self.emitter(emitter_kind).emit("*");
             }
             TypeKind::PartialStruct => panic!("Can't emit partial struct"),
             TypeKind::Function { return_type_kind, .. } => {
-                self.emit_type_kind_left(return_type_kind, emitter_kind, true);
+                self.emit_type_kind_left(return_type_kind, emitter_kind, true, true);
                 self.emit_type_kind_right(return_type_kind, emitter_kind, true);
-                self.emitter(emitter_kind).emit(" (");
+                self.emitter(emitter_kind).emit("(");
             }
         };
+
+        if needs_trailing_space {
+            self.emitter(emitter_kind).emit(" ");
+        }
     }
 
     fn emit_type_kind_right(
@@ -1124,7 +1126,7 @@ impl CodeGenerator {
                         self.emitter(emitter_kind).emit(", ");
                     }
 
-                    self.emit_type_kind_left(*param_kind, emitter_kind, false);
+                    self.emit_type_kind_left(*param_kind, emitter_kind, false, false);
                     self.emit_type_kind_right(*param_kind, emitter_kind, false);
                 }
                 self.emitter(emitter_kind).emit(")");
@@ -1165,7 +1167,6 @@ impl CodeGenerator {
         type_kind: Option<usize>,
     ) {
         self.emit_type_name_left(return_type_name, kind, true);
-        self.emitter(kind).emit(" ");
 
         match kind {
             EmitterKind::Prototype => self.gen_node_prototype(name),
@@ -1216,7 +1217,6 @@ impl CodeGenerator {
 
     fn emit_param(&mut self, name: usize, type_name: usize, kind: EmitterKind) {
         self.emit_type_name_left(type_name, kind, false);
-        self.emitter(kind).emit(" ");
         match kind {
             EmitterKind::Prototype => self.gen_node_prototype(name),
             EmitterKind::Body => self.gen_node(name),
@@ -1227,7 +1227,6 @@ impl CodeGenerator {
 
     fn emit_param_string(&mut self, name: String, type_name: usize, kind: EmitterKind) {
         self.emit_type_name_left(type_name, kind, false);
-        self.emitter(kind).emit(" ");
         self.emitter(kind).emit(&name);
         self.emit_type_name_right(type_name, kind, false);
     }
