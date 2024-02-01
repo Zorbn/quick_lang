@@ -1269,10 +1269,10 @@ impl CodeGenerator {
         }
     }
 
-    fn temp_variable_name(&mut self, prefix: &str) -> Arc<str> {
+    fn temp_variable_name(&mut self, prefix: &str) -> String {
         let temp_variable_index = self.temp_variable_count;
         self.temp_variable_count += 1;
 
-        Arc::from(format!("__{}{}", prefix, temp_variable_index))
+        format!("__{}{}", prefix, temp_variable_index)
     }
 }
