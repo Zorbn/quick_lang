@@ -6,7 +6,9 @@ use std::{
 use crate::{
     environment::Environment,
     parser::{
-        ArrayLayout, Field, Node, NodeKind, Op, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX
+        ArrayLayout, Field, Node, NodeKind, Op, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX,
+        FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX,
+        UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
     },
     types::get_type_kind_as_pointer,
 };
@@ -114,9 +116,20 @@ impl TypeChecker {
             } => self.variable_declaration(is_mutable, name, type_name, expression),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
-            NodeKind::IfStatement { expression, block, next } => self.if_statement(expression, block, next),
-            NodeKind::SwitchStatement { expression, case_block } => self.switch_statement(expression, case_block),
-            NodeKind::CaseBlock { expression, block, next } => self.case_block(expression, block, next),
+            NodeKind::IfStatement {
+                expression,
+                block,
+                next,
+            } => self.if_statement(expression, block, next),
+            NodeKind::SwitchStatement {
+                expression,
+                case_block,
+            } => self.switch_statement(expression, case_block),
+            NodeKind::CaseBlock {
+                expression,
+                block,
+                next,
+            } => self.case_block(expression, block, next),
             NodeKind::WhileLoop { expression, block } => self.while_loop(expression, block),
             NodeKind::ForLoop {
                 iterator,
@@ -130,13 +143,10 @@ impl TypeChecker {
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right),
             NodeKind::Call { left, args } => self.call(left, args),
             NodeKind::IndexAccess { left, expression } => self.index_access(left, expression),
-            NodeKind::FieldAccess {
-                left,
-                field_identifier,
-            } => self.field_access(left, field_identifier),
+            NodeKind::FieldAccess { left, name } => self.field_access(left, name),
             NodeKind::Cast { left, type_name } => self.cast(left, type_name),
-            NodeKind::Identifier { text } => self.identifier(text),
-            NodeKind::FieldIdentifier { text } => self.field_identifier(text),
+            NodeKind::Name { text } => self.name(text),
+            NodeKind::Identifier { name } => self.identifier(name),
             NodeKind::IntLiteral { text } => self.int_literal(text),
             NodeKind::Float32Literal { text } => self.float32_literal(text),
             NodeKind::StringLiteral { text } => self.string_literal(text),
@@ -175,10 +185,12 @@ impl TypeChecker {
 
     fn struct_definition(
         &mut self,
-        _name: String,
+        name: usize,
         fields: Arc<Vec<usize>>,
         type_kind: usize,
     ) -> Option<usize> {
+        self.check_node(name);
+
         for field in fields.iter() {
             self.check_node(*field);
         }
@@ -186,7 +198,8 @@ impl TypeChecker {
         Some(type_kind)
     }
 
-    fn field(&mut self, _name: String, type_name: usize) -> Option<usize> {
+    fn field(&mut self, name: usize, type_name: usize) -> Option<usize> {
+        self.check_node(name);
         self.check_node(type_name)
     }
 
@@ -201,10 +214,12 @@ impl TypeChecker {
 
     fn function_declaration(
         &mut self,
-        _name: String,
+        name: usize,
         return_type_name: usize,
         params: Arc<Vec<usize>>,
     ) -> Option<usize> {
+        self.check_node(name);
+
         for param in params.iter() {
             self.check_node(*param);
         }
@@ -216,9 +231,20 @@ impl TypeChecker {
         self.check_node(declaration)
     }
 
-    fn param(&mut self, name: String, type_name: usize) -> Option<usize> {
+    fn param(&mut self, name: usize, type_name: usize) -> Option<usize> {
+        self.check_node(name);
+
         let type_kind = self.check_node(type_name);
-        self.environment.insert(name, type_kind.unwrap());
+
+        let Node {
+            kind: NodeKind::Name { text: name_text },
+            ..
+        } = self.nodes[name].clone()
+        else {
+            type_error!(self, "invalid parameter name");
+        };
+
+        self.environment.insert(name_text, type_kind.unwrap());
 
         type_kind
     }
@@ -248,10 +274,12 @@ impl TypeChecker {
     fn variable_declaration(
         &mut self,
         _is_mutable: bool,
-        name: String,
+        name: usize,
         type_name: Option<usize>,
         expression: usize,
     ) -> Option<usize> {
+        self.check_node(name);
+
         let expression_type_kind = self.check_node(expression);
 
         let type_kind = if let Some(type_name) = type_name {
@@ -264,7 +292,15 @@ impl TypeChecker {
             type_error!(self, "mismatched types in variable declaration");
         }
 
-        self.environment.insert(name, type_kind.unwrap());
+        let Node {
+            kind: NodeKind::Name { text: name_text },
+            ..
+        } = self.nodes[name].clone()
+        else {
+            type_error!(self, "invalid variable name");
+        };
+
+        self.environment.insert(name_text, type_kind.unwrap());
 
         type_kind
     }
@@ -277,7 +313,12 @@ impl TypeChecker {
         self.check_node(statement)
     }
 
-    fn if_statement(&mut self, expression: usize, block: usize, next: Option<usize>) -> Option<usize> {
+    fn if_statement(
+        &mut self,
+        expression: usize,
+        block: usize,
+        next: Option<usize>,
+    ) -> Option<usize> {
         self.check_node(expression);
         self.check_node(block);
 
@@ -295,7 +336,12 @@ impl TypeChecker {
         None
     }
 
-    fn case_block(&mut self, expression: usize, block: usize, next: Option<usize>) -> Option<usize> {
+    fn case_block(
+        &mut self,
+        expression: usize,
+        block: usize,
+        next: Option<usize>,
+    ) -> Option<usize> {
         self.check_node(expression);
         self.check_node(block);
 
@@ -313,13 +359,14 @@ impl TypeChecker {
 
     fn for_loop(
         &mut self,
-        _iterator: String,
+        iterator: usize,
         _op: Op,
         from: usize,
         to: usize,
         by: Option<usize>,
         block: usize,
     ) -> Option<usize> {
+        self.check_node(iterator);
         self.check_node(from);
         self.check_node(to);
         if let Some(by) = by {
@@ -445,9 +492,9 @@ impl TypeChecker {
         Some(element_type_kind)
     }
 
-    fn field_access(&mut self, left: usize, field_identifier: usize) -> Option<usize> {
+    fn field_access(&mut self, left: usize, name: usize) -> Option<usize> {
         let parent_type = self.check_node(left).unwrap();
-        self.check_node(field_identifier);
+        self.check_node(name);
 
         let field_kinds = match &self.types[parent_type] {
             TypeKind::Struct { field_kinds, .. } => field_kinds,
@@ -468,11 +515,11 @@ impl TypeChecker {
         };
 
         let Node {
-            kind: NodeKind::FieldIdentifier { text: name },
+            kind: NodeKind::Name { text: name_text },
             ..
-        } = &self.nodes[field_identifier]
+        } = &self.nodes[name]
         else {
-            type_error!(self, "invalid identifier as field name");
+            type_error!(self, "invalid field name");
         };
 
         for Field {
@@ -480,7 +527,14 @@ impl TypeChecker {
             type_kind: field_kind,
         } in field_kinds.iter()
         {
-            if *field_name == *name {
+            let NodeKind::Name {
+                text: field_name_text,
+            } = &self.nodes[*field_name].kind
+            else {
+                type_error!(self, "invalid field name on struct");
+            };
+
+            if *field_name_text == *name_text {
                 return Some(*field_kind);
             }
         }
@@ -493,8 +547,18 @@ impl TypeChecker {
         self.check_node(type_name)
     }
 
-    fn identifier(&mut self, text: String) -> Option<usize> {
-        if let Some(declaration_index) = self.function_declaration_indices.get(&text) {
+    fn name(&mut self, _text: String) -> Option<usize> {
+        None
+    }
+
+    fn identifier(&mut self, name: usize) -> Option<usize> {
+        self.check_node(name);
+
+        let NodeKind::Name { text } = &self.nodes[name].kind else {
+            type_error!(self, "invalid identifier name");
+        };
+
+        if let Some(declaration_index) = self.function_declaration_indices.get(text) {
             let NodeKind::FunctionDeclaration {
                 return_type_name, ..
             } = self.nodes[*declaration_index].kind
@@ -505,15 +569,11 @@ impl TypeChecker {
             return self.check_node(return_type_name);
         };
 
-        let Some(type_kind) = self.environment.get(&text) else {
+        let Some(type_kind) = self.environment.get(text) else {
             type_error!(self, "undefined identifier");
         };
 
         Some(type_kind)
-    }
-
-    fn field_identifier(&mut self, _text: String) -> Option<usize> {
-        None
     }
 
     fn int_literal(&mut self, _text: String) -> Option<usize> {
@@ -550,12 +610,22 @@ impl TypeChecker {
             .copied()
     }
 
-    fn struct_literal(&mut self, name: String, fields: Arc<Vec<usize>>) -> Option<usize> {
+    fn struct_literal(&mut self, name: usize, fields: Arc<Vec<usize>>) -> Option<usize> {
+        self.check_node(name);
+
         for field in fields.iter() {
             self.check_node(*field);
         }
 
-        let Some(definition_index) = self.struct_definition_indices.get(&name) else {
+        let Node {
+            kind: NodeKind::Name { text: name_text },
+            ..
+        } = &self.nodes[name]
+        else {
+            type_error!(self, "invalid struct name");
+        };
+
+        let Some(definition_index) = self.struct_definition_indices.get(name_text) else {
             type_error!(
                 self,
                 &format!("struct with name \"{}\" does not exist", name)
@@ -569,7 +639,8 @@ impl TypeChecker {
         }
     }
 
-    fn field_literal(&mut self, _name: String, expression: usize) -> Option<usize> {
+    fn field_literal(&mut self, name: usize, expression: usize) -> Option<usize> {
+        self.check_node(name);
         self.check_node(expression)
     }
 

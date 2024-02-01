@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    collections::HashSet,
+    sync::{Arc, OnceLock},
+};
 
 use crate::{
     emitter::Emitter,
@@ -13,6 +16,76 @@ enum EmitterKind {
     Prototype,
     Body,
     Top,
+}
+
+fn reserved_names() -> &'static HashSet<String> {
+    static NAMES: OnceLock<HashSet<String>> = OnceLock::new();
+    NAMES.get_or_init(|| {
+        [
+            "alignas",
+            "alignof",
+            "auto",
+            "bool",
+            "break",
+            "case",
+            "char",
+            "const",
+            "constexpr",
+            "continue",
+            "default",
+            "do",
+            "double",
+            "else",
+            "enum",
+            "extern",
+            "false",
+            "float",
+            "for",
+            "goto",
+            "if",
+            "inline",
+            "int",
+            "long",
+            "nullptr",
+            "register",
+            "restrict",
+            "return",
+            "short",
+            "signed",
+            "sizeof",
+            "static",
+            "static_assert",
+            "struct",
+            "switch",
+            "thread_local",
+            "true",
+            "typedef",
+            "typeof",
+            "typeof_unqual",
+            "union",
+            "unsigned",
+            "void",
+            "volatile",
+            "while",
+            "_Alignas",
+            "_Alignof",
+            "_Atomic",
+            "_BitInt",
+            "_Bool",
+            "_Complex",
+            "_Decimal128",
+            "_Decimal32",
+            "_Decimal64",
+            "_Generic",
+            "_Imaginary",
+            "_Noreturn",
+            "_Static_assert",
+            "_Thread_local",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+    })
 }
 
 pub struct CodeGenerator {
@@ -41,9 +114,7 @@ impl CodeGenerator {
         code_generator
             .header_emitter
             .emitln("#include <inttypes.h>");
-        code_generator
-            .header_emitter
-            .emitln("#include <stdbool.h>");
+        code_generator.header_emitter.emitln("#include <stdbool.h>");
         code_generator.body_emitters.push(1);
 
         code_generator
@@ -115,15 +186,29 @@ impl CodeGenerator {
                 type_kind,
             } => self.defer_statement(statement, type_kind),
             TypedNode {
-                node_kind: NodeKind::IfStatement { expression, block, next },
+                node_kind:
+                    NodeKind::IfStatement {
+                        expression,
+                        block,
+                        next,
+                    },
                 type_kind,
             } => self.if_statement(expression, block, next, type_kind),
             TypedNode {
-                node_kind: NodeKind::SwitchStatement { expression, case_block },
+                node_kind:
+                    NodeKind::SwitchStatement {
+                        expression,
+                        case_block,
+                    },
                 type_kind,
             } => self.switch_statement(expression, case_block, type_kind),
             TypedNode {
-                node_kind: NodeKind::CaseBlock { expression, block, next },
+                node_kind:
+                    NodeKind::CaseBlock {
+                        expression,
+                        block,
+                        next,
+                    },
                 type_kind,
             } => self.case_block(expression, block, next, type_kind),
             TypedNode {
@@ -159,25 +244,21 @@ impl CodeGenerator {
                 type_kind,
             } => self.index_access(left, expression, type_kind),
             TypedNode {
-                node_kind:
-                    NodeKind::FieldAccess {
-                        left,
-                        field_identifier,
-                    },
+                node_kind: NodeKind::FieldAccess { left, name },
                 type_kind,
-            } => self.field_access(left, field_identifier, type_kind),
+            } => self.field_access(left, name, type_kind),
             TypedNode {
                 node_kind: NodeKind::Cast { left, type_name },
                 type_kind,
             } => self.cast(left, type_name, type_kind),
             TypedNode {
-                node_kind: NodeKind::Identifier { text },
+                node_kind: NodeKind::Name { text },
                 type_kind,
-            } => self.identifier(text, type_kind),
+            } => self.name(text, type_kind),
             TypedNode {
-                node_kind: NodeKind::FieldIdentifier { text },
+                node_kind: NodeKind::Identifier { name },
                 type_kind,
-            } => self.field_identifier(text, type_kind),
+            } => self.identifier(name, type_kind),
             TypedNode {
                 node_kind: NodeKind::IntLiteral { text },
                 type_kind,
@@ -244,7 +325,10 @@ impl CodeGenerator {
                 node_kind: NodeKind::Param { name, type_name },
                 type_kind,
             } => self.param_prototype(name, type_name, type_kind),
-            // NodeKind::TypeName { type_kind } => self.type_name_prototype(type_kind),
+            TypedNode {
+                node_kind: NodeKind::Name { text },
+                type_kind,
+            } => self.name_prototype(text, type_kind),
             _ => panic!(
                 "Node cannot be generated as a prototype: {:?}",
                 self.typed_nodes[index]
@@ -288,12 +372,12 @@ impl CodeGenerator {
 
     fn struct_definition(
         &mut self,
-        name: String,
+        name: usize,
         fields: Arc<Vec<usize>>,
         _type_kind: Option<usize>,
     ) {
         self.prototype_emitter.emit("struct ");
-        self.prototype_emitter.emit(&name);
+        self.gen_node_prototype(name);
         self.prototype_emitter.emitln(" {");
         self.prototype_emitter.indent();
 
@@ -305,30 +389,33 @@ impl CodeGenerator {
         self.prototype_emitter.emitln("};");
     }
 
-    fn field(&mut self, name: String, _type_name: usize, type_kind: Option<usize>) {
+    fn field(&mut self, name: usize, _type_name: usize, type_kind: Option<usize>) {
         self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Prototype, false);
         self.prototype_emitter.emit(" ");
-        self.prototype_emitter.emit(&name);
+        self.gen_node_prototype(name);
         self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Prototype, false);
         self.prototype_emitter.emitln(";");
     }
 
     fn function_declaration_prototype(
         &mut self,
-        name: String,
+        name: usize,
         return_type_name: usize,
         params: Arc<Vec<usize>>,
         type_kind: Option<usize>,
     ) {
-        self.emit_function_declaration(EmitterKind::Prototype, &name, return_type_name, &params, type_kind);
+        self.emit_function_declaration(
+            EmitterKind::Prototype,
+            name,
+            return_type_name,
+            &params,
+            type_kind,
+        );
         self.prototype_emitter.emitln(";");
     }
 
-    fn param_prototype(&mut self, name: String, type_name: usize, _type_kind: Option<usize>) {
-        self.emit_type_name_left(type_name, EmitterKind::Prototype, false);
-        self.prototype_emitter.emit(" ");
-        self.prototype_emitter.emit(&name);
-        self.emit_type_name_right(type_name, EmitterKind::Prototype, false);
+    fn param_prototype(&mut self, name: usize, type_name: usize, _type_kind: Option<usize>) {
+        self.emit_param(name, type_name, EmitterKind::Prototype);
     }
 
     fn function(&mut self, declaration: usize, block: usize, _type_kind: Option<usize>) {
@@ -340,12 +427,18 @@ impl CodeGenerator {
 
     fn function_declaration(
         &mut self,
-        name: String,
+        name: usize,
         return_type_name: usize,
         params: Arc<Vec<usize>>,
         type_kind: Option<usize>,
     ) {
-        self.emit_function_declaration(EmitterKind::Body, &name, return_type_name, &params, type_kind);
+        self.emit_function_declaration(
+            EmitterKind::Body,
+            name,
+            return_type_name,
+            &params,
+            type_kind,
+        );
         self.body_emitters.top().body.emit(" ");
 
         self.function_declaration_prototype(name, return_type_name, params, type_kind);
@@ -356,11 +449,8 @@ impl CodeGenerator {
         self.gen_node_prototype(declaration);
     }
 
-    fn param(&mut self, name: String, type_name: usize, _type_kind: Option<usize>) {
-        self.emit_type_name_left(type_name, EmitterKind::Body, false);
-        self.body_emitters.top().body.emit(" ");
-        self.body_emitters.top().body.emit(&name);
-        self.emit_type_name_right(type_name, EmitterKind::Body, false);
+    fn param(&mut self, name: usize, type_name: usize, _type_kind: Option<usize>) {
+        self.emit_param(name, type_name, EmitterKind::Body);
     }
 
     fn copy_array_params(&mut self, function_declaration: usize) {
@@ -393,10 +483,14 @@ impl CodeGenerator {
             self.emit_type_name_right(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emitln(";");
 
-            self.emit_memmove_name_to_name(&copy_name, &name, type_kind.unwrap());
+            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
+            else {
+                panic!("Invalid parameter name");
+            };
+            self.emit_memmove_name_to_name(&copy_name, &name_text, type_kind.unwrap());
             self.body_emitters.top().body.emitln(";");
 
-            self.body_emitters.top().body.emit(&name);
+            self.gen_node(name);
             self.body_emitters.top().body.emit(" = ");
             self.body_emitters.top().body.emit(&copy_name);
             self.body_emitters.top().body.emitln(";");
@@ -486,7 +580,7 @@ impl CodeGenerator {
     fn variable_declaration(
         &mut self,
         is_mutable: bool,
-        name: String,
+        name: usize,
         _type_name: Option<usize>,
         expression: usize,
         type_kind: Option<usize>,
@@ -504,15 +598,19 @@ impl CodeGenerator {
         if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
             self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" ");
-            self.body_emitters.top().body.emit(&name);
+            self.gen_node(name);
             self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emitln(";");
 
-            self.emit_memmove_expression_to_name(&name, expression, type_kind);
+            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
+            else {
+                panic!("Invalid variable name");
+            };
+            self.emit_memmove_expression_to_name(&name_text, expression, type_kind);
         } else {
             self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" ");
-            self.body_emitters.top().body.emit(&name);
+            self.gen_node(name);
             self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(" = ");
             self.gen_node(expression);
@@ -561,7 +659,13 @@ impl CodeGenerator {
         self.body_emitters.pop_to_bottom();
     }
 
-    fn if_statement(&mut self, expression: usize, block: usize, next: Option<usize>, _type_kind: Option<usize>) {
+    fn if_statement(
+        &mut self,
+        expression: usize,
+        block: usize,
+        next: Option<usize>,
+        _type_kind: Option<usize>,
+    ) {
         self.body_emitters.top().body.emit("if (");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
@@ -579,7 +683,12 @@ impl CodeGenerator {
         }
     }
 
-    fn switch_statement(&mut self, expression: usize, case_block: usize, _type_kind: Option<usize>) {
+    fn switch_statement(
+        &mut self,
+        expression: usize,
+        case_block: usize,
+        _type_kind: Option<usize>,
+    ) {
         self.body_emitters.top().body.emit("switch (");
         self.gen_node(expression);
         self.body_emitters.top().body.emitln(") {");
@@ -587,7 +696,13 @@ impl CodeGenerator {
         self.body_emitters.top().body.emitln("}");
     }
 
-    fn case_block(&mut self, expression: usize, block: usize, next: Option<usize>, _type_kind: Option<usize>) {
+    fn case_block(
+        &mut self,
+        expression: usize,
+        block: usize,
+        next: Option<usize>,
+        _type_kind: Option<usize>,
+    ) {
         self.body_emitters.top().body.emit("case ");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(": ");
@@ -616,7 +731,7 @@ impl CodeGenerator {
     #[allow(clippy::too_many_arguments)]
     fn for_loop(
         &mut self,
-        iterator: String,
+        iterator: usize,
         op: Op,
         from: usize,
         to: usize,
@@ -625,17 +740,17 @@ impl CodeGenerator {
         _type_kind: Option<usize>,
     ) {
         self.body_emitters.top().body.emit("for (intptr_t ");
-        self.body_emitters.top().body.emit(&iterator);
+        self.gen_node(iterator);
         self.body_emitters.top().body.emit(" = ");
         self.gen_node(from);
         self.body_emitters.top().body.emit("; ");
 
-        self.body_emitters.top().body.emit(&iterator);
+        self.gen_node(iterator);
         self.emit_binary_op(op);
         self.gen_node(to);
         self.body_emitters.top().body.emit("; ");
 
-        self.body_emitters.top().body.emit(&iterator);
+        self.gen_node(iterator);
         self.body_emitters.top().body.emit(" += ");
         if let Some(by) = by {
             self.gen_node(by);
@@ -718,10 +833,10 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("]");
     }
 
-    fn field_access(&mut self, left: usize, identifier: usize, _type_kind: Option<usize>) {
+    fn field_access(&mut self, left: usize, name: usize, _type_kind: Option<usize>) {
         self.gen_node(left);
         self.body_emitters.top().body.emit(".");
-        self.gen_node(identifier);
+        self.gen_node(name);
     }
 
     fn cast(&mut self, left: usize, type_name: usize, _type_kind: Option<usize>) {
@@ -733,12 +848,16 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn identifier(&mut self, text: String, _type_kind: Option<usize>) {
-        self.body_emitters.top().body.emit(&text);
+    fn name(&mut self, text: String, _type_kind: Option<usize>) {
+        self.emit_name(text, EmitterKind::Body);
     }
 
-    fn field_identifier(&mut self, text: String, _type_kind: Option<usize>) {
-        self.body_emitters.top().body.emit(&text);
+    fn identifier(&mut self, name: usize, _type_kind: Option<usize>) {
+        self.gen_node(name);
+    }
+
+    fn name_prototype(&mut self, text: String, _type_kind: Option<usize>) {
+        self.emit_name(text, EmitterKind::Prototype);
     }
 
     fn int_literal(&mut self, text: String, _type_kind: Option<usize>) {
@@ -754,7 +873,10 @@ impl CodeGenerator {
         let mut char_buffer = [0u8];
 
         self.body_emitters.top().body.emit("'");
-        self.body_emitters.top().body.emit(value.encode_utf8(&mut char_buffer));
+        self.body_emitters
+            .top()
+            .body
+            .emit(value.encode_utf8(&mut char_buffer));
         self.body_emitters.top().body.emit("'");
     }
 
@@ -800,7 +922,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn struct_literal(&mut self, _name: String, fields: Arc<Vec<usize>>, type_kind: Option<usize>) {
+    fn struct_literal(&mut self, _name: usize, fields: Arc<Vec<usize>>, type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("(");
         if let Some(type_kind) = type_kind {
             self.emit_type_kind_left(type_kind, EmitterKind::Body, false);
@@ -822,7 +944,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn field_literal(&mut self, _name: String, expression: usize, _type_kind: Option<usize>) {
+    fn field_literal(&mut self, _name: usize, expression: usize, _type_kind: Option<usize>) {
         self.gen_node(expression);
     }
 
@@ -954,7 +1076,7 @@ impl CodeGenerator {
             TypeKind::Float64 => self.emitter(emitter_kind).emit("double"),
             TypeKind::Struct { name, .. } => {
                 self.emitter(emitter_kind).emit("struct ");
-                self.emitter(emitter_kind).emit(&name)
+                self.gen_node(name);
             }
             TypeKind::Array {
                 element_type_kind, ..
@@ -1020,7 +1142,7 @@ impl CodeGenerator {
     fn emit_function_declaration(
         &mut self,
         kind: EmitterKind,
-        name: &str,
+        name: usize,
         return_type_name: usize,
         params: &Arc<Vec<usize>>,
         type_kind: Option<usize>,
@@ -1028,7 +1150,12 @@ impl CodeGenerator {
         self.emit_type_name_left(return_type_name, kind, true);
         self.emit_type_name_right(return_type_name, kind, true);
         self.emitter(kind).emit(" ");
-        self.emitter(kind).emit(name);
+
+        match kind {
+            EmitterKind::Prototype => self.gen_node_prototype(name),
+            EmitterKind::Body => self.gen_node(name),
+            _ => panic!("Unexpected emitter kind for function declaration"),
+        }
 
         let mut param_count = 0;
 
@@ -1055,13 +1182,7 @@ impl CodeGenerator {
             param_count += 1;
 
             let param_name = "__return".to_string();
-            match kind {
-                EmitterKind::Prototype => {
-                    self.param_prototype(param_name, return_type_name, type_kind)
-                }
-                EmitterKind::Body => self.param(param_name, return_type_name, type_kind),
-                _ => panic!("Unexpected emitter kind for function declaration"),
-            }
+            self.emit_param_string(param_name, return_type_name, kind);
         }
 
         if param_count == 0 {
@@ -1069,6 +1190,32 @@ impl CodeGenerator {
         }
 
         self.emitter(kind).emit(")");
+    }
+
+    fn emit_param(&mut self, name: usize, type_name: usize, kind: EmitterKind) {
+        self.emit_type_name_left(type_name, kind, false);
+        self.emitter(kind).emit(" ");
+        match kind {
+            EmitterKind::Prototype => self.gen_node_prototype(name),
+            EmitterKind::Body => self.gen_node(name),
+            _ => panic!("Unexpected emitter kind for parameter"),
+        }
+        self.emit_type_name_right(type_name, kind, false);
+    }
+
+    fn emit_param_string(&mut self, name: String, type_name: usize, kind: EmitterKind) {
+        self.emit_type_name_left(type_name, kind, false);
+        self.emitter(kind).emit(" ");
+        self.emitter(kind).emit(&name);
+        self.emit_type_name_right(type_name, kind, false);
+    }
+
+    fn emit_name(&mut self, text: String, kind: EmitterKind) {
+        if reserved_names().contains(&text) {
+            self.emitter(kind).emit("__");
+        }
+
+        self.emitter(kind).emit(&text);
     }
 
     fn emitter(&mut self, kind: EmitterKind) -> &mut Emitter {

@@ -34,7 +34,7 @@ pub enum Op {
 
 #[derive(Debug)]
 pub struct Field {
-    pub name: String,
+    pub name: usize,
     pub type_kind: usize,
 }
 
@@ -71,7 +71,7 @@ pub enum TypeKind {
         element_count: usize,
     },
     Struct {
-        name: String,
+        name: usize,
         field_kinds: Arc<Vec<Field>>,
     },
     PartialStruct,
@@ -79,21 +79,24 @@ pub enum TypeKind {
 
 #[derive(Clone, Debug)]
 pub enum NodeKind {
+    Name {
+        text: String,
+    },
     TopLevel {
         functions: Arc<Vec<usize>>,
         structs: Arc<Vec<usize>>,
     },
     StructDefinition {
-        name: String,
+        name: usize,
         fields: Arc<Vec<usize>>,
         type_kind: usize,
     },
     Field {
-        name: String,
+        name: usize,
         type_name: usize,
     },
     FunctionDeclaration {
-        name: String,
+        name: usize,
         params: Arc<Vec<usize>>,
         return_type_name: usize,
     },
@@ -105,7 +108,7 @@ pub enum NodeKind {
         declaration: usize,
     },
     Param {
-        name: String,
+        name: usize,
         type_name: usize,
     },
     Block {
@@ -116,7 +119,7 @@ pub enum NodeKind {
     },
     VariableDeclaration {
         is_mutable: bool,
-        name: String,
+        name: usize,
         type_name: Option<usize>,
         expression: usize,
     },
@@ -145,7 +148,7 @@ pub enum NodeKind {
         block: usize,
     },
     ForLoop {
-        iterator: String,
+        iterator: usize,
         op: Op,
         from: usize,
         to: usize,
@@ -171,17 +174,14 @@ pub enum NodeKind {
     },
     FieldAccess {
         left: usize,
-        field_identifier: usize,
+        name: usize,
     },
     Cast {
         left: usize,
         type_name: usize,
     },
     Identifier {
-        text: String,
-    },
-    FieldIdentifier {
-        text: String,
+        name: usize,
     },
     IntLiteral {
         text: String,
@@ -203,11 +203,11 @@ pub enum NodeKind {
         repeat_count: usize,
     },
     StructLiteral {
-        name: String,
+        name: usize,
         fields: Arc<Vec<usize>>,
     },
     FieldLiteral {
-        name: String,
+        name: usize,
         expression: usize,
     },
     TypeSize {
@@ -441,11 +441,7 @@ impl Parser {
         assert_token!(self, TokenKind::Struct, start, self.token_end());
         self.position += 1;
 
-        let name = match self.token_kind() {
-            TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(self, "expected struct name", start, self.token_end()),
-        };
-        self.position += 1;
+        let name = self.name();
 
         assert_token!(self, TokenKind::LBrace, start, self.token_end());
         self.position += 1;
@@ -487,46 +483,47 @@ impl Parser {
             };
 
             field_kinds.push(Field {
-                name: name.clone(),
+                name: *name,
                 type_kind: *type_kind,
             });
         }
 
         let type_kind_struct = TypeKind::Struct {
-            name: name.clone(),
+            name,
             field_kinds: Arc::new(field_kinds),
         };
 
-        let type_kind = if let Some(type_kind) = self.struct_type_kinds.get(&name) {
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            parse_error!(self, "invalid struct name", start, end);
+        };
+
+        let type_kind = if let Some(type_kind) = self.struct_type_kinds.get(&name_text) {
             self.types[*type_kind] = type_kind_struct;
             *type_kind
         } else {
             let type_kind = self.add_type(type_kind_struct);
-            self.struct_type_kinds.insert(name.clone(), type_kind);
+            self.struct_type_kinds.insert(name_text.clone(), type_kind);
             type_kind
         };
 
         let index = self.add_node(Node {
             kind: NodeKind::StructDefinition {
-                name: name.clone(),
+                name,
                 fields: Arc::new(fields),
                 type_kind,
             },
             start,
             end,
         });
-        self.struct_definition_indices.insert(name, index);
+
+        self.struct_definition_indices.insert(name_text.clone(), index);
 
         index
     }
 
     fn field(&mut self) -> usize {
         let start = self.token_start();
-        let name = match self.token_kind() {
-            TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(self, "expected field name", start, self.token_end()),
-        };
-        self.position += 1;
+        let name = self.name();
 
         let type_name = self.type_name();
         let end = self.node_end(type_name);
@@ -543,11 +540,7 @@ impl Parser {
         assert_token!(self, TokenKind::Fun, start, self.token_end());
         self.position += 1;
 
-        let name = match self.token_kind() {
-            TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(self, "expected function name", start, self.token_end()),
-        };
-        self.position += 1;
+        let name = self.name();
 
         assert_token!(self, TokenKind::LParen, start, self.token_end());
         self.position += 1;
@@ -573,14 +566,18 @@ impl Parser {
 
         let index = self.add_node(Node {
             kind: NodeKind::FunctionDeclaration {
-                name: name.clone(),
+                name,
                 return_type_name,
                 params: Arc::new(params),
             },
             start,
             end,
         });
-        self.function_declaration_indices.insert(name, index);
+
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            parse_error!(self, "invalid function name", start, end);
+        };
+        self.function_declaration_indices.insert(name_text, index);
 
         index
     }
@@ -615,11 +612,7 @@ impl Parser {
 
     fn param(&mut self) -> usize {
         let start = self.token_start();
-        let name = match self.token_kind() {
-            TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(self, "expected param name", start, self.token_end()),
-        };
-        self.position += 1;
+        let name = self.name();
 
         let type_name = self.type_name();
         let end = self.node_end(type_name);
@@ -707,16 +700,7 @@ impl Parser {
         };
         self.position += 1;
 
-        let name = match self.token_kind() {
-            TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(
-                self,
-                "expected variable name in declaration",
-                start,
-                self.token_end()
-            ),
-        };
-        self.position += 1;
+        let name = self.name();
 
         let type_name = if *self.token_kind() != TokenKind::Equal {
             Some(self.type_name())
@@ -878,12 +862,7 @@ impl Parser {
         assert_token!(self, TokenKind::For, start, self.token_end());
         self.position += 1;
 
-        let iterator = if let TokenKind::Identifier { text } = self.token_kind() {
-            text.clone()
-        } else {
-            parse_error!(self, "expected iterator name", start, self.token_end());
-        };
-        self.position += 1;
+        let iterator = self.name();
 
         assert_token!(self, TokenKind::Of, start, self.token_end());
         self.position += 1;
@@ -1164,13 +1143,13 @@ impl Parser {
                 TokenKind::Period => {
                     self.position += 1;
 
-                    let field_identifier = self.field_identifier();
-                    let end = self.node_end(field_identifier);
+                    let name = self.name();
+                    let end = self.node_end(name);
 
                     left = self.add_node(Node {
                         kind: NodeKind::FieldAccess {
                             left,
-                            field_identifier,
+                            name,
                         },
                         start,
                         end,
@@ -1252,6 +1231,18 @@ impl Parser {
 
     fn identifier(&mut self) -> usize {
         let start = self.token_start();
+        let name = self.name();
+        let end = self.node_end(name);
+
+        self.add_node(Node {
+            kind: NodeKind::Identifier { name },
+            start,
+            end,
+        })
+    }
+
+    fn name(&mut self) -> usize {
+        let start = self.token_start();
         let end = self.token_end();
         let TokenKind::Identifier { text } = self.token_kind().clone() else {
             parse_error!(self, "expected identifier", start, end);
@@ -1259,22 +1250,7 @@ impl Parser {
         self.position += 1;
 
         self.add_node(Node {
-            kind: NodeKind::Identifier { text },
-            start,
-            end,
-        })
-    }
-
-    fn field_identifier(&mut self) -> usize {
-        let start = self.token_start();
-        let end = self.token_end();
-        let TokenKind::Identifier { text } = self.token_kind().clone() else {
-            parse_error!(self, "expected field identifier", start, end);
-        };
-        self.position += 1;
-
-        self.add_node(Node {
-            kind: NodeKind::FieldIdentifier { text },
+            kind: NodeKind::Name { text },
             start,
             end,
         })
@@ -1406,11 +1382,7 @@ impl Parser {
 
     fn struct_literal(&mut self) -> usize {
         let start = self.token_start();
-        let name = match self.token_kind() {
-            TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(self, "expected struct name", start, self.token_end()),
-        };
-        self.position += 1;
+        let name = self.name();
 
         assert_token!(self, TokenKind::LBrace, start, self.token_end());
         self.position += 1;
@@ -1444,11 +1416,7 @@ impl Parser {
 
     fn field_literal(&mut self) -> usize {
         let start = self.token_start();
-        let name = match self.token_kind() {
-            TokenKind::Identifier { text } => text.clone(),
-            _ => parse_error!(self, "expected field name", start, self.token_end()),
-        };
-        self.position += 1;
+        let name = self.name();
 
         assert_token!(self, TokenKind::Equal, start, self.token_end());
         self.position += 1;

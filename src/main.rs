@@ -31,9 +31,7 @@ mod types;
  *
  * SMALL TODOS:
  * for elem in array {}
- * Modify generated names if they conflict with c keywords, eg. "var restrict = 1;" -> "int __restrict = 1;"
  * Bitwise operations.
- * Add character types and literals.
  * Make sure all non-void functions return, and that all functions return the correct value.
  *
  * NOTES:
@@ -114,7 +112,13 @@ fn main() -> ExitCode {
     let typed_nodes = type_checker
         .typed_nodes
         .iter()
-        .map(|n| n.clone().unwrap())
+        .enumerate()
+        .map(|(i, n)| {
+            match n.clone() {
+                Some(n) => n,
+                None => panic!("Mismatch between nodes and typed nodes, expected typed node for: {:?}", type_checker.nodes[i]),
+            }
+        })
         .collect();
 
     let mut code_generator = CodeGenerator::new(typed_nodes, type_checker.types);
