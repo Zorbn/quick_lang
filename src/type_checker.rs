@@ -142,6 +142,7 @@ impl TypeChecker {
             } => self.for_loop(iterator, op, from, to, by, block),
             NodeKind::Binary { left, op, right } => self.binary(left, op, right),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right),
+            NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op),
             NodeKind::Call { left, args } => self.call(left, args),
             NodeKind::IndexAccess { left, expression } => self.index_access(left, expression),
             NodeKind::FieldAccess { left, name } => self.field_access(left, name),
@@ -457,6 +458,18 @@ impl TypeChecker {
                     type_error!(self, "expected bool");
                 }
             }
+            _ => {}
+        }
+
+        Some(type_kind)
+    }
+
+    fn unary_suffix(&mut self, left: usize, op: Op) -> Option<usize> {
+        let Some(type_kind) = self.check_node(left) else {
+            type_error!(self, "cannot apply unary operator to untyped value");
+        };
+
+        match op {
             Op::Dereference => {
                 if !self.pointer_type_kind_set.contains(&type_kind) {
                     type_error!(self, "only pointers can be dereferenced");

@@ -1,9 +1,11 @@
 extern fun puts(str String) UInt
-extern fun malloc(size UInt) *Void
-extern fun free(ptr *Void) Void
+extern fun malloc(size UInt) ^Void
+extern fun free(ptr ^Void) Void
 
 fun main() Int32 {
-    var function *fun(Int, Int) Int = &add;
+    var function ^fun(Int, Int) Int = add&;
+
+    function^(1, 2);
 
     defer {
         puts("defer in main");
@@ -17,8 +19,8 @@ fun main() Int32 {
     puts(str);
 
     var byte UInt8 = 255 as UInt8;
-    var bytePtr *UInt8 = &byte;
-    var otherByte UInt8 = *bytePtr;
+    var bytePtr ^UInt8 = byte&;
+    var otherByte UInt8 = bytePtr^;
 
     /*
     /*
@@ -30,8 +32,8 @@ fun main() Int32 {
     */
     */
 
-    var heapPoint *Point = malloc(sizeof Point) as *Point;
-    *heapPoint = Point { x = 5, y = 5 };
+    var heapPoint ^Point = malloc(sizeof Point) as ^Point;
+    heapPoint^ = Point { x = 5, y = 5 };
     free(heapPoint);
 
     var twoD [2]Int = [1, 5];
@@ -159,6 +161,6 @@ fun takeArray(a [3]Int) [3]Int {
     return a;
 }
 
-fun returnFunPtr() *fun(Int, Int) Int {
-    return &add;
+fun returnFunPtr() ^fun(Int, Int) Int {
+    return add&;
 }

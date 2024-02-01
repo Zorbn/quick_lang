@@ -17,6 +17,7 @@ pub enum TokenKind {
     Minus,
     Asterisk,
     Ampersand,
+    Caret,
     Divide,
     Equal,
     PlusEqual,
@@ -94,6 +95,7 @@ impl Display for TokenKind {
             TokenKind::Minus => "-",
             TokenKind::Asterisk => "*",
             TokenKind::Ampersand => "&",
+            TokenKind::Caret => "^",
             TokenKind::Divide => "/",
             TokenKind::Equal => "=",
             TokenKind::PlusEqual => "+=",
@@ -623,6 +625,14 @@ impl Lexer {
                 '&' => {
                     self.tokens.push(Token {
                         kind: TokenKind::Ampersand,
+                        start: self.position,
+                        end: self.position,
+                    });
+                    self.position.advance();
+                }
+                '^' => {
+                    self.tokens.push(Token {
+                        kind: TokenKind::Caret,
                         start: self.position,
                         end: self.position,
                     });

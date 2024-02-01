@@ -36,7 +36,6 @@ mod types;
  * Enums.
  * Tagged unions? Still need to figure out what those should look like.
  * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
- * Maybe dereference and reference operators can be moved to the right side w/ higher precedence? (*functionPtr)() -> functionPtr*()
  * Print the file name in error messages.
  *
  * NOTES:

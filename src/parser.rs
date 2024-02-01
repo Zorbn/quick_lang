@@ -173,6 +173,10 @@ pub enum NodeKind {
         op: Op,
         right: usize,
     },
+    UnarySuffix {
+        left: usize,
+        op: Op,
+    },
     Call {
         left: usize,
         args: Arc<Vec<usize>>,
@@ -973,8 +977,8 @@ impl Parser {
      * Primary: Literals, identifiers, parenthesized expressions
      *
      * (Nestable, eg. *&pointer)
-     * UnarySuffix: [], (), ., as
-     * UnaryPrefix: *, &, !, +, -
+     * UnarySuffix: *, &, [], (), ., as
+     * UnaryPrefix: !, +, -
      *
      * (Chainable, eg. a * b / c)
      * Factor: *, /
@@ -1140,8 +1144,6 @@ impl Parser {
     fn unary_prefix(&mut self, allow_struct_literal: bool) -> usize {
         let start = self.token_start();
         let op = match *self.token_kind() {
-            TokenKind::Asterisk => Op::Dereference,
-            TokenKind::Ampersand => Op::Reference,
             TokenKind::Not => Op::Not,
             TokenKind::Plus => Op::Plus,
             TokenKind::Minus => Op::Minus,
@@ -1232,6 +1234,28 @@ impl Parser {
                         end,
                     });
                 }
+                TokenKind::Caret => {
+                    self.position += 1;
+
+                    let end = self.token_end();
+
+                    left = self.add_node(Node {
+                        kind: NodeKind::UnarySuffix { left, op: Op::Dereference },
+                        start,
+                        end,
+                    });
+                },
+                TokenKind::Ampersand => {
+                    self.position += 1;
+
+                    let end = self.token_end();
+
+                    left = self.add_node(Node {
+                        kind: NodeKind::UnarySuffix { left, op: Op::Reference },
+                        start,
+                        end,
+                    });
+                },
                 _ => break,
             }
         }
@@ -1588,7 +1612,7 @@ impl Parser {
 
                 return type_kind;
             }
-            TokenKind::Asterisk => {
+            TokenKind::Caret => {
                 self.position += 1;
 
                 let inner_type_kind = self.type_kind();

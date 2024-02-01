@@ -237,6 +237,10 @@ impl CodeGenerator {
                 type_kind,
             } => self.unary_prefix(op, right, type_kind),
             TypedNode {
+                node_kind: NodeKind::UnarySuffix { left, op },
+                type_kind,
+            } => self.unary_suffix(left, op, type_kind),
+            TypedNode {
                 node_kind: NodeKind::Call { left, args },
                 type_kind,
             } => self.call(left, args, type_kind),
@@ -782,12 +786,22 @@ impl CodeGenerator {
             Op::Plus => "+",
             Op::Minus => "-",
             Op::Not => "!",
-            Op::Reference => "&",
-            Op::Dereference => "*",
-            _ => panic!("Expected unary operator"),
+            _ => panic!("Expected unary prefix operator"),
         });
 
         self.gen_node(right);
+    }
+
+    fn unary_suffix(&mut self, left: usize, op: Op, _type_kind: Option<usize>) {
+        self.body_emitters.top().body.emit("(");
+        self.body_emitters.top().body.emit(match op {
+            Op::Reference => "&",
+            Op::Dereference => "*",
+            _ => panic!("Expected unary suffix operator"),
+        });
+
+        self.gen_node(left);
+        self.body_emitters.top().body.emit(")");
     }
 
     fn call(&mut self, left: usize, args: Arc<Vec<usize>>, type_kind: Option<usize>) {
@@ -918,7 +932,7 @@ impl CodeGenerator {
     fn struct_literal(&mut self, _name: usize, fields: Arc<Vec<usize>>, type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("(");
         if let Some(type_kind) = type_kind {
-            self.emit_type_kind_left(type_kind, EmitterKind::Body, false, true);
+            self.emit_type_kind_left(type_kind, EmitterKind::Body, false, false);
             self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
         } else {
             panic!("Can't generate struct literal without a type");
@@ -1072,7 +1086,6 @@ impl CodeGenerator {
             TypeKind::Struct { name, .. } => {
                 self.emitter(emitter_kind).emit("struct ");
                 self.gen_node(name);
-                self.emitter(emitter_kind).emit(" ");
             }
             TypeKind::Array {
                 element_type_kind, ..
