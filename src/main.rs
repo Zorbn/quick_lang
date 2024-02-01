@@ -1,11 +1,8 @@
 use std::{
-    env,
-    ffi::OsStr,
-    fs,
-    io::{self, stdout, Write},
-    path::Path,
-    process::{Command, ExitCode},
+    env, ffi::OsStr, fs, io::{self, stdout, Write}, path::Path, process::{Command, ExitCode}, sync::Arc
 };
+
+use file_data::FileData;
 
 use crate::{
     code_generator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker,
@@ -20,6 +17,7 @@ mod parser;
 mod position;
 mod type_checker;
 mod types;
+mod file_data;
 
 /*
  * BIG TODOS:
@@ -36,7 +34,6 @@ mod types;
  * Enums.
  * Tagged unions? Still need to figure out what those should look like.
  * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
- * Print the file name in error messages.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.
@@ -58,10 +55,11 @@ fn main() -> ExitCode {
     let path = Path::new(&args[1]);
     if is_path_source_file(path) {
         let chars = read_chars_at_path(path);
-        files.push(chars);
+        files.push(FileData { path: path.to_path_buf(), chars });
     } else if path.is_dir() {
         collect_source_files(path, &mut files).unwrap();
     }
+    let files = Arc::new(files);
 
     if files.is_empty() {
         return ExitCode::SUCCESS;
@@ -70,8 +68,8 @@ fn main() -> ExitCode {
     let mut file_lexers = Vec::with_capacity(files.len());
     let mut had_lexing_error = false;
 
-    for chars in files {
-        let mut lexer = Lexer::new(chars);
+    for i in 0..files.len() {
+        let mut lexer = Lexer::new(i, files.clone());
         lexer.lex();
         had_lexing_error = had_lexing_error || lexer.had_error;
         file_lexers.push(lexer);
@@ -81,7 +79,7 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let mut parser = Parser::new();
+    let mut parser = Parser::new(files.clone());
 
     let mut start_indices = Vec::with_capacity(file_lexers.len());
     for lexer in file_lexers {
@@ -100,6 +98,7 @@ fn main() -> ExitCode {
         parser.struct_definition_indices,
         parser.array_type_kinds,
         parser.pointer_type_kinds,
+        files.clone(),
     );
     for start_index in &start_indices {
         type_checker.check(*start_index);
@@ -171,7 +170,7 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn collect_source_files(directory: &Path, files: &mut Vec<Vec<char>>) -> io::Result<()> {
+fn collect_source_files(directory: &Path, files: &mut Vec<FileData>) -> io::Result<()> {
     if !directory.is_dir() {
         return Ok(());
     }
@@ -184,7 +183,10 @@ fn collect_source_files(directory: &Path, files: &mut Vec<Vec<char>>) -> io::Res
             collect_source_files(&path, files)?;
         } else if is_path_source_file(&path) {
             let chars = read_chars_at_path(&path);
-            files.push(chars);
+            files.push(FileData {
+                path,
+                chars,
+            });
         }
     }
 

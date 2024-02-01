@@ -1,6 +1,6 @@
 use std::{fmt::Display, sync::Arc};
 
-use crate::position::Position;
+use crate::{file_data::FileData, position::Position};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
@@ -165,35 +165,39 @@ pub struct Token {
 }
 
 pub struct Lexer {
-    pub chars: Vec<char>,
     pub tokens: Vec<Token>,
     pub had_error: bool,
     position: Position,
+    files: Arc<Vec<FileData>>,
 }
 
 impl Lexer {
-    pub fn new(chars: Vec<char>) -> Self {
+    pub fn new(file_index: usize, files: Arc<Vec<FileData>>) -> Self {
         Self {
-            chars,
+            files,
             tokens: Vec::new(),
             had_error: false,
-            position: Position::new(),
+            position: Position::new(file_index),
         }
+    }
+    
+    fn chars(&self) -> &Vec<char> {
+        &self.files[self.position.file_index].chars
     }
 
     fn char(&self) -> char {
-        return *self.chars.get(self.position.index).unwrap_or(&'\0');
+        return *self.chars().get(self.position.index).unwrap_or(&'\0');
     }
 
     fn try_consume_string(&mut self, str: &str) -> bool {
-        if self.position.index + str.len() > self.chars.len() {
+        if self.position.index + str.len() > self.chars().len() {
             return false;
         }
 
         let mut is_last_char_valid_in_identifier = false;
         for (i, c) in str.chars().enumerate() {
             is_last_char_valid_in_identifier = Lexer::is_char_valid_in_identifier(c);
-            if self.chars[self.position.index + i] != c {
+            if self.chars()[self.position.index + i] != c {
                 return false;
             }
         }
@@ -202,8 +206,8 @@ impl Lexer {
             // The string needs to be a full word, rather than the start of another string,
             // eg, "for" but not "fortune".
             let next_char_index = self.position.index + str.len();
-            if next_char_index < self.chars.len()
-                && Lexer::is_char_valid_in_identifier(self.chars[next_char_index])
+            if next_char_index < self.chars().len()
+                && Lexer::is_char_valid_in_identifier(self.chars()[next_char_index])
             {
                 return false;
             }
@@ -260,18 +264,19 @@ impl Lexer {
 
     fn error(&mut self, message: &str) {
         self.had_error = true;
-        println!(
-            "Syntax error at line {}, column {}: {}",
-            self.position.line, self.position.column, message
-        );
+        self.position.error("Syntax", message, &self.files);
     }
-    
+
     fn collect_chars(&self, start: Position, end: Position) -> Arc<str> {
-        Arc::from(self.chars[start.index..end.index].iter().collect::<String>())
+        Arc::from(
+            self.chars()[start.index..end.index]
+                .iter()
+                .collect::<String>(),
+        )
     }
 
     pub fn lex(&mut self) {
-        while self.position.index < self.chars.len() {
+        while self.position.index < self.chars().len() {
             if self.try_string_to_token("!=", TokenKind::NotEqual) {
                 continue;
             }

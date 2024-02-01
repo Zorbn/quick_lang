@@ -1,9 +1,7 @@
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
 use crate::{
-    lexer::{Token, TokenKind},
-    position::Position,
-    types::{add_type, get_type_kind_as_pointer},
+    file_data::FileData, lexer::{Token, TokenKind}, position::Position, types::{add_type, get_type_kind_as_pointer}
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -301,11 +299,14 @@ pub struct Parser {
 
     pub tokens: Option<Vec<Token>>,
     pub position: usize,
+
+    files: Arc<Vec<FileData>>,
 }
 
 impl Parser {
-    pub fn new() -> Self {
+    pub fn new(files: Arc<Vec<FileData>>) -> Self {
         let mut parser = Self {
+            files,
             tokens: None,
             nodes: Vec::new(),
             types: Vec::new(),
@@ -407,12 +408,7 @@ impl Parser {
 
     fn error(&mut self, message: &str) {
         self.had_error = true;
-        println!(
-            "Syntax error at line {}, column {}: {}",
-            self.token_start().line,
-            self.token_start().column,
-            message,
-        );
+        self.token_start().error("Syntax", message, &self.files);
     }
 
     pub fn parse(&mut self, tokens: Vec<Token>) -> usize {

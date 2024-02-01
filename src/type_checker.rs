@@ -4,13 +4,11 @@ use std::{
 };
 
 use crate::{
-    environment::Environment,
-    parser::{
+    environment::Environment, file_data::FileData, parser::{
         ArrayLayout, Field, Node, NodeKind, Op, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX,
         FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX,
         UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
-    },
-    types::get_type_kind_as_pointer,
+    }, types::get_type_kind_as_pointer
 };
 
 #[derive(Clone, Debug)]
@@ -22,13 +20,7 @@ pub struct TypedNode {
 macro_rules! type_error {
     ($self:ident, $message:expr) => {{
         $self.had_error = true;
-
-        println!(
-            "Type error at line {}, column {}: {}",
-            $self.nodes[$self.last_visited_index].start.line,
-            $self.nodes[$self.last_visited_index].start.column,
-            $message,
-        );
+        $self.nodes[$self.last_visited_index].start.error("Type", $message, &$self.files);
 
         return None;
     }};
@@ -44,6 +36,7 @@ pub struct TypeChecker {
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub had_error: bool,
     pointer_type_kind_set: HashSet<usize>,
+    files: Arc<Vec<FileData>>,
     environment: Environment,
     has_function_opened_block: bool,
     last_visited_index: usize,
@@ -57,12 +50,14 @@ impl TypeChecker {
         struct_definition_indices: HashMap<Arc<str>, usize>,
         array_type_kinds: HashMap<ArrayLayout, usize>,
         pointer_type_kinds: HashMap<usize, usize>,
+        files: Arc<Vec<FileData>>,
     ) -> Self {
         let node_count = nodes.len();
 
         let pointer_type_kind_set = HashSet::from_iter(pointer_type_kinds.values().copied());
 
         let mut type_checker = Self {
+            files,
             typed_nodes: Vec::new(),
             nodes,
             types,
