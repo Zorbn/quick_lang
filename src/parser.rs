@@ -6,8 +6,6 @@ use crate::{
     types::{add_type, get_type_kind_as_pointer},
 };
 
-// TODO: Should strings be refcounted strs instead?
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Op {
     Plus,

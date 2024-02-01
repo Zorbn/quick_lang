@@ -1202,8 +1202,7 @@ impl CodeGenerator {
 
             param_count += 1;
 
-            let param_name = "__return".to_string();
-            self.emit_param_string(param_name, return_type_name, kind);
+            self.emit_param_string("__return", return_type_name, kind);
         }
 
         if param_count == 0 {
@@ -1225,9 +1224,9 @@ impl CodeGenerator {
         self.emit_type_name_right(type_name, kind, false);
     }
 
-    fn emit_param_string(&mut self, name: String, type_name: usize, kind: EmitterKind) {
+    fn emit_param_string(&mut self, name: &str, type_name: usize, kind: EmitterKind) {
         self.emit_type_name_left(type_name, kind, false);
-        self.emitter(kind).emit(&name);
+        self.emitter(kind).emit(name);
         self.emit_type_name_right(type_name, kind, false);
     }
 

@@ -49,6 +49,23 @@ mod types;
  */
 
 fn main() -> ExitCode {
+    // TODO: Use this strategy to replace all strings in the codebase with a single string used as a buffer, with &str's pulled from it as needed.
+    // it can be used like the string in emitter is, to replace the need for format!, .iter().collect(), etc.
+    {
+        let mut str_buf = String::new();
+
+        let a_start = str_buf.len();
+        str_buf.push_str("hell💀o");
+        let a_end = str_buf.len();
+
+        let b_start = str_buf.len();
+        str_buf.push_str("world");
+        let b_end = str_buf.len();
+
+        println!("{}", &str_buf[a_start..a_end]);
+        println!("{}", &str_buf[b_start..b_end]);
+    }
+
     let mut args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {

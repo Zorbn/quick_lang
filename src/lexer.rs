@@ -683,7 +683,7 @@ impl Lexer {
                         });
                         continue;
                     }
-                    
+
                     self.position.advance();
 
                     self.tokens.push(Token {
