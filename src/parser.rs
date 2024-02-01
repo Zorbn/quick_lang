@@ -289,7 +289,7 @@ macro_rules! parse_error {
 pub struct Parser {
     pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
-    pub function_declaration_indices: HashMap<String, usize>,
+    pub function_declaration_indices: Vec<usize>,
     pub struct_definition_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
@@ -307,7 +307,7 @@ impl Parser {
             tokens: None,
             nodes: Vec::new(),
             types: Vec::new(),
-            function_declaration_indices: HashMap::new(),
+            function_declaration_indices: Vec::new(),
             struct_definition_indices: HashMap::new(),
             array_type_kinds: HashMap::new(),
             pointer_type_kinds: HashMap::new(),
@@ -625,10 +625,7 @@ impl Parser {
             end,
         });
 
-        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-            parse_error!(self, "invalid function name", start, end);
-        };
-        self.function_declaration_indices.insert(name_text, index);
+        self.function_declaration_indices.push(index);
 
         index
     }

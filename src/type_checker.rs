@@ -38,7 +38,7 @@ pub struct TypeChecker {
     pub typed_nodes: Vec<Option<TypedNode>>,
     pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
-    pub function_declaration_indices: HashMap<String, usize>,
+    pub function_declaration_indices: Vec<usize>,
     pub struct_definition_indices: HashMap<String, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
@@ -53,7 +53,7 @@ impl TypeChecker {
     pub fn new(
         nodes: Vec<Node>,
         types: Vec<TypeKind>,
-        function_declaration_indices: HashMap<String, usize>,
+        function_declaration_indices: Vec<usize>,
         struct_definition_indices: HashMap<String, usize>,
         array_type_kinds: HashMap<ArrayLayout, usize>,
         pointer_type_kinds: HashMap<usize, usize>,
@@ -173,6 +173,17 @@ impl TypeChecker {
     }
 
     fn top_level(&mut self, functions: Arc<Vec<usize>>, structs: Arc<Vec<usize>>) -> Option<usize> {
+        for function_declaration in &self.function_declaration_indices {
+            let NodeKind::FunctionDeclaration { name, type_kind, .. } = &self.nodes[*function_declaration].kind else {
+                type_error!(self, "invalid function declaration");
+            };
+            let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
+                type_error!(self, "invalid function name");
+            };
+
+            self.environment.insert(name_text, *type_kind);
+        }
+
         for struct_definition in structs.iter() {
             self.check_node(*struct_definition);
         }
@@ -572,18 +583,6 @@ impl TypeChecker {
 
         let NodeKind::Name { text } = &self.nodes[name].kind else {
             type_error!(self, "invalid identifier name");
-        };
-
-        if let Some(declaration_index) = self.function_declaration_indices.get(text) {
-            // TODO: This won't be necessary once functions are added to the environment like variables.
-            let NodeKind::FunctionDeclaration {
-                type_kind, ..
-            } = self.nodes[*declaration_index].kind
-            else {
-                return None;
-            };
-
-            return Some(type_kind);
         };
 
         let Some(type_kind) = self.environment.get(text) else {

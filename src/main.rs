@@ -38,7 +38,6 @@ mod types;
  * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
  * Maybe dereference and reference operators can be moved to the right side w/ higher precedence? (*functionPtr)() -> functionPtr*()
  * Print the file name in error messages.
- * Make function names/types part of the environment rather than their own special system.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.
