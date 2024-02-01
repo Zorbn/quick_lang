@@ -458,29 +458,6 @@ impl TypeChecker {
                     type_error!(self, "expected bool");
                 }
             }
-            _ => {}
-        }
-
-        Some(type_kind)
-    }
-
-    fn unary_suffix(&mut self, left: usize, op: Op) -> Option<usize> {
-        let Some(type_kind) = self.check_node(left) else {
-            type_error!(self, "cannot apply unary operator to untyped value");
-        };
-
-        match op {
-            Op::Dereference => {
-                if !self.pointer_type_kind_set.contains(&type_kind) {
-                    type_error!(self, "only pointers can be dereferenced");
-                }
-
-                let TypeKind::Pointer { inner_type_kind } = &self.types[type_kind] else {
-                    type_error!(self, "only pointers can be dereferenced");
-                };
-
-                return Some(*inner_type_kind);
-            }
             // TODO: The reference operator should only be useable on variables, not literals.
             Op::Reference => {
                 let pointer_type_kind = get_type_kind_as_pointer(
@@ -492,6 +469,26 @@ impl TypeChecker {
                 return Some(pointer_type_kind);
             }
             _ => {}
+        }
+
+        Some(type_kind)
+    }
+
+    fn unary_suffix(&mut self, left: usize, op: Op) -> Option<usize> {
+        let Some(type_kind) = self.check_node(left) else {
+            type_error!(self, "cannot apply unary operator to untyped value");
+        };
+
+        if let Op::Dereference = op {
+            if !self.pointer_type_kind_set.contains(&type_kind) {
+                type_error!(self, "only pointers can be dereferenced");
+            }
+
+            let TypeKind::Pointer { inner_type_kind } = &self.types[type_kind] else {
+                type_error!(self, "only pointers can be dereferenced");
+            };
+
+            return Some(*inner_type_kind);
         }
 
         Some(type_kind)

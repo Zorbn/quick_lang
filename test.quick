@@ -3,7 +3,7 @@ extern fun malloc(size UInt) ^Void
 extern fun free(ptr ^Void) Void
 
 fun main() Int32 {
-    var function ^fun(Int, Int) Int = add&;
+    var function ^fun(Int, Int) Int = &add;
 
     function^(1, 2);
 
@@ -19,7 +19,7 @@ fun main() Int32 {
     puts(str);
 
     var byte UInt8 = 255 as UInt8;
-    var bytePtr ^UInt8 = byte&;
+    var bytePtr ^UInt8 = &byte;
     var otherByte UInt8 = bytePtr^;
 
     /*
@@ -162,5 +162,5 @@ fun takeArray(a [3]Int) [3]Int {
 }
 
 fun returnFunPtr() ^fun(Int, Int) Int {
-    return add&;
+    return &add;
 }

@@ -786,6 +786,7 @@ impl CodeGenerator {
             Op::Plus => "+",
             Op::Minus => "-",
             Op::Not => "!",
+            Op::Reference => "&",
             _ => panic!("Expected unary prefix operator"),
         });
 
@@ -795,7 +796,6 @@ impl CodeGenerator {
     fn unary_suffix(&mut self, left: usize, op: Op, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit("(");
         self.body_emitters.top().body.emit(match op {
-            Op::Reference => "&",
             Op::Dereference => "*",
             _ => panic!("Expected unary suffix operator"),
         });

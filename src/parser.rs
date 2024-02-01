@@ -976,9 +976,9 @@ impl Parser {
      *
      * Primary: Literals, identifiers, parenthesized expressions
      *
-     * (Nestable, eg. *&pointer)
-     * UnarySuffix: *, &, [], (), ., as
-     * UnaryPrefix: !, +, -
+     * (Nestable, eg. &pointer^)
+     * UnarySuffix: *, [], (), ., as
+     * UnaryPrefix: &, !, +, -
      *
      * (Chainable, eg. a * b / c)
      * Factor: *, /
@@ -1147,6 +1147,7 @@ impl Parser {
             TokenKind::Not => Op::Not,
             TokenKind::Plus => Op::Plus,
             TokenKind::Minus => Op::Minus,
+            TokenKind::Ampersand => Op::Reference,
             _ => return self.unary_suffix(allow_struct_literal),
         };
         self.position += 1;
@@ -1241,17 +1242,6 @@ impl Parser {
 
                     left = self.add_node(Node {
                         kind: NodeKind::UnarySuffix { left, op: Op::Dereference },
-                        start,
-                        end,
-                    });
-                },
-                TokenKind::Ampersand => {
-                    self.position += 1;
-
-                    let end = self.token_end();
-
-                    left = self.add_node(Node {
-                        kind: NodeKind::UnarySuffix { left, op: Op::Reference },
                         start,
                         end,
                     });
