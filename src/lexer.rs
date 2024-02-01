@@ -17,7 +17,7 @@ pub enum TokenKind {
     Minus,
     Asterisk,
     Ampersand,
-    Caret,
+    Dereference,
     Divide,
     Equal,
     PlusEqual,
@@ -95,7 +95,7 @@ impl Display for TokenKind {
             TokenKind::Minus => "-",
             TokenKind::Asterisk => "*",
             TokenKind::Ampersand => "&",
-            TokenKind::Caret => "^",
+            TokenKind::Dereference => ".*",
             TokenKind::Divide => "/",
             TokenKind::Equal => "=",
             TokenKind::PlusEqual => "+=",
@@ -307,6 +307,10 @@ impl Lexer {
             }
 
             if self.try_string_to_token("||", TokenKind::Or) {
+                continue;
+            }
+
+            if self.try_string_to_token(".*", TokenKind::Dereference) {
                 continue;
             }
 
@@ -625,14 +629,6 @@ impl Lexer {
                 '&' => {
                     self.tokens.push(Token {
                         kind: TokenKind::Ampersand,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '^' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Caret,
                         start: self.position,
                         end: self.position,
                     });

@@ -842,7 +842,17 @@ impl CodeGenerator {
 
     fn field_access(&mut self, left: usize, name: usize, _type_kind: Option<usize>) {
         self.gen_node(left);
-        self.body_emitters.top().body.emit(".");
+
+        let TypedNode { type_kind: Some(type_kind), .. } = self.typed_nodes[left] else {
+            panic!("Invalid left node in field access");
+        };
+
+        if matches!(self.types[type_kind], TypeKind::Pointer { .. }) {
+            self.body_emitters.top().body.emit("->");
+        } else {
+            self.body_emitters.top().body.emit(".");
+        }
+
         self.gen_node(name);
     }
 

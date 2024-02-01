@@ -977,7 +977,7 @@ impl Parser {
      * Primary: Literals, identifiers, parenthesized expressions
      *
      * (Nestable, eg. &pointer^)
-     * UnarySuffix: *, [], (), ., as
+     * UnarySuffix: .*, [], (), ., as
      * UnaryPrefix: &, !, +, -
      *
      * (Chainable, eg. a * b / c)
@@ -1235,7 +1235,7 @@ impl Parser {
                         end,
                     });
                 }
-                TokenKind::Caret => {
+                TokenKind::Dereference => {
                     self.position += 1;
 
                     let end = self.token_end();
@@ -1602,7 +1602,7 @@ impl Parser {
 
                 return type_kind;
             }
-            TokenKind::Caret => {
+            TokenKind::Asterisk => {
                 self.position += 1;
 
                 let inner_type_kind = self.type_kind();
