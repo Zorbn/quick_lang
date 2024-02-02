@@ -1,26 +1,44 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     sync::Arc,
 };
 
 use crate::{
-    environment::Environment, file_data::FileData, parser::{
+    environment::Environment,
+    file_data::FileData,
+    parser::{
         ArrayLayout, Field, Node, NodeKind, Op, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX,
         FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX,
         UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
-    }, types::get_type_kind_as_pointer
+    },
+    types::get_type_kind_as_pointer,
 };
 
 #[derive(Clone, Debug)]
 pub struct TypedNode {
     pub node_kind: NodeKind,
-    pub type_kind: Option<usize>,
+    pub node_type: Option<Type>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum InstanceKind {
+    Variable,
+    Literal,
+    Name,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Type {
+    pub type_kind: usize,
+    pub instance_kind: InstanceKind,
 }
 
 macro_rules! type_error {
     ($self:ident, $message:expr) => {{
         $self.had_error = true;
-        $self.nodes[$self.last_visited_index].start.error("Type", $message, &$self.files);
+        $self.nodes[$self.last_visited_index]
+            .start
+            .error("Type", $message, &$self.files);
 
         return None;
     }};
@@ -33,7 +51,6 @@ pub struct TypeChecker {
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub had_error: bool,
-    pointer_type_kind_set: HashSet<usize>,
     files: Arc<Vec<FileData>>,
     environment: Environment,
     has_function_opened_block: bool,
@@ -50,8 +67,6 @@ impl TypeChecker {
     ) -> Self {
         let node_count = nodes.len();
 
-        let pointer_type_kind_set = HashSet::from_iter(pointer_type_kinds.values().copied());
-
         let mut type_checker = Self {
             files,
             typed_nodes: Vec::new(),
@@ -59,7 +74,6 @@ impl TypeChecker {
             types,
             array_type_kinds,
             pointer_type_kinds,
-            pointer_type_kind_set,
             had_error: false,
             environment: Environment::new(),
             has_function_opened_block: false,
@@ -76,11 +90,15 @@ impl TypeChecker {
         self.check_node(start_index);
     }
 
-    fn check_node(&mut self, index: usize) -> Option<usize> {
+    fn check_node(&mut self, index: usize) -> Option<Type> {
         self.last_visited_index = index;
 
         let type_kind = match self.nodes[index].kind.clone() {
-            NodeKind::TopLevel { functions, structs, enums } => self.top_level(functions, structs, enums),
+            NodeKind::TopLevel {
+                functions,
+                structs,
+                enums,
+            } => self.top_level(functions, structs, enums),
             NodeKind::StructDefinition {
                 name,
                 fields,
@@ -162,27 +180,35 @@ impl TypeChecker {
 
         self.typed_nodes[index] = Some(TypedNode {
             node_kind: self.nodes[index].kind.clone(),
-            type_kind,
+            node_type: type_kind,
         });
 
         type_kind
     }
 
-    fn top_level(&mut self, functions: Arc<Vec<usize>>, structs: Arc<Vec<usize>>, enums: Arc<Vec<usize>>) -> Option<usize> {
+    fn top_level(
+        &mut self,
+        functions: Arc<Vec<usize>>,
+        structs: Arc<Vec<usize>>,
+        enums: Arc<Vec<usize>>,
+    ) -> Option<Type> {
         for function in functions.iter() {
             let declaration = match &self.nodes[*function].kind {
                 NodeKind::Function { declaration, .. } => declaration,
                 NodeKind::ExternFunction { declaration, .. } => declaration,
-                _ => type_error!(self, "invalid function")
+                _ => type_error!(self, "invalid function"),
             };
-            let NodeKind::FunctionDeclaration { name, type_kind, .. } = &self.nodes[*declaration].kind else {
+            let NodeKind::FunctionDeclaration {
+                name, type_kind, ..
+            } = &self.nodes[*declaration].kind
+            else {
                 type_error!(self, "invalid function declaration");
             };
             let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
                 type_error!(self, "invalid function name");
             };
 
-            self.environment.insert(name_text, *type_kind);
+            self.environment.insert(name_text, Type { type_kind: *type_kind, instance_kind: InstanceKind::Variable });
         }
 
         for struct_definition in structs.iter() {
@@ -206,14 +232,15 @@ impl TypeChecker {
         fields: Arc<Vec<usize>>,
         functions: Arc<Vec<usize>>,
         type_kind: usize,
-    ) -> Option<usize> {
+    ) -> Option<Type> {
         self.check_node(name);
 
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid name in struct definition");
         };
 
-        self.environment.insert(name_text, type_kind);
+        let struct_type = Type { type_kind, instance_kind: InstanceKind::Name };
+        self.environment.insert(name_text, struct_type);
 
         for field in fields.iter() {
             self.check_node(*field);
@@ -223,7 +250,7 @@ impl TypeChecker {
             self.check_node(*function);
         }
 
-        Some(type_kind)
+        Some(struct_type)
     }
 
     fn enum_definition(
@@ -231,28 +258,29 @@ impl TypeChecker {
         name: usize,
         variant_names: Arc<Vec<usize>>,
         type_kind: usize,
-    ) -> Option<usize> {
+    ) -> Option<Type> {
         self.check_node(name);
 
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid name in enum definition");
         };
 
-        self.environment.insert(name_text, type_kind);
+        let enum_type = Type { type_kind, instance_kind: InstanceKind::Name };
+        self.environment.insert(name_text, enum_type);
 
         for variant_name in variant_names.iter() {
             self.check_node(*variant_name);
         }
 
-        Some(type_kind)
+        Some(enum_type)
     }
 
-    fn field(&mut self, name: usize, type_name: usize) -> Option<usize> {
+    fn field(&mut self, name: usize, type_name: usize) -> Option<Type> {
         self.check_node(name);
         self.check_node(type_name)
     }
 
-    fn function(&mut self, declaration: usize, block: usize) -> Option<usize> {
+    fn function(&mut self, declaration: usize, block: usize) -> Option<Type> {
         self.environment.push();
         self.has_function_opened_block = true;
         let type_kind = self.check_node(declaration);
@@ -267,7 +295,7 @@ impl TypeChecker {
         return_type_name: usize,
         params: Arc<Vec<usize>>,
         type_kind: usize,
-    ) -> Option<usize> {
+    ) -> Option<Type> {
         self.check_node(name);
 
         for param in params.iter() {
@@ -276,17 +304,17 @@ impl TypeChecker {
 
         self.check_node(return_type_name);
 
-        Some(type_kind)
+        Some(Type { type_kind, instance_kind: InstanceKind::Literal })
     }
 
-    fn extern_function(&mut self, declaration: usize) -> Option<usize> {
+    fn extern_function(&mut self, declaration: usize) -> Option<Type> {
         self.check_node(declaration)
     }
 
-    fn param(&mut self, name: usize, type_name: usize) -> Option<usize> {
+    fn param(&mut self, name: usize, type_name: usize) -> Option<Type> {
         self.check_node(name);
 
-        let type_kind = self.check_node(type_name);
+        let type_name_type = self.check_node(type_name)?;
 
         let Node {
             kind: NodeKind::Name { text: name_text },
@@ -296,12 +324,13 @@ impl TypeChecker {
             type_error!(self, "invalid parameter name");
         };
 
-        self.environment.insert(name_text, type_kind.unwrap());
+        let param_type = Type { type_kind: type_name_type.type_kind, instance_kind: InstanceKind::Variable };
+        self.environment.insert(name_text, param_type);
 
-        type_kind
+        Some(param_type)
     }
 
-    fn block(&mut self, statements: Arc<Vec<usize>>) -> Option<usize> {
+    fn block(&mut self, statements: Arc<Vec<usize>>) -> Option<Type> {
         if !self.has_function_opened_block {
             self.environment.push();
         } else {
@@ -317,7 +346,7 @@ impl TypeChecker {
         None
     }
 
-    fn statement(&mut self, inner: usize) -> Option<usize> {
+    fn statement(&mut self, inner: usize) -> Option<Type> {
         self.check_node(inner);
 
         None
@@ -329,27 +358,30 @@ impl TypeChecker {
         name: usize,
         type_name: Option<usize>,
         expression: usize,
-    ) -> Option<usize> {
+    ) -> Option<Type> {
         self.check_node(name);
 
-        let expression_type_kind = self.check_node(expression);
+        let expression_type = self.check_node(expression)?;
 
-        let type_kind = if let Some(type_name) = type_name {
-            self.check_node(type_name)
+        if expression_type.instance_kind == InstanceKind::Name {
+            type_error!(self, "only instances of types can be stored in variables");
+        }
+
+        let mut variable_type = if let Some(type_name) = type_name {
+            self.check_node(type_name)?
         } else {
-            expression_type_kind
+            expression_type
         };
 
-        if type_kind != expression_type_kind {
+        if variable_type.type_kind != expression_type.type_kind {
             type_error!(self, "mismatched types in variable declaration");
         }
 
-        let Some(type_kind) = type_kind else {
-            type_error!(self, "cannot declare untyped variable");
-        };
-
-        if let TypeKind::Function { .. } = self.types[type_kind] {
-            type_error!(self, "variables can't have a function type, try a function pointer instead");
+        if let TypeKind::Function { .. } = self.types[variable_type.type_kind] {
+            type_error!(
+                self,
+                "variables can't have a function type, try a function pointer instead"
+            );
         }
 
         let Node {
@@ -360,16 +392,17 @@ impl TypeChecker {
             type_error!(self, "invalid variable name");
         };
 
-        self.environment.insert(name_text, type_kind);
+        variable_type.instance_kind = InstanceKind::Variable;
+        self.environment.insert(name_text, variable_type);
 
-        Some(type_kind)
+        Some(variable_type)
     }
 
-    fn return_statement(&mut self, expression: Option<usize>) -> Option<usize> {
+    fn return_statement(&mut self, expression: Option<usize>) -> Option<Type> {
         self.check_node(expression?)
     }
 
-    fn defer_statement(&mut self, statement: usize) -> Option<usize> {
+    fn defer_statement(&mut self, statement: usize) -> Option<Type> {
         self.check_node(statement)
     }
 
@@ -378,7 +411,7 @@ impl TypeChecker {
         expression: usize,
         block: usize,
         next: Option<usize>,
-    ) -> Option<usize> {
+    ) -> Option<Type> {
         self.check_node(expression);
         self.check_node(block);
 
@@ -389,19 +422,14 @@ impl TypeChecker {
         None
     }
 
-    fn switch_statement(&mut self, expression: usize, case_block: usize) -> Option<usize> {
+    fn switch_statement(&mut self, expression: usize, case_block: usize) -> Option<Type> {
         self.check_node(expression);
         self.check_node(case_block);
 
         None
     }
 
-    fn case_block(
-        &mut self,
-        expression: usize,
-        block: usize,
-        next: Option<usize>,
-    ) -> Option<usize> {
+    fn case_block(&mut self, expression: usize, block: usize, next: Option<usize>) -> Option<Type> {
         self.check_node(expression);
         self.check_node(block);
 
@@ -412,7 +440,7 @@ impl TypeChecker {
         None
     }
 
-    fn while_loop(&mut self, expression: usize, block: usize) -> Option<usize> {
+    fn while_loop(&mut self, expression: usize, block: usize) -> Option<Type> {
         self.check_node(expression);
         self.check_node(block)
     }
@@ -425,7 +453,7 @@ impl TypeChecker {
         to: usize,
         by: Option<usize>,
         block: usize,
-    ) -> Option<usize> {
+    ) -> Option<Type> {
         self.check_node(iterator);
         self.check_node(from);
         self.check_node(to);
@@ -435,11 +463,18 @@ impl TypeChecker {
         self.check_node(block)
     }
 
-    fn binary(&mut self, left: usize, op: Op, right: usize) -> Option<usize> {
-        let type_kind = self.check_node(left);
+    fn binary(&mut self, left: usize, op: Op, right: usize) -> Option<Type> {
+        let left_type = self.check_node(left)?;
+        let right_type = self.check_node(right)?;
 
-        if type_kind != self.check_node(right) {
+        if left_type.type_kind != right_type.type_kind {
             type_error!(self, "type mismatch");
+        }
+
+        if left_type.instance_kind == InstanceKind::Name
+            || right_type.instance_kind == InstanceKind::Name
+        {
+            type_error!(self, "binary operators are only useable on instances");
         }
 
         // TODO: Make sure assignments have a variable on the left side, rather than a literal.
@@ -453,107 +488,120 @@ impl TypeChecker {
             | Op::MinusAssign
             | Op::MultiplyAssign
             | Op::DivideAssign => {
-                if !TypeChecker::is_type_numeric(type_kind) {
+                if !TypeChecker::is_type_numeric(left_type.type_kind) {
                     type_error!(self, "expected arithmetic types");
                 }
             }
             Op::Less | Op::Greater | Op::LessEqual | Op::GreaterEqual => {
-                if !TypeChecker::is_type_numeric(type_kind) {
+                if !TypeChecker::is_type_numeric(left_type.type_kind) {
                     type_error!(self, "expected comparable types");
                 }
 
-                return Some(BOOL_INDEX);
+                return Some(Type { type_kind: BOOL_INDEX, instance_kind: InstanceKind::Literal });
             }
             Op::Equal | Op::NotEqual => {
-                return Some(BOOL_INDEX);
+                return Some(Type { type_kind: BOOL_INDEX, instance_kind: InstanceKind::Literal });
             }
             Op::Not | Op::And | Op::Or => {
-                if type_kind != Some(BOOL_INDEX) {
+                if left_type.type_kind != BOOL_INDEX {
                     type_error!(self, "expected bool");
                 }
             }
             _ => {}
         }
 
-        type_kind
+        Some(Type { type_kind: left_type.type_kind, instance_kind: InstanceKind::Literal })
     }
 
-    fn unary_prefix(&mut self, op: Op, right: usize) -> Option<usize> {
-        let Some(type_kind) = self.check_node(right) else {
-            type_error!(self, "cannot apply unary operator to untyped value");
-        };
+    fn unary_prefix(&mut self, op: Op, right: usize) -> Option<Type> {
+        let right_type = self.check_node(right)?;
+
+        if right_type.instance_kind == InstanceKind::Name {
+            type_error!(
+                self,
+                "unary prefix operators can only be applied to instances"
+            );
+        }
 
         match op {
             Op::Plus | Op::Minus => {
-                if !TypeChecker::is_type_numeric(Some(type_kind)) {
+                if !TypeChecker::is_type_numeric(right_type.type_kind) {
                     type_error!(self, "expected numeric type");
                 }
+
+                Some(right_type)
             }
             Op::Not => {
-                if type_kind != BOOL_INDEX {
+                if right_type.type_kind != BOOL_INDEX {
                     type_error!(self, "expected bool");
                 }
+
+                Some(right_type)
             }
             // TODO: The reference operator should only be useable on variables, not literals.
             Op::Reference => {
                 let pointer_type_kind = get_type_kind_as_pointer(
                     &mut self.types,
                     &mut self.pointer_type_kinds,
-                    type_kind,
+                    right_type.type_kind,
                 );
 
-                return Some(pointer_type_kind);
+                Some(Type {
+                    type_kind: pointer_type_kind,
+                    instance_kind: InstanceKind::Literal,
+                })
             }
-            _ => {}
+            _ => type_error!(self, "unknown unary prefix operator"),
         }
-
-        Some(type_kind)
     }
 
-    fn unary_suffix(&mut self, left: usize, op: Op) -> Option<usize> {
-        let Some(type_kind) = self.check_node(left) else {
-            type_error!(self, "cannot apply unary operator to untyped value");
-        };
+    fn unary_suffix(&mut self, left: usize, op: Op) -> Option<Type> {
+        let left_type = self.check_node(left)?;
 
         if let Op::Dereference = op {
-            if !self.pointer_type_kind_set.contains(&type_kind) {
-                type_error!(self, "only pointers can be dereferenced");
-            }
-
-            let TypeKind::Pointer { inner_type_kind } = &self.types[type_kind] else {
+            let TypeKind::Pointer { inner_type_kind } = &self.types[left_type.type_kind] else {
                 type_error!(self, "only pointers can be dereferenced");
             };
 
-            return Some(*inner_type_kind);
-        }
+            if left_type.instance_kind == InstanceKind::Name {
+                type_error!(self, "only pointer instances can be dereferenced");
+            }
 
-        Some(type_kind)
+            Some(Type {
+                type_kind: *inner_type_kind,
+                instance_kind: InstanceKind::Variable,
+            })
+        } else {
+            type_error!(self, "unknown unary suffix operator")
+        }
     }
 
-    fn call(&mut self, left: usize, args: Arc<Vec<usize>>) -> Option<usize> {
-        let Some(type_kind) = self.check_node(left) else {
-            type_error!(self, "cannot call untyped value");
-        };
+    fn call(&mut self, left: usize, args: Arc<Vec<usize>>) -> Option<Type> {
+        let left_type = self.check_node(left)?;
 
         for arg in args.iter() {
             self.check_node(*arg);
         }
 
-        let TypeKind::Function { return_type_kind, .. } = self.types[type_kind] else {
+        let TypeKind::Function {
+            return_type_kind, ..
+        } = self.types[left_type.type_kind]
+        else {
             type_error!(self, "only functions can be called");
         };
 
-        Some(return_type_kind)
+        Some(Type {
+            type_kind: return_type_kind,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
-    fn index_access(&mut self, left: usize, expression: usize) -> Option<usize> {
-        let Some(type_kind) = self.check_node(left) else {
-            type_error!(self, "cannot index untyped value");
-        };
+    fn index_access(&mut self, left: usize, expression: usize) -> Option<Type> {
+        let left_type = self.check_node(left)?;
 
         let element_type_kind = if let TypeKind::Array {
             element_type_kind, ..
-        } = &self.types[type_kind]
+        } = &self.types[left_type.type_kind]
         {
             *element_type_kind
         } else {
@@ -562,10 +610,13 @@ impl TypeChecker {
 
         self.check_node(expression);
 
-        Some(element_type_kind)
+        Some(Type {
+            type_kind: element_type_kind,
+            instance_kind: InstanceKind::Variable,
+        })
     }
 
-    fn field_access(&mut self, left: usize, name: usize) -> Option<usize> {
+    fn field_access(&mut self, left: usize, name: usize) -> Option<Type> {
         let Some(parent_type) = self.check_node(left) else {
             type_error!(self, "tried to access field of invalid value");
         };
@@ -575,9 +626,19 @@ impl TypeChecker {
             type_error!(self, "invalid field name");
         };
 
-        let field_kinds = match &self.types[parent_type] {
-            TypeKind::Struct { field_kinds, .. } => field_kinds,
+        let field_kinds = match &self.types[parent_type.type_kind] {
+            TypeKind::Struct { field_kinds, .. } => {
+                if parent_type.instance_kind == InstanceKind::Name {
+                    type_error!(self, "struct field access is only allowed on instances");
+                }
+
+                field_kinds
+            }
             TypeKind::Pointer { inner_type_kind } => {
+                if parent_type.instance_kind == InstanceKind::Name {
+                    type_error!(self, "struct field access is only allowed on instances");
+                }
+
                 let TypeKind::Struct { field_kinds, .. } = &self.types[*inner_type_kind] else {
                     type_error!(
                         self,
@@ -587,14 +648,21 @@ impl TypeChecker {
 
                 field_kinds
             }
-            TypeKind::Enum { variant_names, variant_type_kind, .. } => {
+            TypeKind::Enum { variant_names, .. } => {
+                if parent_type.instance_kind != InstanceKind::Name {
+                    type_error!(self, "field access is not allowed on enum variants");
+                }
+
                 for variant_name in variant_names.iter() {
-                    let NodeKind::Name { text: variant_name_text } = &self.nodes[*variant_name].kind else {
+                    let NodeKind::Name {
+                        text: variant_name_text,
+                    } = &self.nodes[*variant_name].kind
+                    else {
                         type_error!(self, "invalid enum variant name");
                     };
 
                     if *variant_name_text == *name_text {
-                        return Some(*variant_type_kind);
+                        return Some(Type { type_kind: parent_type.type_kind, instance_kind: InstanceKind::Literal });
                     }
                 }
 
@@ -619,71 +687,96 @@ impl TypeChecker {
             };
 
             if *field_name_text == *name_text {
-                return Some(*field_kind);
+                return Some(Type {
+                    type_kind: *field_kind,
+                    instance_kind: InstanceKind::Variable,
+                });
             }
         }
 
         type_error!(self, "field doesn't exist in struct");
     }
 
-    fn cast(&mut self, left: usize, type_name: usize) -> Option<usize> {
+    fn cast(&mut self, left: usize, type_name: usize) -> Option<Type> {
         self.check_node(left);
-        self.check_node(type_name)
+        let type_name_type = self.check_node(type_name)?;
+
+        Some(Type { type_kind: type_name_type.type_kind, instance_kind: InstanceKind::Literal })
     }
 
-    fn name(&mut self, _text: Arc<str>) -> Option<usize> {
+    fn name(&mut self, _text: Arc<str>) -> Option<Type> {
         None
     }
 
-    fn identifier(&mut self, name: usize) -> Option<usize> {
+    fn identifier(&mut self, name: usize) -> Option<Type> {
         self.check_node(name);
 
         let NodeKind::Name { text } = &self.nodes[name].kind else {
             type_error!(self, "invalid identifier name");
         };
 
-        let Some(type_kind) = self.environment.get(text) else {
+        let Some(identifier_type) = self.environment.get(text) else {
             type_error!(self, "undeclared identifier");
         };
 
-        Some(type_kind)
+        Some(identifier_type)
     }
 
-    fn int_literal(&mut self, _text: Arc<str>) -> Option<usize> {
-        Some(INT_INDEX)
+    fn int_literal(&mut self, _text: Arc<str>) -> Option<Type> {
+        Some(Type {
+            type_kind: INT_INDEX,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
-    fn float32_literal(&mut self, _text: Arc<str>) -> Option<usize> {
-        Some(FLOAT32_INDEX)
+    fn float32_literal(&mut self, _text: Arc<str>) -> Option<Type> {
+        Some(Type {
+            type_kind: FLOAT32_INDEX,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
-    fn string_literal(&mut self, _text: Arc<str>) -> Option<usize> {
-        Some(STRING_INDEX)
+    fn string_literal(&mut self, _text: Arc<str>) -> Option<Type> {
+        Some(Type {
+            type_kind: STRING_INDEX,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
-    fn bool_literal(&mut self, _value: bool) -> Option<usize> {
-        Some(BOOL_INDEX)
+    fn bool_literal(&mut self, _value: bool) -> Option<Type> {
+        Some(Type {
+            type_kind: BOOL_INDEX,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
-    fn char_literal(&mut self, _value: char) -> Option<usize> {
-        Some(CHAR_INDEX)
+    fn char_literal(&mut self, _value: char) -> Option<Type> {
+        Some(Type {
+            type_kind: CHAR_INDEX,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
-    fn array_literal(&mut self, elements: Arc<Vec<usize>>, repeat_count: usize) -> Option<usize> {
+    fn array_literal(&mut self, elements: Arc<Vec<usize>>, repeat_count: usize) -> Option<Type> {
         for element in elements.iter() {
             self.check_node(*element);
         }
 
         let node_type = self.check_node(*elements.first()?)?;
-        self.array_type_kinds
-            .get(&ArrayLayout {
-                element_type_kind: node_type,
-                element_count: elements.len() * repeat_count,
-            })
-            .copied()
+        let Some(type_kind) = self.array_type_kinds.get(&ArrayLayout {
+            element_type_kind: node_type.type_kind,
+            element_count: elements.len() * repeat_count,
+        }) else {
+            type_error!(self, "array layout has no corresponding type");
+        };
+
+        Some(Type {
+            type_kind: *type_kind,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
-    fn struct_literal(&mut self, name: usize, fields: Arc<Vec<usize>>) -> Option<usize> {
+    fn struct_literal(&mut self, name: usize, fields: Arc<Vec<usize>>) -> Option<Type> {
         self.check_node(name);
 
         for field in fields.iter() {
@@ -698,52 +791,62 @@ impl TypeChecker {
             type_error!(self, "invalid struct name");
         };
 
-        let Some(type_kind) = self.environment.get(name_text) else {
+        let Some(name_type) = self.environment.get(name_text) else {
             type_error!(
                 self,
                 &format!("struct with name \"{}\" does not exist", name)
             );
         };
 
-        Some(type_kind)
+        if !matches!(self.types[name_type.type_kind], TypeKind::Struct { .. }) || name_type.instance_kind != InstanceKind::Name {
+            type_error!(
+                self,
+                &format!("expected the name of a struct type, but got \"{}\"", name)
+            );
+        }
+
+        Some(Type {
+            type_kind: name_type.type_kind,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
-    fn field_literal(&mut self, name: usize, expression: usize) -> Option<usize> {
+    fn field_literal(&mut self, name: usize, expression: usize) -> Option<Type> {
         self.check_node(name);
         self.check_node(expression)
     }
 
-    fn type_size(&mut self, type_name: usize) -> Option<usize> {
+    fn type_size(&mut self, type_name: usize) -> Option<Type> {
         self.check_node(type_name);
 
-        Some(INT_INDEX)
+        Some(Type {
+            type_kind: INT_INDEX,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
-    fn type_name(&mut self, type_kind: usize) -> Option<usize> {
-        // Enum type names are used to represent any of their variants,
-        // rather than the collection of variants itself (which is used by identifiers for field access, eg. MyEnum.MyVariant).
-        if let TypeKind::Enum { variant_type_kind, .. } = self.types[type_kind] {
-            return Some(variant_type_kind);
-        }
-
-        Some(type_kind)
+    fn type_name(&mut self, type_kind: usize) -> Option<Type> {
+        Some(Type {
+            type_kind,
+            instance_kind: InstanceKind::Name,
+        })
     }
 
-    fn is_type_numeric(type_kind: Option<usize>) -> bool {
+    fn is_type_numeric(type_kind: usize) -> bool {
         matches!(
             type_kind,
-            Some(INT_INDEX)
-                | Some(UINT_INDEX)
-                | Some(INT8_INDEX)
-                | Some(UINT8_INDEX)
-                | Some(INT16_INDEX)
-                | Some(UINT16_INDEX)
-                | Some(INT32_INDEX)
-                | Some(UINT32_INDEX)
-                | Some(INT64_INDEX)
-                | Some(UINT64_INDEX)
-                | Some(FLOAT32_INDEX)
-                | Some(FLOAT64_INDEX)
+            INT_INDEX
+                | UINT_INDEX
+                | INT8_INDEX
+                | UINT8_INDEX
+                | INT16_INDEX
+                | UINT16_INDEX
+                | INT32_INDEX
+                | UINT32_INDEX
+                | INT64_INDEX
+                | UINT64_INDEX
+                | FLOAT32_INDEX
+                | FLOAT64_INDEX
         )
     }
 }

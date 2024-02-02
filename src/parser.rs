@@ -94,10 +94,6 @@ pub enum TypeKind {
     Enum {
         name: usize,
         variant_names: Arc<Vec<usize>>,
-        variant_type_kind: usize,
-    },
-    EnumVariant {
-        parent_type_kind: usize,
     },
 }
 
@@ -607,17 +603,13 @@ impl Parser {
             parse_error!(self, "invalid enum name", start, end);
         };
 
-        let variant_type_kind = self.add_type(TypeKind::Partial);
         let type_kind = self.add_named_type(
             &name_text,
             TypeKind::Enum {
                 name,
                 variant_names: variant_names.clone(),
-                variant_type_kind,
             },
         );
-
-        self.types[variant_type_kind] = TypeKind::EnumVariant { parent_type_kind: type_kind };
 
         self.add_node(Node {
             kind: NodeKind::EnumDefinition {

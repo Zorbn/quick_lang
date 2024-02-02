@@ -21,7 +21,10 @@ mod file_data;
 
 /*
  * BIG TODOS:
- * Complete type checking.
+ * Complete type checking
+ *     * distinguish between variable (var) and constant (val, fun) bindings.
+ *     * function calls.
+ *     * struct literal fields.
  * Incremental and parallel compilation.
  * Default parameters.
  * Variadic arguments.
@@ -36,6 +39,7 @@ mod file_data;
  * Tagged unions? Still need to figure out what those should look like.
  * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
  * Prevent multiple functions, enums, structs with the same name.
+ * Prevent name collisions in struct members.
  * Don't use keywords for primitive types, use named types instead.
  *
  * NOTES:

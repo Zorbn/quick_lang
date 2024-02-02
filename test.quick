@@ -69,6 +69,9 @@ fun main() Int32 {
         },
     ];
 
+    takesStruct(Point); // TODO: Fix this
+    // add(Int, Int);
+
     var x Int = (xy[0].x);
     var y Int = xy[0].y;
 
@@ -159,6 +162,9 @@ fun takesEnum(name Name) Void {
     if name == Name.Albert {
         puts("albert");
     }
+}
+
+fun takesStruct(point Point) Void {
 }
 
 fun print(msg String) Void {
