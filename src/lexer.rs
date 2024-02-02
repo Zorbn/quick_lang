@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fmt::Display, sync::{Arc, OnceLock}};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    sync::{Arc, OnceLock},
+};
 
 use crate::{file_data::FileData, position::Position};
 
@@ -212,6 +216,25 @@ fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
     })
 }
 
+fn two_char_ops() -> &'static HashMap<String, TokenKind> {
+    static TWO_CHAR_OPS: OnceLock<HashMap<String, TokenKind>> = OnceLock::new();
+    TWO_CHAR_OPS.get_or_init(|| {
+        let mut ops = HashMap::new();
+        ops.insert("!=".into(), TokenKind::NotEqual);
+        ops.insert("==".into(), TokenKind::EqualEqual);
+        ops.insert("<=".into(), TokenKind::LessEqual);
+        ops.insert(">=".into(), TokenKind::GreaterEqual);
+        ops.insert("+=".into(), TokenKind::PlusEqual);
+        ops.insert("-=".into(), TokenKind::MinusEqual);
+        ops.insert("*=".into(), TokenKind::MultiplyEqual);
+        ops.insert("/=".into(), TokenKind::DivideEqual);
+        ops.insert("&&".into(), TokenKind::And);
+        ops.insert("||".into(), TokenKind::Or);
+        ops.insert(".*".into(), TokenKind::Dereference);
+        ops
+    })
+}
+
 pub struct Lexer {
     pub tokens: Vec<Token>,
     pub had_error: bool,
@@ -235,6 +258,10 @@ impl Lexer {
 
     fn char(&self) -> char {
         return *self.chars().get(self.position.index).unwrap_or(&'\0');
+    }
+
+    fn peek_char(&self) -> char {
+        return *self.chars().get(self.position.index + 1).unwrap_or(&'\0');
     }
 
     fn try_consume_string(&mut self, str: &str) -> bool {
@@ -264,18 +291,6 @@ impl Lexer {
         self.position.advance_by(str.len());
 
         true
-    }
-
-    fn try_string_to_token(&mut self, str: &str, kind: TokenKind) -> bool {
-        let start = self.position;
-        let did_succeed = self.try_consume_string(str);
-        let end = self.position;
-
-        if did_succeed {
-            self.tokens.push(Token { kind, start, end });
-        }
-
-        did_succeed
     }
 
     fn handle_single_line_comment(&mut self) {
@@ -324,48 +339,23 @@ impl Lexer {
     }
 
     pub fn lex(&mut self) {
+        let mut two_chars = [0u8; 8];
+
         while self.position.index < self.chars().len() {
-            if self.try_string_to_token("!=", TokenKind::NotEqual) {
-                continue;
-            }
+            let first_char_len = self.char().encode_utf8(&mut two_chars).len();
+            let second_char_len = self
+                .peek_char()
+                .encode_utf8(&mut two_chars[first_char_len..])
+                .len();
+            let two_chars_str =
+                std::str::from_utf8(&two_chars[..(first_char_len + second_char_len)]).unwrap();
 
-            if self.try_string_to_token("==", TokenKind::EqualEqual) {
-                continue;
-            }
+            if let Some(kind) = two_char_ops().get(two_chars_str) {
+                let start = self.position;
+                self.position.advance_by(2);
+                let end = self.position;
 
-            if self.try_string_to_token("<=", TokenKind::LessEqual) {
-                continue;
-            }
-
-            if self.try_string_to_token(">=", TokenKind::GreaterEqual) {
-                continue;
-            }
-
-            if self.try_string_to_token("+=", TokenKind::PlusEqual) {
-                continue;
-            }
-
-            if self.try_string_to_token("-=", TokenKind::MinusEqual) {
-                continue;
-            }
-
-            if self.try_string_to_token("*=", TokenKind::MultiplyEqual) {
-                continue;
-            }
-
-            if self.try_string_to_token("/=", TokenKind::DivideEqual) {
-                continue;
-            }
-
-            if self.try_string_to_token("&&", TokenKind::And) {
-                continue;
-            }
-
-            if self.try_string_to_token("||", TokenKind::Or) {
-                continue;
-            }
-
-            if self.try_string_to_token(".*", TokenKind::Dereference) {
+                self.tokens.push(Token { kind: kind.clone(), start, end });
                 continue;
             }
 
@@ -401,9 +391,7 @@ impl Lexer {
                 }
 
                 self.tokens.push(Token {
-                    kind: TokenKind::Identifier {
-                        text,
-                    },
+                    kind: TokenKind::Identifier { text },
                     start,
                     end,
                 });
