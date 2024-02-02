@@ -355,7 +355,11 @@ impl Lexer {
                 self.position.advance_by(2);
                 let end = self.position;
 
-                self.tokens.push(Token { kind: kind.clone(), start, end });
+                self.tokens.push(Token {
+                    kind: kind.clone(),
+                    start,
+                    end,
+                });
                 continue;
             }
 

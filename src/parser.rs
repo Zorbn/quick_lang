@@ -37,12 +37,6 @@ pub struct Field {
     pub type_kind: usize,
 }
 
-#[derive(Debug)]
-pub struct Function {
-    pub name: usize,
-    pub type_kind: usize,
-}
-
 // Used to search for the index of an array type by its layout.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ArrayLayout {
@@ -84,7 +78,6 @@ pub enum TypeKind {
     Struct {
         name: usize,
         field_kinds: Arc<Vec<Field>>,
-        function_kinds: Arc<Vec<Function>>,
     },
     Partial,
     Function {
@@ -490,10 +483,8 @@ impl Parser {
         self.position += 1;
 
         let mut fields = Vec::new();
-        let mut field_kinds = Vec::new();
-
         let mut functions = Vec::new();
-        let mut function_kinds = Vec::new();
+        let mut field_kinds = Vec::new();
 
         while *self.token_kind() != TokenKind::RBrace {
             if *self.token_kind() == TokenKind::Fun {
@@ -504,11 +495,19 @@ impl Parser {
                     parse_error!(self, "invalid struct function", start, self.token_end());
                 };
 
-                let NodeKind::FunctionDeclaration { name, type_kind, .. } = &self.nodes[*declaration].kind else {
-                    parse_error!(self, "invalid struct function declaration", start, self.token_end());
+                let NodeKind::FunctionDeclaration {
+                    name, type_kind, ..
+                } = &self.nodes[*declaration].kind
+                else {
+                    parse_error!(
+                        self,
+                        "invalid struct function declaration",
+                        start,
+                        self.token_end()
+                    );
                 };
 
-                function_kinds.push(Function {
+                field_kinds.push(Field {
                     name: *name,
                     type_kind: *type_kind,
                 });
@@ -531,7 +530,12 @@ impl Parser {
             };
 
             let NodeKind::TypeName { type_kind } = &self.nodes[*type_name].kind else {
-                parse_error!(self, "invalid struct field type name", start, self.token_end());
+                parse_error!(
+                    self,
+                    "invalid struct field type name",
+                    start,
+                    self.token_end()
+                );
             };
 
             field_kinds.push(Field {
@@ -553,7 +557,6 @@ impl Parser {
             TypeKind::Struct {
                 name,
                 field_kinds: Arc::new(field_kinds),
-                function_kinds: Arc::new(function_kinds),
             },
         );
 

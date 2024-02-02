@@ -51,10 +51,11 @@ impl EmitterStack {
 
             let indent_amount = destination.body.indent_count() - source.body.indent_count();
             for segment in source.bottom.iter().rev() {
-                destination.body.append_indented(&segment.string, indent_amount);
+                destination
+                    .body
+                    .append_indented(&segment.string, indent_amount);
             }
         }
-
     }
 
     pub fn pop(&mut self, needs_bottom: bool) {

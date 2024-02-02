@@ -69,9 +69,6 @@ fun main() Int32 {
         },
     ];
 
-    takesStruct(Point); // TODO: Fix this
-    // add(Int, Int);
-
     var x Int = (xy[0].x);
     var y Int = xy[0].y;
 

@@ -1,5 +1,11 @@
 use std::{
-    env, ffi::OsStr, fs, io::{self, stdout, Write}, path::Path, process::{Command, ExitCode}, sync::Arc
+    env,
+    ffi::OsStr,
+    fs,
+    io::{self, stdout, Write},
+    path::Path,
+    process::{Command, ExitCode},
+    sync::Arc,
 };
 
 use file_data::FileData;
@@ -12,12 +18,12 @@ mod code_generator;
 mod emitter;
 mod emitter_stack;
 mod environment;
+mod file_data;
 mod lexer;
 mod parser;
 mod position;
 mod type_checker;
 mod types;
-mod file_data;
 
 /*
  * BIG TODOS:
@@ -62,7 +68,10 @@ fn main() -> ExitCode {
     let path = Path::new(&args[1]);
     if is_path_source_file(path) {
         let chars = read_chars_at_path(path);
-        files.push(FileData { path: path.to_path_buf(), chars });
+        files.push(FileData {
+            path: path.to_path_buf(),
+            chars,
+        });
     } else if path.is_dir() {
         collect_source_files(path, &mut files).unwrap();
     }
@@ -117,11 +126,12 @@ fn main() -> ExitCode {
         .typed_nodes
         .iter()
         .enumerate()
-        .map(|(i, n)| {
-            match n.clone() {
-                Some(n) => n,
-                None => panic!("Mismatch between nodes and typed nodes, expected typed node for: {:?}", type_checker.nodes[i]),
-            }
+        .map(|(i, n)| match n.clone() {
+            Some(n) => n,
+            None => panic!(
+                "Mismatch between nodes and typed nodes, expected typed node for: {:?}",
+                type_checker.nodes[i]
+            ),
         })
         .collect();
 
@@ -133,8 +143,12 @@ fn main() -> ExitCode {
     let mut output_file = fs::File::create("bin/out.c").unwrap();
 
     code_generator.header_emitter.write(&mut output_file);
-    code_generator.type_prototype_emitter.write(&mut output_file);
-    code_generator.function_prototype_emitter.write(&mut output_file);
+    code_generator
+        .type_prototype_emitter
+        .write(&mut output_file);
+    code_generator
+        .function_prototype_emitter
+        .write(&mut output_file);
     code_generator.body_emitters.write(&mut output_file);
 
     let mut command_builder = Command::new("clang");
@@ -181,10 +195,7 @@ fn collect_source_files(directory: &Path, files: &mut Vec<FileData>) -> io::Resu
             collect_source_files(&path, files)?;
         } else if is_path_source_file(&path) {
             let chars = read_chars_at_path(&path);
-            files.push(FileData {
-                path,
-                chars,
-            });
+            files.push(FileData { path, chars });
         }
     }
 

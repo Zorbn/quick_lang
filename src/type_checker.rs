@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     environment::Environment,
@@ -208,7 +205,13 @@ impl TypeChecker {
                 type_error!(self, "invalid function name");
             };
 
-            self.environment.insert(name_text, Type { type_kind: *type_kind, instance_kind: InstanceKind::Variable });
+            self.environment.insert(
+                name_text,
+                Type {
+                    type_kind: *type_kind,
+                    instance_kind: InstanceKind::Variable,
+                },
+            );
         }
 
         for struct_definition in structs.iter() {
@@ -239,7 +242,10 @@ impl TypeChecker {
             type_error!(self, "invalid name in struct definition");
         };
 
-        let struct_type = Type { type_kind, instance_kind: InstanceKind::Name };
+        let struct_type = Type {
+            type_kind,
+            instance_kind: InstanceKind::Name,
+        };
         self.environment.insert(name_text, struct_type);
 
         for field in fields.iter() {
@@ -265,7 +271,10 @@ impl TypeChecker {
             type_error!(self, "invalid name in enum definition");
         };
 
-        let enum_type = Type { type_kind, instance_kind: InstanceKind::Name };
+        let enum_type = Type {
+            type_kind,
+            instance_kind: InstanceKind::Name,
+        };
         self.environment.insert(name_text, enum_type);
 
         for variant_name in variant_names.iter() {
@@ -304,7 +313,10 @@ impl TypeChecker {
 
         self.check_node(return_type_name);
 
-        Some(Type { type_kind, instance_kind: InstanceKind::Literal })
+        Some(Type {
+            type_kind,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
     fn extern_function(&mut self, declaration: usize) -> Option<Type> {
@@ -324,7 +336,10 @@ impl TypeChecker {
             type_error!(self, "invalid parameter name");
         };
 
-        let param_type = Type { type_kind: type_name_type.type_kind, instance_kind: InstanceKind::Variable };
+        let param_type = Type {
+            type_kind: type_name_type.type_kind,
+            instance_kind: InstanceKind::Variable,
+        };
         self.environment.insert(name_text, param_type);
 
         Some(param_type)
@@ -497,10 +512,16 @@ impl TypeChecker {
                     type_error!(self, "expected comparable types");
                 }
 
-                return Some(Type { type_kind: BOOL_INDEX, instance_kind: InstanceKind::Literal });
+                return Some(Type {
+                    type_kind: BOOL_INDEX,
+                    instance_kind: InstanceKind::Literal,
+                });
             }
             Op::Equal | Op::NotEqual => {
-                return Some(Type { type_kind: BOOL_INDEX, instance_kind: InstanceKind::Literal });
+                return Some(Type {
+                    type_kind: BOOL_INDEX,
+                    instance_kind: InstanceKind::Literal,
+                });
             }
             Op::Not | Op::And | Op::Or => {
                 if left_type.type_kind != BOOL_INDEX {
@@ -510,7 +531,10 @@ impl TypeChecker {
             _ => {}
         }
 
-        Some(Type { type_kind: left_type.type_kind, instance_kind: InstanceKind::Literal })
+        Some(Type {
+            type_kind: left_type.type_kind,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
     fn unary_prefix(&mut self, op: Op, right: usize) -> Option<Type> {
@@ -538,8 +562,11 @@ impl TypeChecker {
 
                 Some(right_type)
             }
-            // TODO: The reference operator should only be useable on variables, not literals.
             Op::Reference => {
+                if right_type.instance_kind != InstanceKind::Variable {
+                    type_error!(self, "references must refer to a variable");
+                }
+
                 let pointer_type_kind = get_type_kind_as_pointer(
                     &mut self.types,
                     &mut self.pointer_type_kinds,
@@ -617,9 +644,7 @@ impl TypeChecker {
     }
 
     fn field_access(&mut self, left: usize, name: usize) -> Option<Type> {
-        let Some(parent_type) = self.check_node(left) else {
-            type_error!(self, "tried to access field of invalid value");
-        };
+        let parent_type = self.check_node(left)?;
         self.check_node(name);
 
         let NodeKind::Name { text: name_text } = &self.nodes[name].kind else {
@@ -627,18 +652,8 @@ impl TypeChecker {
         };
 
         let field_kinds = match &self.types[parent_type.type_kind] {
-            TypeKind::Struct { field_kinds, .. } => {
-                if parent_type.instance_kind == InstanceKind::Name {
-                    type_error!(self, "struct field access is only allowed on instances");
-                }
-
-                field_kinds
-            }
+            TypeKind::Struct { field_kinds, .. } => field_kinds,
             TypeKind::Pointer { inner_type_kind } => {
-                if parent_type.instance_kind == InstanceKind::Name {
-                    type_error!(self, "struct field access is only allowed on instances");
-                }
-
                 let TypeKind::Struct { field_kinds, .. } = &self.types[*inner_type_kind] else {
                     type_error!(
                         self,
@@ -649,10 +664,6 @@ impl TypeChecker {
                 field_kinds
             }
             TypeKind::Enum { variant_names, .. } => {
-                if parent_type.instance_kind != InstanceKind::Name {
-                    type_error!(self, "field access is not allowed on enum variants");
-                }
-
                 for variant_name in variant_names.iter() {
                     let NodeKind::Name {
                         text: variant_name_text,
@@ -662,7 +673,10 @@ impl TypeChecker {
                     };
 
                     if *variant_name_text == *name_text {
-                        return Some(Type { type_kind: parent_type.type_kind, instance_kind: InstanceKind::Literal });
+                        return Some(Type {
+                            type_kind: parent_type.type_kind,
+                            instance_kind: InstanceKind::Literal,
+                        });
                     }
                 }
 
@@ -686,12 +700,20 @@ impl TypeChecker {
                 type_error!(self, "invalid field name on struct");
             };
 
-            if *field_name_text == *name_text {
-                return Some(Type {
-                    type_kind: *field_kind,
-                    instance_kind: InstanceKind::Variable,
-                });
+            if *field_name_text != *name_text {
+                continue;
             }
+
+            if !matches!(self.types[*field_kind], TypeKind::Function { .. })
+                && parent_type.instance_kind == InstanceKind::Name
+            {
+                type_error!(self, "struct field access is only allowed on instances");
+            }
+
+            return Some(Type {
+                type_kind: *field_kind,
+                instance_kind: InstanceKind::Variable,
+            });
         }
 
         type_error!(self, "field doesn't exist in struct");
@@ -701,7 +723,10 @@ impl TypeChecker {
         self.check_node(left);
         let type_name_type = self.check_node(type_name)?;
 
-        Some(Type { type_kind: type_name_type.type_kind, instance_kind: InstanceKind::Literal })
+        Some(Type {
+            type_kind: type_name_type.type_kind,
+            instance_kind: InstanceKind::Literal,
+        })
     }
 
     fn name(&mut self, _text: Arc<str>) -> Option<Type> {
@@ -798,7 +823,9 @@ impl TypeChecker {
             );
         };
 
-        if !matches!(self.types[name_type.type_kind], TypeKind::Struct { .. }) || name_type.instance_kind != InstanceKind::Name {
+        if !matches!(self.types[name_type.type_kind], TypeKind::Struct { .. })
+            || name_type.instance_kind != InstanceKind::Name
+        {
             type_error!(
                 self,
                 &format!("expected the name of a struct type, but got \"{}\"", name)

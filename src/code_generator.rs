@@ -133,15 +133,31 @@ impl CodeGenerator {
     fn gen_node(&mut self, index: usize) {
         match self.typed_nodes[index].clone() {
             TypedNode {
-                node_kind: NodeKind::TopLevel { functions, structs, enums },
+                node_kind:
+                    NodeKind::TopLevel {
+                        functions,
+                        structs,
+                        enums,
+                    },
                 node_type,
             } => self.top_level(functions, structs, enums, node_type),
             TypedNode {
-                node_kind: NodeKind::StructDefinition { name, fields, functions, .. },
+                node_kind:
+                    NodeKind::StructDefinition {
+                        name,
+                        fields,
+                        functions,
+                        ..
+                    },
                 node_type,
             } => self.struct_definition(name, fields, functions, node_type),
             TypedNode {
-                node_kind: NodeKind::EnumDefinition { name, variant_names, .. },
+                node_kind:
+                    NodeKind::EnumDefinition {
+                        name,
+                        variant_names,
+                        ..
+                    },
                 node_type,
             } => self.enum_definition(name, variant_names, node_type),
             TypedNode {
@@ -401,9 +417,18 @@ impl CodeGenerator {
     }
 
     fn field(&mut self, name: usize, _type_name: usize, node_type: Option<Type>) {
-        self.emit_type_kind_left(node_type.unwrap().type_kind, EmitterKind::TypePrototype, false, true);
+        self.emit_type_kind_left(
+            node_type.unwrap().type_kind,
+            EmitterKind::TypePrototype,
+            false,
+            true,
+        );
         self.emit_name_node(name, EmitterKind::TypePrototype);
-        self.emit_type_kind_right(node_type.unwrap().type_kind, EmitterKind::TypePrototype, false);
+        self.emit_type_kind_right(
+            node_type.unwrap().type_kind,
+            EmitterKind::TypePrototype,
+            false,
+        );
         self.type_prototype_emitter.emitln(";");
     }
 
@@ -444,10 +469,22 @@ impl CodeGenerator {
 
     fn extern_function(&mut self, declaration: usize, _node_type: Option<Type>) {
         self.function_prototype_emitter.emit("extern ");
-        let NodeKind::FunctionDeclaration { name, params, return_type_name, type_kind } = self.typed_nodes[declaration].node_kind.clone() else {
+        let NodeKind::FunctionDeclaration {
+            name,
+            params,
+            return_type_name,
+            type_kind,
+        } = self.typed_nodes[declaration].node_kind.clone()
+        else {
             panic!("Invalid function declaration");
         };
-        self.emit_function_declaration(EmitterKind::FunctionPrototype, name, return_type_name, &params, type_kind);
+        self.emit_function_declaration(
+            EmitterKind::FunctionPrototype,
+            name,
+            return_type_name,
+            &params,
+            type_kind,
+        );
         self.function_prototype_emitter.emitln(";");
         self.function_prototype_emitter.newline();
     }
@@ -604,7 +641,8 @@ impl CodeGenerator {
         if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
             self.body_emitters.top().body.emitln(";");
 
-            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
+            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
+            else {
                 panic!("Invalid variable name");
             };
             self.emit_memmove_expression_to_name(&name_text, expression, type_kind);
@@ -681,12 +719,7 @@ impl CodeGenerator {
         }
     }
 
-    fn switch_statement(
-        &mut self,
-        expression: usize,
-        case_block: usize,
-        _node_type: Option<Type>,
-    ) {
+    fn switch_statement(&mut self, expression: usize, case_block: usize, _node_type: Option<Type>) {
         self.body_emitters.top().body.emit("switch (");
         self.gen_node(expression);
         self.body_emitters.top().body.emitln(") {");
@@ -842,25 +875,38 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("]");
     }
 
-    fn field_access(&mut self, left: usize, name: usize, _node_type: Option<Type>) {
-        let TypedNode { node_type: Some(left_type), .. } = self.typed_nodes[left] else {
-            panic!("Invalid left node in field access");
-        };
+    fn field_access(&mut self, left: usize, name: usize, node_type: Option<Type>) {
+        let left_type = self.typed_nodes[left].node_type.unwrap();
+
+        if matches!(self.types[node_type.unwrap().type_kind], TypeKind::Function { .. }) {
+            let TypeKind::Struct { name: struct_name, .. } = self.types[left_type.type_kind] else {
+                panic!("Expected function field to be part of a struct");
+            };
+
+            self.current_namespace_names.push(struct_name);
+            self.emit_namespace_prefix(EmitterKind::Body);
+            self.gen_node(name);
+            self.current_namespace_names.pop();
+
+            return;
+        }
 
         match self.types[left_type.type_kind] {
             TypeKind::Pointer { .. } => {
                 self.gen_node(left);
                 self.body_emitters.top().body.emit("->")
-            },
+            }
             TypeKind::Struct { .. } => {
                 self.gen_node(left);
                 self.body_emitters.top().body.emit(".")
-            },
-            TypeKind::Enum { name: enum_name, .. } => {
+            }
+            TypeKind::Enum {
+                name: enum_name, ..
+            } => {
                 self.body_emitters.top().body.emit("__");
                 self.gen_node(enum_name);
-            },
-            _ => panic!("Tried to access type that cannot be accessed")
+            }
+            _ => panic!("Tried to access type that cannot be accessed"),
         }
 
         self.gen_node(name);
@@ -1078,7 +1124,11 @@ impl CodeGenerator {
         is_prefix: bool,
     ) {
         let type_kind = &self.types[type_kind];
-        let needs_trailing_space = is_prefix && !matches!(type_kind, TypeKind::Array { .. } | TypeKind::Pointer { .. } | TypeKind::Function { .. });
+        let needs_trailing_space = is_prefix
+            && !matches!(
+                type_kind,
+                TypeKind::Array { .. } | TypeKind::Pointer { .. } | TypeKind::Function { .. }
+            );
 
         match type_kind.clone() {
             TypeKind::Int => self.emitter(emitter_kind).emit("intptr_t"),
@@ -1110,21 +1160,33 @@ impl CodeGenerator {
                     panic!("Invalid enum name");
                 };
                 self.emit_name(text, emitter_kind);
-            },
+            }
             TypeKind::Array {
                 element_type_kind, ..
             } => {
-                self.emit_type_kind_left(element_type_kind, emitter_kind, do_arrays_as_pointers, true);
+                self.emit_type_kind_left(
+                    element_type_kind,
+                    emitter_kind,
+                    do_arrays_as_pointers,
+                    true,
+                );
                 if do_arrays_as_pointers {
                     self.emitter(emitter_kind).emit("*");
                 }
             }
             TypeKind::Pointer { inner_type_kind } => {
-                self.emit_type_kind_left(inner_type_kind, emitter_kind, do_arrays_as_pointers, true);
+                self.emit_type_kind_left(
+                    inner_type_kind,
+                    emitter_kind,
+                    do_arrays_as_pointers,
+                    true,
+                );
                 self.emitter(emitter_kind).emit("*");
             }
             TypeKind::Partial => panic!("Can't emit partial struct"),
-            TypeKind::Function { return_type_kind, .. } => {
+            TypeKind::Function {
+                return_type_kind, ..
+            } => {
                 self.emit_type_kind_left(return_type_kind, emitter_kind, true, true);
                 self.emit_type_kind_right(return_type_kind, emitter_kind, true);
                 self.emitter(emitter_kind).emit("(");
@@ -1145,7 +1207,10 @@ impl CodeGenerator {
         let type_kind = self.types[type_kind].clone();
 
         match type_kind {
-            TypeKind::Array { element_type_kind, element_count } => {
+            TypeKind::Array {
+                element_type_kind,
+                element_count,
+            } => {
                 if !do_arrays_as_pointers {
                     self.emitter(emitter_kind).emit("[");
                     self.emitter(emitter_kind).emit(&element_count.to_string());
@@ -1220,7 +1285,10 @@ impl CodeGenerator {
             self.emit_param_node(*param, kind);
         }
 
-        let TypeKind::Function { return_type_kind, .. } = self.types[type_kind] else {
+        let TypeKind::Function {
+            return_type_kind, ..
+        } = self.types[type_kind]
+        else {
             panic!("Tried to emit function declaration for non-function type");
         };
 
@@ -1288,7 +1356,10 @@ impl CodeGenerator {
 
         for i in 0..self.current_namespace_names.len() {
             let namespace_name = self.current_namespace_names[i];
-            let NodeKind::Name { text: namespace_text } = self.typed_nodes[namespace_name].node_kind.clone() else {
+            let NodeKind::Name {
+                text: namespace_text,
+            } = self.typed_nodes[namespace_name].node_kind.clone()
+            else {
                 panic!("Invalid namespace name");
             };
 

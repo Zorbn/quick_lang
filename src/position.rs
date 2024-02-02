@@ -32,7 +32,7 @@ impl Position {
         self.index += count;
         self.column += count;
     }
-    
+
     pub fn error(&self, tag: &str, message: &str, files: &[FileData]) {
         println!(
             "{} error at {}:{}:{}: {}",
