@@ -72,6 +72,8 @@ fun main() Int32 {
     var x Int = (xy[0].x);
     var y Int = xy[0].y;
 
+    Point.Multiply(&xy[0], &xy[1]);
+
     var ch Char = 'a';
 
     var boolean Bool = true && false || (5 <= 88);

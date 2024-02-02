@@ -13,9 +13,10 @@ use crate::{
 
 #[derive(Clone, Copy, Debug)]
 enum EmitterKind {
-    Prototype,
-    Body,
+    TypePrototype,
+    FunctionPrototype,
     Top,
+    Body,
 }
 
 fn reserved_names() -> &'static HashSet<Arc<str>> {
@@ -92,10 +93,12 @@ pub struct CodeGenerator {
     pub typed_nodes: Vec<TypedNode>,
     pub types: Vec<TypeKind>,
     pub header_emitter: Emitter,
-    pub prototype_emitter: Emitter,
+    pub type_prototype_emitter: Emitter,
+    pub function_prototype_emitter: Emitter,
     pub body_emitters: EmitterStack,
     function_declaration_needing_init: Option<usize>,
     temp_variable_count: usize,
+    current_namespace_names: Vec<usize>,
 }
 
 impl CodeGenerator {
@@ -104,10 +107,12 @@ impl CodeGenerator {
             typed_nodes,
             types,
             header_emitter: Emitter::new(0),
-            prototype_emitter: Emitter::new(0),
+            type_prototype_emitter: Emitter::new(0),
+            function_prototype_emitter: Emitter::new(0),
             body_emitters: EmitterStack::new(),
             function_declaration_needing_init: None,
             temp_variable_count: 0,
+            current_namespace_names: Vec::new(),
         };
 
         code_generator.header_emitter.emitln("#include <string.h>");
@@ -115,6 +120,7 @@ impl CodeGenerator {
             .header_emitter
             .emitln("#include <inttypes.h>");
         code_generator.header_emitter.emitln("#include <stdbool.h>");
+        code_generator.header_emitter.newline();
         code_generator.body_emitters.push(1);
 
         code_generator
@@ -131,9 +137,9 @@ impl CodeGenerator {
                 type_kind,
             } => self.top_level(functions, structs, enums, type_kind),
             TypedNode {
-                node_kind: NodeKind::StructDefinition { name, fields, .. },
+                node_kind: NodeKind::StructDefinition { name, fields, functions, .. },
                 type_kind,
-            } => self.struct_definition(name, fields, type_kind),
+            } => self.struct_definition(name, fields, functions, type_kind),
             TypedNode {
                 node_kind: NodeKind::EnumDefinition { name, variant_names, .. },
                 type_kind,
@@ -319,33 +325,6 @@ impl CodeGenerator {
         }
     }
 
-    fn gen_node_prototype(&mut self, index: usize) {
-        match self.typed_nodes[index].clone() {
-            TypedNode {
-                node_kind:
-                    NodeKind::FunctionDeclaration {
-                        name,
-                        return_type_name,
-                        params,
-                        ..
-                    },
-                type_kind,
-            } => self.function_declaration_prototype(name, return_type_name, params, type_kind),
-            TypedNode {
-                node_kind: NodeKind::Param { name, type_name },
-                type_kind,
-            } => self.param_prototype(name, type_name, type_kind),
-            TypedNode {
-                node_kind: NodeKind::Name { text },
-                type_kind,
-            } => self.name_prototype(text, type_kind),
-            _ => panic!(
-                "Node cannot be generated as a prototype: {:?}",
-                self.typed_nodes[index]
-            ),
-        }
-    }
-
     fn top_level(
         &mut self,
         functions: Arc<Vec<usize>>,
@@ -353,38 +332,15 @@ impl CodeGenerator {
         enums: Arc<Vec<usize>>,
         _type_kind: Option<usize>,
     ) {
-        for (i, struct_definition) in structs.iter().enumerate() {
-            if i > 0 {
-                self.prototype_emitter.newline();
-            }
-
+        for struct_definition in structs.iter() {
             self.gen_node(*struct_definition);
         }
 
-        for (i, enum_definition) in enums.iter().enumerate() {
-            if i > 0 {
-                self.prototype_emitter.newline();
-            }
-
+        for enum_definition in enums.iter() {
             self.gen_node(*enum_definition);
         }
 
-        let mut i = 0;
         for function in functions.iter() {
-            if matches!(
-                self.typed_nodes[*function],
-                TypedNode {
-                    node_kind: NodeKind::Function { .. },
-                    ..
-                }
-            ) {
-                if i > 0 {
-                    self.body_emitters.top().body.newline();
-                }
-
-                i += 1;
-            }
-
             self.gen_node(*function);
         }
     }
@@ -393,19 +349,29 @@ impl CodeGenerator {
         &mut self,
         name: usize,
         fields: Arc<Vec<usize>>,
+        functions: Arc<Vec<usize>>,
         _type_kind: Option<usize>,
     ) {
-        self.prototype_emitter.emit("struct ");
-        self.gen_node_prototype(name);
-        self.prototype_emitter.emitln(" {");
-        self.prototype_emitter.indent();
+        self.current_namespace_names.push(name);
+
+        for function in functions.iter() {
+            self.gen_node(*function);
+        }
+
+        self.current_namespace_names.pop();
+
+        self.type_prototype_emitter.emit("struct ");
+        self.emit_name_node(name, EmitterKind::TypePrototype);
+        self.type_prototype_emitter.emitln(" {");
+        self.type_prototype_emitter.indent();
 
         for field in fields.iter() {
             self.gen_node(*field);
         }
 
-        self.prototype_emitter.unindent();
-        self.prototype_emitter.emitln("};");
+        self.type_prototype_emitter.unindent();
+        self.type_prototype_emitter.emitln("};");
+        self.type_prototype_emitter.newline();
     }
 
     fn enum_definition(
@@ -414,54 +380,38 @@ impl CodeGenerator {
         variant_names: Arc<Vec<usize>>,
         _type_kind: Option<usize>,
     ) {
-        self.prototype_emitter.emit("enum ");
-        self.gen_node_prototype(name);
-        self.prototype_emitter.emitln(" {");
-        self.prototype_emitter.indent();
+        self.type_prototype_emitter.emit("enum ");
+        self.emit_name_node(name, EmitterKind::TypePrototype);
+        self.type_prototype_emitter.emitln(" {");
+        self.type_prototype_emitter.indent();
+
+        self.current_namespace_names.push(name);
 
         for variant_name in variant_names.iter() {
-            self.prototype_emitter.emit("__");
-            self.gen_node_prototype(name);
-            self.gen_node_prototype(*variant_name);
-            self.prototype_emitter.emitln(",");
+            self.emit_namespace_prefix(EmitterKind::TypePrototype);
+            self.emit_name_node(*variant_name, EmitterKind::TypePrototype);
+            self.type_prototype_emitter.emitln(",");
         }
 
-        self.prototype_emitter.unindent();
-        self.prototype_emitter.emitln("};");
+        self.current_namespace_names.pop();
+
+        self.type_prototype_emitter.unindent();
+        self.type_prototype_emitter.emitln("};");
+        self.type_prototype_emitter.newline();
     }
 
     fn field(&mut self, name: usize, _type_name: usize, type_kind: Option<usize>) {
-        self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::Prototype, false, true);
-        self.gen_node_prototype(name);
-        self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::Prototype, false);
-        self.prototype_emitter.emitln(";");
-    }
-
-    fn function_declaration_prototype(
-        &mut self,
-        name: usize,
-        return_type_name: usize,
-        params: Arc<Vec<usize>>,
-        type_kind: Option<usize>,
-    ) {
-        self.emit_function_declaration(
-            EmitterKind::Prototype,
-            name,
-            return_type_name,
-            &params,
-            type_kind,
-        );
-        self.prototype_emitter.emitln(";");
-    }
-
-    fn param_prototype(&mut self, name: usize, type_name: usize, _type_kind: Option<usize>) {
-        self.emit_param(name, type_name, EmitterKind::Prototype);
+        self.emit_type_kind_left(type_kind.unwrap(), EmitterKind::TypePrototype, false, true);
+        self.emit_name_node(name, EmitterKind::TypePrototype);
+        self.emit_type_kind_right(type_kind.unwrap(), EmitterKind::TypePrototype, false);
+        self.type_prototype_emitter.emitln(";");
     }
 
     fn function(&mut self, declaration: usize, block: usize, _type_kind: Option<usize>) {
         self.gen_node(declaration);
         self.function_declaration_needing_init = Some(declaration);
         self.gen_node(block);
+        self.body_emitters.top().body.newline();
         self.body_emitters.top().body.newline();
     }
 
@@ -481,12 +431,25 @@ impl CodeGenerator {
         );
         self.body_emitters.top().body.emit(" ");
 
-        self.function_declaration_prototype(name, return_type_name, params, type_kind);
+        self.emit_function_declaration(
+            EmitterKind::FunctionPrototype,
+            name,
+            return_type_name,
+            &params,
+            type_kind,
+        );
+        self.function_prototype_emitter.emitln(";");
+        self.function_prototype_emitter.newline();
     }
 
     fn extern_function(&mut self, declaration: usize, _type_kind: Option<usize>) {
-        self.prototype_emitter.emit("extern ");
-        self.gen_node_prototype(declaration);
+        self.function_prototype_emitter.emit("extern ");
+        let NodeKind::FunctionDeclaration { name, params, return_type_name, type_kind } = self.typed_nodes[declaration].node_kind.clone() else {
+            panic!("Invalid function declaration");
+        };
+        self.emit_function_declaration(EmitterKind::FunctionPrototype, name, return_type_name, &params, Some(type_kind));
+        self.function_prototype_emitter.emitln(";");
+        self.function_prototype_emitter.newline();
     }
 
     fn param(&mut self, name: usize, type_name: usize, _type_kind: Option<usize>) {
@@ -916,10 +879,6 @@ impl CodeGenerator {
         self.gen_node(name);
     }
 
-    fn name_prototype(&mut self, text: Arc<str>, _type_kind: Option<usize>) {
-        self.emit_name(text, EmitterKind::Prototype);
-    }
-
     fn int_literal(&mut self, text: Arc<str>, _type_kind: Option<usize>) {
         self.body_emitters.top().body.emit(&text);
     }
@@ -1246,12 +1205,8 @@ impl CodeGenerator {
         type_kind: Option<usize>,
     ) {
         self.emit_type_name_left(return_type_name, kind, true);
-
-        match kind {
-            EmitterKind::Prototype => self.gen_node_prototype(name),
-            EmitterKind::Body => self.gen_node(name),
-            _ => panic!("Unexpected emitter kind for function declaration"),
-        }
+        self.emit_namespace_prefix(kind);
+        self.emit_name_node(name, kind);
 
         let mut param_count = 0;
 
@@ -1263,11 +1218,7 @@ impl CodeGenerator {
 
             param_count += 1;
 
-            match kind {
-                EmitterKind::Prototype => self.gen_node_prototype(*param),
-                EmitterKind::Body => self.gen_node(*param),
-                _ => panic!("Unexpected emitter kind for function declaration"),
-            }
+            self.emit_param_node(*param, kind);
         }
 
         let TypeKind::Function { return_type_kind, .. } = self.types[type_kind.unwrap()] else {
@@ -1293,13 +1244,17 @@ impl CodeGenerator {
         self.emit_type_name_right(return_type_name, kind, true);
     }
 
+    fn emit_param_node(&mut self, param: usize, kind: EmitterKind) {
+        let NodeKind::Param { name, type_name } = self.typed_nodes[param].node_kind else {
+            panic!("Invalid param");
+        };
+
+        self.emit_param(name, type_name, kind);
+    }
+
     fn emit_param(&mut self, name: usize, type_name: usize, kind: EmitterKind) {
         self.emit_type_name_left(type_name, kind, false);
-        match kind {
-            EmitterKind::Prototype => self.gen_node_prototype(name),
-            EmitterKind::Body => self.gen_node(name),
-            _ => panic!("Unexpected emitter kind for parameter"),
-        }
+        self.emit_name_node(name, kind);
         self.emit_type_name_right(type_name, kind, false);
     }
 
@@ -1307,6 +1262,14 @@ impl CodeGenerator {
         self.emit_type_name_left(type_name, kind, false);
         self.emitter(kind).emit(name);
         self.emit_type_name_right(type_name, kind, false);
+    }
+
+    fn emit_name_node(&mut self, name: usize, kind: EmitterKind) {
+        let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
+            panic!("Invalid name");
+        };
+
+        self.emit_name(text, kind);
     }
 
     fn emit_name(&mut self, text: Arc<str>, kind: EmitterKind) {
@@ -1317,11 +1280,29 @@ impl CodeGenerator {
         self.emitter(kind).emit(&text);
     }
 
+    fn emit_namespace_prefix(&mut self, kind: EmitterKind) {
+        if self.current_namespace_names.is_empty() {
+            return;
+        }
+
+        self.emitter(kind).emit("__");
+
+        for i in 0..self.current_namespace_names.len() {
+            let namespace_name = self.current_namespace_names[i];
+            let NodeKind::Name { text: namespace_text } = self.typed_nodes[namespace_name].node_kind.clone() else {
+                panic!("Invalid namespace name");
+            };
+
+            self.emitter(kind).emit(&namespace_text);
+        }
+    }
+
     fn emitter(&mut self, kind: EmitterKind) -> &mut Emitter {
         match kind {
-            EmitterKind::Prototype => &mut self.prototype_emitter,
-            EmitterKind::Body => &mut self.body_emitters.top().body,
+            EmitterKind::TypePrototype => &mut self.type_prototype_emitter,
+            EmitterKind::FunctionPrototype => &mut self.function_prototype_emitter,
             EmitterKind::Top => &mut self.body_emitters.top().top,
+            EmitterKind::Body => &mut self.body_emitters.top().body,
         }
     }
 

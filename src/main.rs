@@ -97,7 +97,6 @@ fn main() -> ExitCode {
     let mut type_checker = TypeChecker::new(
         parser.nodes,
         parser.types,
-        parser.function_declaration_indices,
         parser.array_type_kinds,
         parser.pointer_type_kinds,
         files.clone(),
@@ -129,16 +128,9 @@ fn main() -> ExitCode {
 
     let mut output_file = fs::File::create("bin/out.c").unwrap();
 
-    if !code_generator.header_emitter.is_empty() {
-        code_generator.header_emitter.write(&mut output_file);
-        output_file.write_all("\n".as_bytes()).unwrap();
-    }
-
-    if !code_generator.prototype_emitter.is_empty() {
-        code_generator.prototype_emitter.write(&mut output_file);
-        output_file.write_all("\n".as_bytes()).unwrap();
-    }
-
+    code_generator.header_emitter.write(&mut output_file);
+    code_generator.type_prototype_emitter.write(&mut output_file);
+    code_generator.function_prototype_emitter.write(&mut output_file);
     code_generator.body_emitters.write(&mut output_file);
 
     let mut command_builder = Command::new("clang");

@@ -1,4 +1,14 @@
 struct Point {
     x Int,
     y Int,
+
+    fun Add(self *Point, other *Point) Void {
+        self.x += other.x;
+        self.y += other.y;
+    }
+
+    fun Multiply(self *Point, other *Point) Void {
+        self.x *= other.x;
+        self.y *= other.y;
+    }
 }

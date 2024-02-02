@@ -65,10 +65,6 @@ impl Emitter {
         self.indent_count -= 1;
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.string.is_empty()
-    }
-
     pub fn write(&self, file: &mut File) {
         write!(file, "{}", self.string).unwrap();
     }

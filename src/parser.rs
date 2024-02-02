@@ -37,6 +37,12 @@ pub struct Field {
     pub type_kind: usize,
 }
 
+#[derive(Debug)]
+pub struct Function {
+    pub name: usize,
+    pub type_kind: usize,
+}
+
 // Used to search for the index of an array type by its layout.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ArrayLayout {
@@ -78,6 +84,7 @@ pub enum TypeKind {
     Struct {
         name: usize,
         field_kinds: Arc<Vec<Field>>,
+        function_kinds: Arc<Vec<Function>>,
     },
     Partial,
     Function {
@@ -107,6 +114,7 @@ pub enum NodeKind {
     StructDefinition {
         name: usize,
         fields: Arc<Vec<usize>>,
+        functions: Arc<Vec<usize>>,
         type_kind: usize,
     },
     EnumDefinition {
@@ -306,7 +314,6 @@ macro_rules! parse_error {
 pub struct Parser {
     pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
-    pub function_declaration_indices: Vec<usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub named_type_kinds: HashMap<Arc<str>, usize>,
@@ -326,7 +333,6 @@ impl Parser {
             tokens: None,
             nodes: Vec::new(),
             types: Vec::new(),
-            function_declaration_indices: Vec::new(),
             array_type_kinds: HashMap::new(),
             pointer_type_kinds: HashMap::new(),
             named_type_kinds: HashMap::new(),
@@ -488,9 +494,34 @@ impl Parser {
         self.position += 1;
 
         let mut fields = Vec::new();
+        let mut field_kinds = Vec::new();
+
+        let mut functions = Vec::new();
+        let mut function_kinds = Vec::new();
 
         while *self.token_kind() != TokenKind::RBrace {
-            fields.push(self.field());
+            if *self.token_kind() == TokenKind::Fun {
+                let function = self.function();
+                functions.push(function);
+
+                let NodeKind::Function { declaration, .. } = &self.nodes[function].kind else {
+                    parse_error!(self, "invalid struct function", start, self.token_end());
+                };
+
+                let NodeKind::FunctionDeclaration { name, type_kind, .. } = &self.nodes[*declaration].kind else {
+                    parse_error!(self, "invalid struct function declaration", start, self.token_end());
+                };
+
+                function_kinds.push(Function {
+                    name: *name,
+                    type_kind: *type_kind,
+                });
+
+                continue;
+            }
+
+            let field = self.field();
+            fields.push(field);
 
             if *self.token_kind() != TokenKind::Comma {
                 break;
@@ -498,29 +529,13 @@ impl Parser {
 
             assert_token!(self, TokenKind::Comma, start, self.token_end());
             self.position += 1;
-        }
 
-        let end = self.token_end();
-        assert_token!(self, TokenKind::RBrace, start, end);
-        self.position += 1;
-
-        let mut field_kinds = Vec::new();
-
-        for field in &fields {
-            let Node {
-                kind: NodeKind::Field { name, type_name },
-                ..
-            } = &self.nodes[*field]
-            else {
-                parse_error!(self, "invalid struct field", start, end);
+            let NodeKind::Field { name, type_name } = &self.nodes[field].kind else {
+                parse_error!(self, "invalid struct field", start, self.token_end());
             };
 
-            let Node {
-                kind: NodeKind::TypeName { type_kind },
-                ..
-            } = &self.nodes[*type_name]
-            else {
-                parse_error!(self, "invalid struct field type name", start, end);
+            let NodeKind::TypeName { type_kind } = &self.nodes[*type_name].kind else {
+                parse_error!(self, "invalid struct field type name", start, self.token_end());
             };
 
             field_kinds.push(Field {
@@ -528,6 +543,10 @@ impl Parser {
                 type_kind: *type_kind,
             });
         }
+
+        let end = self.token_end();
+        assert_token!(self, TokenKind::RBrace, start, end);
+        self.position += 1;
 
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             parse_error!(self, "invalid struct name", start, end);
@@ -538,6 +557,7 @@ impl Parser {
             TypeKind::Struct {
                 name,
                 field_kinds: Arc::new(field_kinds),
+                function_kinds: Arc::new(function_kinds),
             },
         );
 
@@ -545,6 +565,7 @@ impl Parser {
             kind: NodeKind::StructDefinition {
                 name,
                 fields: Arc::new(fields),
+                functions: Arc::new(functions),
                 type_kind,
             },
             start,
@@ -692,7 +713,7 @@ impl Parser {
             type_kind
         };
 
-        let index = self.add_node(Node {
+        self.add_node(Node {
             kind: NodeKind::FunctionDeclaration {
                 name,
                 return_type_name,
@@ -701,11 +722,7 @@ impl Parser {
             },
             start,
             end,
-        });
-
-        self.function_declaration_indices.push(index);
-
-        index
+        })
     }
 
     fn function(&mut self) -> usize {

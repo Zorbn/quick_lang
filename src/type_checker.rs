@@ -30,7 +30,6 @@ pub struct TypeChecker {
     pub typed_nodes: Vec<Option<TypedNode>>,
     pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
-    pub function_declaration_indices: Vec<usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub had_error: bool,
@@ -45,7 +44,6 @@ impl TypeChecker {
     pub fn new(
         nodes: Vec<Node>,
         types: Vec<TypeKind>,
-        function_declaration_indices: Vec<usize>,
         array_type_kinds: HashMap<ArrayLayout, usize>,
         pointer_type_kinds: HashMap<usize, usize>,
         files: Arc<Vec<FileData>>,
@@ -59,7 +57,6 @@ impl TypeChecker {
             typed_nodes: Vec::new(),
             nodes,
             types,
-            function_declaration_indices,
             array_type_kinds,
             pointer_type_kinds,
             pointer_type_kind_set,
@@ -87,8 +84,9 @@ impl TypeChecker {
             NodeKind::StructDefinition {
                 name,
                 fields,
+                functions,
                 type_kind,
-            } => self.struct_definition(name, fields, type_kind),
+            } => self.struct_definition(name, fields, functions, type_kind),
             NodeKind::EnumDefinition {
                 name,
                 variant_names,
@@ -171,8 +169,13 @@ impl TypeChecker {
     }
 
     fn top_level(&mut self, functions: Arc<Vec<usize>>, structs: Arc<Vec<usize>>, enums: Arc<Vec<usize>>) -> Option<usize> {
-        for function_declaration in &self.function_declaration_indices {
-            let NodeKind::FunctionDeclaration { name, type_kind, .. } = &self.nodes[*function_declaration].kind else {
+        for function in functions.iter() {
+            let declaration = match &self.nodes[*function].kind {
+                NodeKind::Function { declaration, .. } => declaration,
+                NodeKind::ExternFunction { declaration, .. } => declaration,
+                _ => type_error!(self, "invalid function")
+            };
+            let NodeKind::FunctionDeclaration { name, type_kind, .. } = &self.nodes[*declaration].kind else {
                 type_error!(self, "invalid function declaration");
             };
             let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
@@ -201,6 +204,7 @@ impl TypeChecker {
         &mut self,
         name: usize,
         fields: Arc<Vec<usize>>,
+        functions: Arc<Vec<usize>>,
         type_kind: usize,
     ) -> Option<usize> {
         self.check_node(name);
@@ -213,6 +217,10 @@ impl TypeChecker {
 
         for field in fields.iter() {
             self.check_node(*field);
+        }
+
+        for function in functions.iter() {
+            self.check_node(*function);
         }
 
         Some(type_kind)
