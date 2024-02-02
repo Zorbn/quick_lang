@@ -1,4 +1,4 @@
-use std::{fmt::Display, sync::Arc};
+use std::{collections::HashMap, fmt::Display, sync::{Arc, OnceLock}};
 
 use crate::{file_data::FileData, position::Position};
 
@@ -168,6 +168,50 @@ pub struct Token {
     pub end: Position,
 }
 
+fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
+    static KEYWORDS: OnceLock<HashMap<Arc<str>, TokenKind>> = OnceLock::new();
+    KEYWORDS.get_or_init(|| {
+        let mut keywords = HashMap::new();
+        keywords.insert(Arc::from("var"), TokenKind::Var);
+        keywords.insert(Arc::from("val"), TokenKind::Val);
+        keywords.insert(Arc::from("fun"), TokenKind::Fun);
+        keywords.insert(Arc::from("struct"), TokenKind::Struct);
+        keywords.insert(Arc::from("enum"), TokenKind::Enum);
+        keywords.insert(Arc::from("return"), TokenKind::Return);
+        keywords.insert(Arc::from("extern"), TokenKind::Extern);
+        keywords.insert(Arc::from("if"), TokenKind::If);
+        keywords.insert(Arc::from("else"), TokenKind::Else);
+        keywords.insert(Arc::from("switch"), TokenKind::Switch);
+        keywords.insert(Arc::from("case"), TokenKind::Case);
+        keywords.insert(Arc::from("while"), TokenKind::While);
+        keywords.insert(Arc::from("for"), TokenKind::For);
+        keywords.insert(Arc::from("of"), TokenKind::Of);
+        keywords.insert(Arc::from("by"), TokenKind::By);
+        keywords.insert(Arc::from("as"), TokenKind::As);
+        keywords.insert(Arc::from("defer"), TokenKind::Defer);
+        keywords.insert(Arc::from("sizeof"), TokenKind::Sizeof);
+        keywords.insert(Arc::from("String"), TokenKind::String);
+        keywords.insert(Arc::from("Bool"), TokenKind::Bool);
+        keywords.insert(Arc::from("Char"), TokenKind::Char);
+        keywords.insert(Arc::from("Void"), TokenKind::Void);
+        keywords.insert(Arc::from("Int8"), TokenKind::Int8);
+        keywords.insert(Arc::from("UInt8"), TokenKind::UInt8);
+        keywords.insert(Arc::from("Int16"), TokenKind::Int16);
+        keywords.insert(Arc::from("UInt16"), TokenKind::UInt16);
+        keywords.insert(Arc::from("Int32"), TokenKind::Int32);
+        keywords.insert(Arc::from("UInt32"), TokenKind::UInt32);
+        keywords.insert(Arc::from("Int64"), TokenKind::Int64);
+        keywords.insert(Arc::from("UInt64"), TokenKind::UInt64);
+        keywords.insert(Arc::from("UInt"), TokenKind::UInt);
+        keywords.insert(Arc::from("Int"), TokenKind::Int);
+        keywords.insert(Arc::from("Float32"), TokenKind::Float32);
+        keywords.insert(Arc::from("Float64"), TokenKind::Float64);
+        keywords.insert(Arc::from("true"), TokenKind::True);
+        keywords.insert(Arc::from("false"), TokenKind::False);
+        keywords
+    })
+}
+
 pub struct Lexer {
     pub tokens: Vec<Token>,
     pub had_error: bool,
@@ -335,150 +379,6 @@ impl Lexer {
                 continue;
             }
 
-            if self.try_string_to_token("var", TokenKind::Var) {
-                continue;
-            }
-
-            if self.try_string_to_token("val", TokenKind::Val) {
-                continue;
-            }
-
-            if self.try_string_to_token("fun", TokenKind::Fun) {
-                continue;
-            }
-
-            if self.try_string_to_token("struct", TokenKind::Struct) {
-                continue;
-            }
-
-            if self.try_string_to_token("enum", TokenKind::Enum) {
-                continue;
-            }
-
-            if self.try_string_to_token("return", TokenKind::Return) {
-                continue;
-            }
-
-            if self.try_string_to_token("extern", TokenKind::Extern) {
-                continue;
-            }
-
-            if self.try_string_to_token("if", TokenKind::If) {
-                continue;
-            }
-
-            if self.try_string_to_token("else", TokenKind::Else) {
-                continue;
-            }
-
-            if self.try_string_to_token("switch", TokenKind::Switch) {
-                continue;
-            }
-
-            if self.try_string_to_token("case", TokenKind::Case) {
-                continue;
-            }
-
-            if self.try_string_to_token("while", TokenKind::While) {
-                continue;
-            }
-
-            if self.try_string_to_token("for", TokenKind::For) {
-                continue;
-            }
-
-            if self.try_string_to_token("of", TokenKind::Of) {
-                continue;
-            }
-
-            if self.try_string_to_token("by", TokenKind::By) {
-                continue;
-            }
-
-            if self.try_string_to_token("as", TokenKind::As) {
-                continue;
-            }
-
-            if self.try_string_to_token("defer", TokenKind::Defer) {
-                continue;
-            }
-
-            if self.try_string_to_token("sizeof", TokenKind::Sizeof) {
-                continue;
-            }
-
-            if self.try_string_to_token("String", TokenKind::String) {
-                continue;
-            }
-
-            if self.try_string_to_token("Bool", TokenKind::Bool) {
-                continue;
-            }
-
-            if self.try_string_to_token("Char", TokenKind::Char) {
-                continue;
-            }
-
-            if self.try_string_to_token("Void", TokenKind::Void) {
-                continue;
-            }
-
-            if self.try_string_to_token("Int8", TokenKind::Int8) {
-                continue;
-            }
-
-            if self.try_string_to_token("UInt8", TokenKind::UInt8) {
-                continue;
-            }
-
-            if self.try_string_to_token("Int16", TokenKind::Int16) {
-                continue;
-            }
-
-            if self.try_string_to_token("UInt16", TokenKind::UInt16) {
-                continue;
-            }
-
-            if self.try_string_to_token("Int32", TokenKind::Int32) {
-                continue;
-            }
-
-            if self.try_string_to_token("UInt32", TokenKind::UInt32) {
-                continue;
-            }
-
-            if self.try_string_to_token("Int64", TokenKind::Int64) {
-                continue;
-            }
-
-            if self.try_string_to_token("UInt64", TokenKind::UInt64) {
-                continue;
-            }
-
-            if self.try_string_to_token("UInt", TokenKind::UInt) {
-                continue;
-            }
-
-            if self.try_string_to_token("Int", TokenKind::Int) {
-                continue;
-            }
-
-            if self.try_string_to_token("Float32", TokenKind::Float32) {
-                continue;
-            }
-
-            if self.try_string_to_token("Float64", TokenKind::Float64) {
-                continue;
-            }
-
-            if self.try_string_to_token("true", TokenKind::True) {
-                continue;
-            }
-
-            if self.try_string_to_token("false", TokenKind::False) {
-                continue;
-            }
-
             if self.char().is_alphabetic() || self.char() == '_' {
                 let mut c = self.char();
                 let start = self.position;
@@ -489,9 +389,20 @@ impl Lexer {
                 }
 
                 let end = self.position;
+                let text = self.collect_chars(start, end);
+
+                if let Some(keyword_kind) = keywords().get(&text) {
+                    self.tokens.push(Token {
+                        kind: keyword_kind.clone(),
+                        start,
+                        end,
+                    });
+                    continue;
+                }
+
                 self.tokens.push(Token {
                     kind: TokenKind::Identifier {
-                        text: self.collect_chars(start, end),
+                        text,
                     },
                     start,
                     end,
@@ -764,7 +675,7 @@ impl Lexer {
                     self.error(&format!("unexpected character \"{}\"", self.char()));
                     self.position.advance();
                 }
-            }
+            };
         }
     }
 }
