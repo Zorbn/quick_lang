@@ -2,7 +2,16 @@ extern fun puts(str String) UInt
 extern fun malloc(size UInt) *Void
 extern fun free(ptr *Void) Void
 
+enum Name {
+    Albert,
+    Benjamin,
+    Carson,
+    Derek,
+}
+
 fun main() Int32 {
+    val someonesName = Name.Carson;
+
     var function *fun(Int, Int) Int = &add;
     function.*(1, 2);
 

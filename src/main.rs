@@ -26,14 +26,17 @@ mod file_data;
  * Default parameters.
  * Variadic arguments.
  * Generics.
+ * Namespaces.
+ * Methods?
  *
  * SMALL TODOS:
  * for elem in array {}
  * Bitwise operations.
  * Make sure all non-void functions return, and that all functions return the correct value.
- * Enums.
  * Tagged unions? Still need to figure out what those should look like.
  * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
+ * Prevent multiple functions, enums, structs with the same name.
+ * Don't use keywords for primitive types, use named types instead.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.
@@ -95,7 +98,6 @@ fn main() -> ExitCode {
         parser.nodes,
         parser.types,
         parser.function_declaration_indices,
-        parser.struct_definition_indices,
         parser.array_type_kinds,
         parser.pointer_type_kinds,
         files.clone(),

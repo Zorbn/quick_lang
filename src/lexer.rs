@@ -37,6 +37,7 @@ pub enum TokenKind {
     Val,
     Fun,
     Struct,
+    Enum,
     Return,
     Extern,
     If,
@@ -79,6 +80,8 @@ pub enum TokenKind {
 
 impl Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut char_buffer = [0u8];
+
         let str = match self {
             TokenKind::LParen => "(",
             TokenKind::RParen => ")",
@@ -113,6 +116,7 @@ impl Display for TokenKind {
             TokenKind::Val => "val",
             TokenKind::Fun => "fun",
             TokenKind::Struct => "struct",
+            TokenKind::Enum => "enum",
             TokenKind::Return => "return",
             TokenKind::Extern => "extern",
             TokenKind::If => "if",
@@ -144,11 +148,11 @@ impl Display for TokenKind {
             TokenKind::Float64 => "Float64",
             TokenKind::True => "true",
             TokenKind::False => "false",
-            TokenKind::IntLiteral { .. } => "int literal",
-            TokenKind::Float32Literal { .. } => "float32 literal",
-            TokenKind::CharLiteral { .. } => "char literal",
-            TokenKind::StringLiteral { .. } => "string literal",
-            TokenKind::Identifier { .. } => "identifier",
+            TokenKind::IntLiteral { text } => text,
+            TokenKind::Float32Literal { text } => text,
+            TokenKind::CharLiteral { value } => value.encode_utf8(&mut char_buffer),
+            TokenKind::StringLiteral { text } => text,
+            TokenKind::Identifier { text } => text,
             TokenKind::Eof => "EOF",
             TokenKind::Error => "error",
         };
@@ -180,7 +184,7 @@ impl Lexer {
             position: Position::new(file_index),
         }
     }
-    
+
     fn chars(&self) -> &Vec<char> {
         &self.files[self.position.file_index].chars
     }
@@ -344,6 +348,10 @@ impl Lexer {
             }
 
             if self.try_string_to_token("struct", TokenKind::Struct) {
+                continue;
+            }
+
+            if self.try_string_to_token("enum", TokenKind::Enum) {
                 continue;
             }
 

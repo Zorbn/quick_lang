@@ -127,13 +127,17 @@ impl CodeGenerator {
     fn gen_node(&mut self, index: usize) {
         match self.typed_nodes[index].clone() {
             TypedNode {
-                node_kind: NodeKind::TopLevel { functions, structs },
+                node_kind: NodeKind::TopLevel { functions, structs, enums },
                 type_kind,
-            } => self.top_level(functions, structs, type_kind),
+            } => self.top_level(functions, structs, enums, type_kind),
             TypedNode {
                 node_kind: NodeKind::StructDefinition { name, fields, .. },
                 type_kind,
             } => self.struct_definition(name, fields, type_kind),
+            TypedNode {
+                node_kind: NodeKind::EnumDefinition { name, variant_names, .. },
+                type_kind,
+            } => self.enum_definition(name, variant_names, type_kind),
             TypedNode {
                 node_kind: NodeKind::Field { name, type_name },
                 type_kind,
@@ -346,6 +350,7 @@ impl CodeGenerator {
         &mut self,
         functions: Arc<Vec<usize>>,
         structs: Arc<Vec<usize>>,
+        enums: Arc<Vec<usize>>,
         _type_kind: Option<usize>,
     ) {
         for (i, struct_definition) in structs.iter().enumerate() {
@@ -354,6 +359,14 @@ impl CodeGenerator {
             }
 
             self.gen_node(*struct_definition);
+        }
+
+        for (i, enum_definition) in enums.iter().enumerate() {
+            if i > 0 {
+                self.prototype_emitter.newline();
+            }
+
+            self.gen_node(*enum_definition);
         }
 
         let mut i = 0;
@@ -389,6 +402,28 @@ impl CodeGenerator {
 
         for field in fields.iter() {
             self.gen_node(*field);
+        }
+
+        self.prototype_emitter.unindent();
+        self.prototype_emitter.emitln("};");
+    }
+
+    fn enum_definition(
+        &mut self,
+        name: usize,
+        variant_names: Arc<Vec<usize>>,
+        _type_kind: Option<usize>,
+    ) {
+        self.prototype_emitter.emit("enum ");
+        self.gen_node_prototype(name);
+        self.prototype_emitter.emitln(" {");
+        self.prototype_emitter.indent();
+
+        for variant_name in variant_names.iter() {
+            self.prototype_emitter.emit("__");
+            self.gen_node_prototype(name);
+            self.gen_node_prototype(*variant_name);
+            self.prototype_emitter.emitln(",");
         }
 
         self.prototype_emitter.unindent();
@@ -841,16 +876,24 @@ impl CodeGenerator {
     }
 
     fn field_access(&mut self, left: usize, name: usize, _type_kind: Option<usize>) {
-        self.gen_node(left);
-
         let TypedNode { type_kind: Some(type_kind), .. } = self.typed_nodes[left] else {
             panic!("Invalid left node in field access");
         };
 
-        if matches!(self.types[type_kind], TypeKind::Pointer { .. }) {
-            self.body_emitters.top().body.emit("->");
-        } else {
-            self.body_emitters.top().body.emit(".");
+        match self.types[type_kind] {
+            TypeKind::Pointer { .. } => {
+                self.gen_node(left);
+                self.body_emitters.top().body.emit("->")
+            },
+            TypeKind::Struct { .. } => {
+                self.gen_node(left);
+                self.body_emitters.top().body.emit(".")
+            },
+            TypeKind::Enum { name: enum_name, .. } => {
+                self.body_emitters.top().body.emit("__");
+                self.gen_node(enum_name);
+            },
+            _ => panic!("Tried to access type that cannot be accessed")
         }
 
         self.gen_node(name);
@@ -1097,6 +1140,14 @@ impl CodeGenerator {
                 self.emitter(emitter_kind).emit("struct ");
                 self.gen_node(name);
             }
+            TypeKind::EnumVariant { parent_type_kind } => {
+                let TypeKind::Enum { name, .. } = self.types[parent_type_kind] else {
+                    panic!("Invalid parent of enum variant");
+                };
+
+                self.emitter(emitter_kind).emit("enum ");
+                self.gen_node(name);
+            }
             TypeKind::Array {
                 element_type_kind, ..
             } => {
@@ -1109,7 +1160,8 @@ impl CodeGenerator {
                 self.emit_type_kind_left(inner_type_kind, emitter_kind, do_arrays_as_pointers, true);
                 self.emitter(emitter_kind).emit("*");
             }
-            TypeKind::PartialStruct => panic!("Can't emit partial struct"),
+            TypeKind::Partial => panic!("Can't emit partial struct"),
+            TypeKind::Enum { .. } => panic!("Can't emit base enum, only enum variants"),
             TypeKind::Function { return_type_kind, .. } => {
                 self.emit_type_kind_left(return_type_kind, emitter_kind, true, true);
                 self.emit_type_kind_right(return_type_kind, emitter_kind, true);

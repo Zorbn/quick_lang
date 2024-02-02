@@ -31,7 +31,6 @@ pub struct TypeChecker {
     pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: Vec<usize>,
-    pub struct_definition_indices: HashMap<Arc<str>, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub had_error: bool,
@@ -47,7 +46,6 @@ impl TypeChecker {
         nodes: Vec<Node>,
         types: Vec<TypeKind>,
         function_declaration_indices: Vec<usize>,
-        struct_definition_indices: HashMap<Arc<str>, usize>,
         array_type_kinds: HashMap<ArrayLayout, usize>,
         pointer_type_kinds: HashMap<usize, usize>,
         files: Arc<Vec<FileData>>,
@@ -62,7 +60,6 @@ impl TypeChecker {
             nodes,
             types,
             function_declaration_indices,
-            struct_definition_indices,
             array_type_kinds,
             pointer_type_kinds,
             pointer_type_kind_set,
@@ -86,12 +83,17 @@ impl TypeChecker {
         self.last_visited_index = index;
 
         let type_kind = match self.nodes[index].kind.clone() {
-            NodeKind::TopLevel { functions, structs } => self.top_level(functions, structs),
+            NodeKind::TopLevel { functions, structs, enums } => self.top_level(functions, structs, enums),
             NodeKind::StructDefinition {
                 name,
                 fields,
                 type_kind,
             } => self.struct_definition(name, fields, type_kind),
+            NodeKind::EnumDefinition {
+                name,
+                variant_names,
+                type_kind,
+            } => self.enum_definition(name, variant_names, type_kind),
             NodeKind::Field { name, type_name } => self.field(name, type_name),
             NodeKind::Function { declaration, block } => self.function(declaration, block),
             NodeKind::FunctionDeclaration {
@@ -168,7 +170,7 @@ impl TypeChecker {
         type_kind
     }
 
-    fn top_level(&mut self, functions: Arc<Vec<usize>>, structs: Arc<Vec<usize>>) -> Option<usize> {
+    fn top_level(&mut self, functions: Arc<Vec<usize>>, structs: Arc<Vec<usize>>, enums: Arc<Vec<usize>>) -> Option<usize> {
         for function_declaration in &self.function_declaration_indices {
             let NodeKind::FunctionDeclaration { name, type_kind, .. } = &self.nodes[*function_declaration].kind else {
                 type_error!(self, "invalid function declaration");
@@ -182,6 +184,10 @@ impl TypeChecker {
 
         for struct_definition in structs.iter() {
             self.check_node(*struct_definition);
+        }
+
+        for enum_definition in enums.iter() {
+            self.check_node(*enum_definition);
         }
 
         for function in functions.iter() {
@@ -199,8 +205,35 @@ impl TypeChecker {
     ) -> Option<usize> {
         self.check_node(name);
 
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            type_error!(self, "invalid name in struct definition");
+        };
+
+        self.environment.insert(name_text, type_kind);
+
         for field in fields.iter() {
             self.check_node(*field);
+        }
+
+        Some(type_kind)
+    }
+
+    fn enum_definition(
+        &mut self,
+        name: usize,
+        variant_names: Arc<Vec<usize>>,
+        type_kind: usize,
+    ) -> Option<usize> {
+        self.check_node(name);
+
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            type_error!(self, "invalid name in enum definition");
+        };
+
+        self.environment.insert(name_text, type_kind);
+
+        for variant_name in variant_names.iter() {
+            self.check_node(*variant_name);
         }
 
         Some(type_kind)
@@ -525,8 +558,14 @@ impl TypeChecker {
     }
 
     fn field_access(&mut self, left: usize, name: usize) -> Option<usize> {
-        let parent_type = self.check_node(left).unwrap();
+        let Some(parent_type) = self.check_node(left) else {
+            type_error!(self, "tried to access field of invalid value");
+        };
         self.check_node(name);
+
+        let NodeKind::Name { text: name_text } = &self.nodes[name].kind else {
+            type_error!(self, "invalid field name");
+        };
 
         let field_kinds = match &self.types[parent_type] {
             TypeKind::Struct { field_kinds, .. } => field_kinds,
@@ -540,18 +579,23 @@ impl TypeChecker {
 
                 field_kinds
             }
+            TypeKind::Enum { variant_names, variant_type_kind, .. } => {
+                for variant_name in variant_names.iter() {
+                    let NodeKind::Name { text: variant_name_text } = &self.nodes[*variant_name].kind else {
+                        type_error!(self, "invalid enum variant name");
+                    };
+
+                    if *variant_name_text == *name_text {
+                        return Some(*variant_type_kind);
+                    }
+                }
+
+                type_error!(self, "variant not found in enum");
+            }
             _ => type_error!(
                 self,
-                "field access is only allowed on structs or pointers to structs"
+                "field access is only allowed on structs, enums, and pointers to structs"
             ),
-        };
-
-        let Node {
-            kind: NodeKind::Name { text: name_text },
-            ..
-        } = &self.nodes[name]
-        else {
-            type_error!(self, "invalid field name");
         };
 
         for Field {
@@ -591,7 +635,7 @@ impl TypeChecker {
         };
 
         let Some(type_kind) = self.environment.get(text) else {
-            type_error!(self, "undefined identifier");
+            type_error!(self, "undeclared identifier");
         };
 
         Some(type_kind)
@@ -646,18 +690,14 @@ impl TypeChecker {
             type_error!(self, "invalid struct name");
         };
 
-        let Some(definition_index) = self.struct_definition_indices.get(name_text) else {
+        let Some(type_kind) = self.environment.get(name_text) else {
             type_error!(
                 self,
                 &format!("struct with name \"{}\" does not exist", name)
             );
         };
 
-        if let NodeKind::StructDefinition { type_kind, .. } = self.nodes[*definition_index].kind {
-            Some(type_kind)
-        } else {
-            None
-        }
+        Some(type_kind)
     }
 
     fn field_literal(&mut self, name: usize, expression: usize) -> Option<usize> {

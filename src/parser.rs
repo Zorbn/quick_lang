@@ -1,7 +1,10 @@
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
 use crate::{
-    file_data::FileData, lexer::{Token, TokenKind}, position::Position, types::{add_type, get_type_kind_as_pointer}
+    file_data::FileData,
+    lexer::{Token, TokenKind},
+    position::Position,
+    types::{add_type, get_type_kind_as_pointer},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -76,10 +79,18 @@ pub enum TypeKind {
         name: usize,
         field_kinds: Arc<Vec<Field>>,
     },
-    PartialStruct,
+    Partial,
     Function {
         param_kinds: Arc<Vec<usize>>,
         return_type_kind: usize,
+    },
+    Enum {
+        name: usize,
+        variant_names: Arc<Vec<usize>>,
+        variant_type_kind: usize,
+    },
+    EnumVariant {
+        parent_type_kind: usize,
     },
 }
 
@@ -91,10 +102,16 @@ pub enum NodeKind {
     TopLevel {
         functions: Arc<Vec<usize>>,
         structs: Arc<Vec<usize>>,
+        enums: Arc<Vec<usize>>,
     },
     StructDefinition {
         name: usize,
         fields: Arc<Vec<usize>>,
+        type_kind: usize,
+    },
+    EnumDefinition {
+        name: usize,
+        variant_names: Arc<Vec<usize>>,
         type_kind: usize,
     },
     Field {
@@ -290,10 +307,9 @@ pub struct Parser {
     pub nodes: Vec<Node>,
     pub types: Vec<TypeKind>,
     pub function_declaration_indices: Vec<usize>,
-    pub struct_definition_indices: HashMap<Arc<str>, usize>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
-    pub struct_type_kinds: HashMap<Arc<str>, usize>,
+    pub named_type_kinds: HashMap<Arc<str>, usize>,
     pub function_type_kinds: HashMap<FunctionLayout, usize>,
     pub had_error: bool,
 
@@ -311,10 +327,9 @@ impl Parser {
             nodes: Vec::new(),
             types: Vec::new(),
             function_declaration_indices: Vec::new(),
-            struct_definition_indices: HashMap::new(),
             array_type_kinds: HashMap::new(),
             pointer_type_kinds: HashMap::new(),
-            struct_type_kinds: HashMap::new(),
+            named_type_kinds: HashMap::new(),
             function_type_kinds: HashMap::new(),
             had_error: false,
             position: 0,
@@ -420,6 +435,7 @@ impl Parser {
     fn top_level(&mut self) -> usize {
         let mut functions = Vec::new();
         let mut structs = Vec::new();
+        let mut enums = Vec::new();
         let start = self.token_start();
         let mut end = self.token_end();
 
@@ -439,6 +455,10 @@ impl Parser {
                     index = self.struct_definition();
                     structs.push(index);
                 }
+                TokenKind::Enum => {
+                    index = self.enum_definition();
+                    enums.push(index);
+                }
                 _ => parse_error!(self, "unexpected token at top level", start, end),
             }
 
@@ -449,6 +469,7 @@ impl Parser {
             kind: NodeKind::TopLevel {
                 functions: Arc::new(functions),
                 structs: Arc::new(structs),
+                enums: Arc::new(enums),
             },
             start,
             end,
@@ -508,25 +529,19 @@ impl Parser {
             });
         }
 
-        let type_kind_struct = TypeKind::Struct {
-            name,
-            field_kinds: Arc::new(field_kinds),
-        };
-
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             parse_error!(self, "invalid struct name", start, end);
         };
 
-        let type_kind = if let Some(type_kind) = self.struct_type_kinds.get(&name_text) {
-            self.types[*type_kind] = type_kind_struct;
-            *type_kind
-        } else {
-            let type_kind = self.add_type(type_kind_struct);
-            self.struct_type_kinds.insert(name_text.clone(), type_kind);
-            type_kind
-        };
+        let type_kind = self.add_named_type(
+            &name_text,
+            TypeKind::Struct {
+                name,
+                field_kinds: Arc::new(field_kinds),
+            },
+        );
 
-        let index = self.add_node(Node {
+        self.add_node(Node {
             kind: NodeKind::StructDefinition {
                 name,
                 fields: Arc::new(fields),
@@ -534,12 +549,64 @@ impl Parser {
             },
             start,
             end,
-        });
+        })
+    }
 
-        self.struct_definition_indices
-            .insert(name_text.clone(), index);
+    fn enum_definition(&mut self) -> usize {
+        let start = self.token_start();
 
-        index
+        assert_token!(self, TokenKind::Enum, start, self.token_end());
+        self.position += 1;
+
+        let name = self.name();
+
+        assert_token!(self, TokenKind::LBrace, start, self.token_end());
+        self.position += 1;
+
+        let mut variant_names = Vec::new();
+
+        while *self.token_kind() != TokenKind::RBrace {
+            variant_names.push(self.name());
+
+            if *self.token_kind() != TokenKind::Comma {
+                break;
+            }
+
+            assert_token!(self, TokenKind::Comma, start, self.token_end());
+            self.position += 1;
+        }
+
+        let end = self.token_end();
+        assert_token!(self, TokenKind::RBrace, start, end);
+        self.position += 1;
+
+        let variant_names = Arc::new(variant_names);
+
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            parse_error!(self, "invalid enum name", start, end);
+        };
+
+        let variant_type_kind = self.add_type(TypeKind::Partial);
+        let type_kind = self.add_named_type(
+            &name_text,
+            TypeKind::Enum {
+                name,
+                variant_names: variant_names.clone(),
+                variant_type_kind,
+            },
+        );
+
+        self.types[variant_type_kind] = TypeKind::EnumVariant { parent_type_kind: type_kind };
+
+        self.add_node(Node {
+            kind: NodeKind::EnumDefinition {
+                name,
+                variant_names,
+                type_kind,
+            },
+            start,
+            end,
+        })
     }
 
     fn field(&mut self) -> usize {
@@ -573,10 +640,17 @@ impl Parser {
             let param = self.param();
             params.push(param);
 
-            let NodeKind::Param { type_name: param_type_name, .. } = self.nodes[param].kind else {
+            let NodeKind::Param {
+                type_name: param_type_name,
+                ..
+            } = self.nodes[param].kind
+            else {
                 parse_error!(self, "invalid parameter", start, self.token_end());
             };
-            let NodeKind::TypeName { type_kind: param_type_kind } = self.nodes[param_type_name].kind else {
+            let NodeKind::TypeName {
+                type_kind: param_type_kind,
+            } = self.nodes[param_type_name].kind
+            else {
                 parse_error!(self, "invalid parameter type kind", start, self.token_end());
             };
             param_type_kinds.push(param_type_kind);
@@ -595,11 +669,17 @@ impl Parser {
         let return_type_name = self.type_name();
         let end = self.node_end(return_type_name);
 
-        let NodeKind::TypeName { type_kind: return_type_kind } = self.nodes[return_type_name].kind else {
+        let NodeKind::TypeName {
+            type_kind: return_type_kind,
+        } = self.nodes[return_type_name].kind
+        else {
             parse_error!(self, "invalid parameter type kind", start, self.token_end());
         };
 
-        let function_layout = FunctionLayout { param_type_kinds: Arc::new(param_type_kinds), return_type_kind };
+        let function_layout = FunctionLayout {
+            param_type_kinds: Arc::new(param_type_kinds),
+            return_type_kind,
+        };
 
         let type_kind = if let Some(type_kind) = self.function_type_kinds.get(&function_layout) {
             *type_kind
@@ -1237,11 +1317,14 @@ impl Parser {
                     let end = self.token_end();
 
                     left = self.add_node(Node {
-                        kind: NodeKind::UnarySuffix { left, op: Op::Dereference },
+                        kind: NodeKind::UnarySuffix {
+                            left,
+                            op: Op::Dereference,
+                        },
                         start,
                         end,
                     });
-                },
+                }
                 _ => break,
             }
         }
@@ -1554,25 +1637,26 @@ impl Parser {
                     return_type_kind,
                 };
 
-                let type_kind = if let Some(type_kind) = self.function_type_kinds.get(&function_layout) {
-                    *type_kind
-                } else {
-                    let type_kind = self.add_type(TypeKind::Function {
-                        param_kinds: function_layout.param_type_kinds.clone(),
-                        return_type_kind: function_layout.return_type_kind,
-                    });
-                    self.function_type_kinds.insert(function_layout, type_kind);
-                    type_kind
-                };
+                let type_kind =
+                    if let Some(type_kind) = self.function_type_kinds.get(&function_layout) {
+                        *type_kind
+                    } else {
+                        let type_kind = self.add_type(TypeKind::Function {
+                            param_kinds: function_layout.param_type_kinds.clone(),
+                            return_type_kind: function_layout.return_type_kind,
+                        });
+                        self.function_type_kinds.insert(function_layout, type_kind);
+                        type_kind
+                    };
 
                 return type_kind;
             }
             TokenKind::LBracket => {
                 self.position += 1;
 
-                let length = self
-                    .parse_uint_literal()
-                    .unwrap_or_else(|| parse_error!(self, "expected uint literal", start, self.token_end()));
+                let length = self.parse_uint_literal().unwrap_or_else(|| {
+                    parse_error!(self, "expected uint literal", start, self.token_end())
+                });
                 self.position += 1;
 
                 assert_token!(self, TokenKind::RBracket, start, self.token_end());
@@ -1609,7 +1693,7 @@ impl Parser {
                     inner_type_kind,
                 );
 
-                return type_kind
+                return type_kind;
             }
             _ => {}
         }
@@ -1631,19 +1715,32 @@ impl Parser {
             TokenKind::UInt64 => UINT64_INDEX,
             TokenKind::Float32 => FLOAT32_INDEX,
             TokenKind::Float64 => FLOAT64_INDEX,
-            TokenKind::Identifier { text } => {
-                if let Some(type_kind) = self.struct_type_kinds.get(&text) {
-                    *type_kind
-                } else {
-                    let type_kind = self.add_type(TypeKind::PartialStruct);
-                    self.struct_type_kinds.insert(text.clone(), type_kind);
-                    type_kind
-                }
-            }
+            TokenKind::Identifier { text } => self.get_named_type(&text),
             _ => parse_error!(self, "expected type name", start, self.token_end()),
         };
         self.position += 1;
 
         type_kind
+    }
+
+    fn add_named_type(&mut self, name_text: &Arc<str>, new_type_kind: TypeKind) -> usize {
+        if let Some(type_kind) = self.named_type_kinds.get(name_text) {
+            self.types[*type_kind] = new_type_kind;
+            *type_kind
+        } else {
+            let type_kind = self.add_type(new_type_kind);
+            self.named_type_kinds.insert(name_text.clone(), type_kind);
+            type_kind
+        }
+    }
+
+    fn get_named_type(&mut self, name_text: &Arc<str>) -> usize {
+        if let Some(type_kind) = self.named_type_kinds.get(name_text) {
+            *type_kind
+        } else {
+            let type_kind = self.add_type(TypeKind::Partial);
+            self.named_type_kinds.insert(name_text.clone(), type_kind);
+            type_kind
+        }
     }
 }
