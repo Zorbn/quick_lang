@@ -11,4 +11,8 @@ struct Point {
         self.x *= other.x;
         self.y *= other.y;
     }
+
+    fun Static(a Int) Void {
+
+    }
 }

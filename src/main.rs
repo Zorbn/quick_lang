@@ -36,7 +36,6 @@ mod types;
  * Variadic arguments.
  * Generics.
  * Namespaces.
- * Methods?
  *
  * SMALL TODOS:
  * for elem in array {}

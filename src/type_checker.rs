@@ -651,18 +651,9 @@ impl TypeChecker {
             type_error!(self, "invalid field name");
         };
 
-        let field_kinds = match &self.types[parent_type.type_kind] {
-            TypeKind::Struct { field_kinds, .. } => field_kinds,
-            TypeKind::Pointer { inner_type_kind } => {
-                let TypeKind::Struct { field_kinds, .. } = &self.types[*inner_type_kind] else {
-                    type_error!(
-                        self,
-                        "field access is not allowed on pointers to non-struct types"
-                    );
-                };
-
-                field_kinds
-            }
+        let struct_type_kind = match &self.types[parent_type.type_kind] {
+            TypeKind::Struct { .. } => parent_type.type_kind,
+            TypeKind::Pointer { inner_type_kind } => *inner_type_kind,
             TypeKind::Enum { variant_names, .. } => {
                 for variant_name in variant_names.iter() {
                     let NodeKind::Name {
@@ -688,6 +679,13 @@ impl TypeChecker {
             ),
         };
 
+        let TypeKind::Struct { field_kinds, .. } = &self.types[struct_type_kind] else {
+            type_error!(
+                self,
+                "field access is only allowed on struct types"
+            );
+        };
+
         for Field {
             name: field_name,
             type_kind: field_kind,
@@ -704,9 +702,23 @@ impl TypeChecker {
                 continue;
             }
 
-            if !matches!(self.types[*field_kind], TypeKind::Function { .. })
-                && parent_type.instance_kind == InstanceKind::Name
-            {
+            if let TypeKind::Function { param_kinds, .. } = &self.types[*field_kind] {
+                if parent_type.instance_kind == InstanceKind::Literal {
+                    type_error!(self, "method calls are not allowed on literals");
+                }
+
+                // A method is static if it's first parameter isn't a pointer to it's own struct's type.
+                let mut is_method_static = true;
+                if param_kinds.len() > 0 {
+                    if let TypeKind::Pointer { inner_type_kind } = self.types[param_kinds[0]] {
+                        is_method_static = inner_type_kind != struct_type_kind;
+                    }
+                }
+
+                if is_method_static && parent_type.instance_kind != InstanceKind::Name {
+                    type_error!(self, "static method calls are not allowed on instances");
+                }
+            } else if parent_type.instance_kind == InstanceKind::Name {
                 type_error!(self, "struct field access is only allowed on instances");
             }
 

@@ -7,7 +7,7 @@ use crate::{
     emitter::Emitter,
     emitter_stack::EmitterStack,
     parser::{NodeKind, Op, TypeKind},
-    type_checker::{Type, TypedNode},
+    type_checker::{InstanceKind, Type, TypedNode},
     types::{is_type_kind_array, is_typed_expression_array_literal},
 };
 
@@ -842,12 +842,34 @@ impl CodeGenerator {
         self.gen_node(left);
 
         self.body_emitters.top().body.emit("(");
-        for (i, arg) in args.iter().enumerate() {
+        let mut i = 0;
+
+        // If the left node is a field access, then we must be calling a method. If we were calling a function pointer,
+        // the left node wouldn't be a field access because the function pointer would need to be dereferenced before calling.
+        if let NodeKind::FieldAccess { left: field_access_left, .. } = &self.typed_nodes[left].node_kind {
+            let field_access_left_type = self.typed_nodes[*field_access_left].node_type.unwrap();
+
+            if field_access_left_type.instance_kind == InstanceKind::Variable {
+                // We have a variable to pass as the first parameter.
+                if !matches!(self.types[field_access_left_type.type_kind], TypeKind::Pointer { .. }) {
+                    self.body_emitters.top().body.emit("&");
+                }
+
+                self.gen_node(*field_access_left);
+
+                i += 1;
+            }
+        }
+
+
+        for arg in args.iter() {
             if i > 0 {
                 self.body_emitters.top().body.emit(", ");
             }
 
             self.gen_node(*arg);
+
+            i += 1;
         }
 
         let type_kind = node_type.unwrap().type_kind;
