@@ -153,6 +153,12 @@ fun zero() Int {
     return 0;
 }
 
+fun takesEnum(name Name) Void {
+    if name == Name.Albert {
+        puts("albert");
+    }
+}
+
 fun print(msg String) Void {
     puts("Hello");
 }

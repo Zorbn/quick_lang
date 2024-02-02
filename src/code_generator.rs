@@ -1138,16 +1138,21 @@ impl CodeGenerator {
             TypeKind::Float64 => self.emitter(emitter_kind).emit("double"),
             TypeKind::Struct { name, .. } => {
                 self.emitter(emitter_kind).emit("struct ");
-                self.gen_node(name);
+                let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
+                    panic!("Invalid struct name");
+                };
+                self.emit_name(text, emitter_kind);
             }
             TypeKind::EnumVariant { parent_type_kind } => {
-                let TypeKind::Enum { name, .. } = self.types[parent_type_kind] else {
-                    panic!("Invalid parent of enum variant");
-                };
-
-                self.emitter(emitter_kind).emit("enum ");
-                self.gen_node(name);
+                self.emit_type_kind_left(parent_type_kind, emitter_kind, do_arrays_as_pointers, is_prefix);
             }
+            TypeKind::Enum { name, .. } => {
+                self.emitter(emitter_kind).emit("enum ");
+                let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
+                    panic!("Invalid enum name");
+                };
+                self.emit_name(text, emitter_kind);
+            },
             TypeKind::Array {
                 element_type_kind, ..
             } => {
@@ -1161,7 +1166,6 @@ impl CodeGenerator {
                 self.emitter(emitter_kind).emit("*");
             }
             TypeKind::Partial => panic!("Can't emit partial struct"),
-            TypeKind::Enum { .. } => panic!("Can't emit base enum, only enum variants"),
             TypeKind::Function { return_type_kind, .. } => {
                 self.emit_type_kind_left(return_type_kind, emitter_kind, true, true);
                 self.emit_type_kind_right(return_type_kind, emitter_kind, true);

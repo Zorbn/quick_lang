@@ -712,6 +712,12 @@ impl TypeChecker {
     }
 
     fn type_name(&mut self, type_kind: usize) -> Option<usize> {
+        // Enum type names are used to represent any of their variants,
+        // rather than the collection of variants itself (which is used by identifiers for field access, eg. MyEnum.MyVariant).
+        if let TypeKind::Enum { variant_type_kind, .. } = self.types[type_kind] {
+            return Some(variant_type_kind);
+        }
+
         Some(type_kind)
     }
 
