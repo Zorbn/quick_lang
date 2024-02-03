@@ -517,17 +517,17 @@ impl CodeGenerator {
                 continue;
             }
 
-            let copy_name = format!("__{}", name);
+            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
+            else {
+                panic!("Invalid parameter name");
+            };
+            let copy_name = format!("__{}", &name_text);
 
             self.emit_type_name_left(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emit(&copy_name);
             self.emit_type_name_right(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emitln(";");
 
-            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
-            else {
-                panic!("Invalid parameter name");
-            };
             self.emit_memmove_name_to_name(&copy_name, &name_text, type_kind);
             self.body_emitters.top().body.emitln(";");
 
