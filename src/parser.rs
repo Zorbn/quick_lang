@@ -518,11 +518,11 @@ impl Parser {
             let field = self.field();
             fields.push(field);
 
-            if *self.token_kind() != TokenKind::Comma {
+            if *self.token_kind() != TokenKind::Semicolon {
                 break;
             }
 
-            assert_token!(self, TokenKind::Comma, start, self.token_end());
+            assert_token!(self, TokenKind::Semicolon, start, self.token_end());
             self.position += 1;
 
             let NodeKind::Field { name, type_name } = &self.nodes[field].kind else {
