@@ -1364,8 +1364,8 @@ impl CodeGenerator {
 
         if let Some(generic_usage) = generic_usage {
             for type_name in generic_usage.iter() {
-                self.body_emitters.top().body.emit("_");
-                self.body_emitters.top().body.emit(&(*type_name).to_string());
+                self.emitter(kind).emit("_");
+                self.emitter(kind).emit(&(*type_name).to_string());
             }
         }
 

@@ -9,7 +9,7 @@ use crate::{
     parser::{
         ArrayLayout, Field, FunctionLayout, Node, NodeKind, Op, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX
     },
-    types::{add_type, generic_params_to_concrete, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer},
+    types::{add_type, generic_params_to_concrete, generic_type_kind_to_concrete, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer},
 };
 
 #[derive(Clone, Debug)]
@@ -855,12 +855,12 @@ impl TypeChecker {
             self.generic_function_usages.insert(*function_index, HashSet::new());
         }
 
-        // TODO: Also need to concretize the return type.
         let usages = self.generic_function_usages.get_mut(function_index).unwrap();
 
         usages.insert(type_names.clone());
 
-        let concrete_param_type_kinds = generic_params_to_concrete(&param_type_kinds, &generic_type_kinds, &type_names);
+        let concrete_param_type_kinds = generic_params_to_concrete(&self.nodes, &self.type_kinds, &param_type_kinds, &generic_type_kinds, &type_names);
+        let return_type_kind = generic_type_kind_to_concrete(&self.nodes, &self.type_kinds, return_type_kind, &generic_type_kinds, &type_names);
 
         let concrete_function = FunctionLayout {
             param_type_kinds: Arc::new(concrete_param_type_kinds),

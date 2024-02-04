@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    parser::{ArrayLayout, FunctionLayout, NodeKind, TypeKind},
+    parser::{ArrayLayout, FunctionLayout, Node, NodeKind, TypeKind},
     type_checker::TypedNode,
 };
 
@@ -11,20 +11,28 @@ pub fn add_type(type_kinds: &mut Vec<TypeKind>, type_kind: TypeKind) -> usize {
     index
 }
 
-pub fn generic_params_to_concrete(param_type_kinds: &Arc<Vec<usize>>, generic_type_kinds: &Arc<Vec<usize>>, type_names: &Arc<Vec<usize>>) -> Vec<usize> {
-    let mut concrete_param_type_kinds = Vec::new();
-
-    'param_loop: for param_type_kind in param_type_kinds.iter() {
-        for (i, generic_type_kind) in generic_type_kinds.iter().enumerate() {
-            if *param_type_kind != *generic_type_kind {
-                continue;
-            }
-
-            concrete_param_type_kinds.push(type_names[i]);
-            continue 'param_loop;
+pub fn generic_type_kind_to_concrete(nodes: &Vec<Node>, type_kinds: &Vec<TypeKind>, type_kind: usize, generic_type_kinds: &Arc<Vec<usize>>, type_names: &Arc<Vec<usize>>) -> usize {
+    for (i, generic_type_kind) in generic_type_kinds.iter().enumerate() {
+        if type_kind != *generic_type_kind {
+            continue;
         }
 
-        concrete_param_type_kinds.push(*param_type_kind);
+        let NodeKind::TypeName { type_kind } = &nodes[type_names[i]].kind else {
+            panic!("Invalid type name");
+        };
+
+        return *type_kind;
+    }
+
+    type_kind
+}
+
+pub fn generic_params_to_concrete(nodes: &Vec<Node>, type_kinds: &Vec<TypeKind>, param_type_kinds: &Arc<Vec<usize>>, generic_type_kinds: &Arc<Vec<usize>>, type_names: &Arc<Vec<usize>>) -> Vec<usize> {
+    let mut concrete_param_type_kinds = Vec::new();
+
+    for param_type_kind in param_type_kinds.iter() {
+        let concrete_type_kind = generic_type_kind_to_concrete(nodes, type_kinds, *param_type_kind, generic_type_kinds, type_names);
+        concrete_param_type_kinds.push(concrete_type_kind);
     }
 
     concrete_param_type_kinds
