@@ -292,7 +292,7 @@ macro_rules! parse_error {
 
 pub struct Parser {
     pub nodes: Vec<Node>,
-    pub types: Vec<TypeKind>,
+    pub type_kinds: Vec<TypeKind>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub named_type_kinds: Environment<usize>,
@@ -313,7 +313,7 @@ impl Parser {
             files,
             tokens: None,
             nodes: Vec::new(),
-            types: Vec::new(),
+            type_kinds: Vec::new(),
             array_type_kinds: HashMap::new(),
             pointer_type_kinds: HashMap::new(),
             named_type_kinds: Environment::new(),
@@ -323,6 +323,8 @@ impl Parser {
             position: 0,
             current_namespace_names: Vec::new(),
         };
+
+        parser.named_type_kinds.push();
 
         parser.add_type(TypeKind::Int);
         parser.add_type(TypeKind::String);
@@ -442,7 +444,7 @@ impl Parser {
     }
 
     fn add_type(&mut self, type_kind: TypeKind) -> usize {
-        add_type(&mut self.types, type_kind)
+        add_type(&mut self.type_kinds, type_kind)
     }
 
     fn error(&mut self, message: &str) {
@@ -591,6 +593,7 @@ impl Parser {
                 name,
                 field_kinds: Arc::new(field_kinds),
             },
+            false,
         );
 
         self.add_node(Node {
@@ -645,6 +648,7 @@ impl Parser {
                 name,
                 variant_names: variant_names.clone(),
             },
+            false,
         );
 
         self.add_node(Node {
@@ -729,6 +733,7 @@ impl Parser {
     fn parse_generic_params(
         &mut self,
         start: Position,
+        // TODO: Are generic params even needed, or only generic type kinds?
         generic_params: &mut Vec<usize>,
         generic_type_kinds: &mut Vec<usize>,
     ) -> Option<usize> {
@@ -745,7 +750,7 @@ impl Parser {
                 return Some(self.parse_error("invalid generic name", start, self.token_end()));
             };
 
-            let type_kind = self.add_named_type(&name_text, TypeKind::Partial);
+            let type_kind = self.add_named_type(&name_text, TypeKind::Partial, true);
             generic_type_kinds.push(type_kind);
 
             if *self.token_kind() != TokenKind::Comma {
@@ -812,7 +817,7 @@ impl Parser {
             generic_type_kinds: Arc::new(generic_type_kinds),
             return_type_kind,
         };
-        let type_kind = get_function_type_kind(&mut self.types, &mut self.function_type_kinds, function_layout);
+        let type_kind = get_function_type_kind(&mut self.type_kinds, &mut self.function_type_kinds, function_layout);
 
         let index = self.add_node(Node {
             kind: NodeKind::FunctionDeclaration {
@@ -1801,7 +1806,7 @@ impl Parser {
                     generic_type_kinds: Arc::new(Vec::new()),
                     return_type_kind,
                 };
-                let type_kind = get_function_type_kind(&mut self.types, &mut self.function_type_kinds, function_layout);
+                let type_kind = get_function_type_kind(&mut self.type_kinds, &mut self.function_type_kinds, function_layout);
 
                 return type_kind;
             }
@@ -1819,7 +1824,7 @@ impl Parser {
                 let element_type_kind = self.type_kind();
 
                 let type_kind = get_type_kind_as_array(
-                    &mut self.types,
+                    &mut self.type_kinds,
                     &mut self.array_type_kinds,
                     element_type_kind,
                     element_count,
@@ -1833,7 +1838,7 @@ impl Parser {
                 let inner_type_kind = self.type_kind();
 
                 let type_kind = get_type_kind_as_pointer(
-                    &mut self.types,
+                    &mut self.type_kinds,
                     &mut self.pointer_type_kinds,
                     inner_type_kind,
                 );
@@ -1868,13 +1873,17 @@ impl Parser {
         type_kind
     }
 
-    fn add_named_type(&mut self, name_text: &Arc<str>, new_type_kind: TypeKind) -> usize {
+    fn add_named_type(&mut self, name_text: &Arc<str>, new_type_kind: TypeKind, is_generic: bool) -> usize {
         if let Some(type_kind) = self.named_type_kinds.get(name_text) {
-            self.types[type_kind] = new_type_kind;
+            self.type_kinds[type_kind] = new_type_kind;
             type_kind
         } else {
             let type_kind = self.add_type(new_type_kind);
-            self.named_type_kinds.insert(name_text.clone(), type_kind);
+            if is_generic {
+                self.named_type_kinds.insert(name_text.clone(), type_kind);
+            } else {
+                self.named_type_kinds.insert_global(name_text.clone(), type_kind);
+            }
             type_kind
         }
     }
@@ -1884,7 +1893,7 @@ impl Parser {
             type_kind
         } else {
             let type_kind = self.add_type(TypeKind::Partial);
-            self.named_type_kinds.insert(name_text.clone(), type_kind);
+            self.named_type_kinds.insert_global(name_text.clone(), type_kind);
             type_kind
         }
     }

@@ -8,7 +8,7 @@ use crate::{
     emitter_stack::EmitterStack,
     parser::{NodeKind, Op, TypeKind},
     type_checker::{InstanceKind, Type, TypedNode},
-    types::{generic_params_to_concrete, is_type_kind_array, is_typed_expression_array_literal},
+    types::{is_type_kind_array, is_typed_expression_array_literal},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -91,7 +91,7 @@ fn reserved_names() -> &'static HashSet<Arc<str>> {
 
 pub struct CodeGenerator {
     pub typed_nodes: Vec<TypedNode>,
-    pub types: Vec<TypeKind>,
+    pub type_kinds: Vec<TypeKind>,
     pub generic_function_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>,
     pub header_emitter: Emitter,
     pub type_prototype_emitter: Emitter,
@@ -103,10 +103,10 @@ pub struct CodeGenerator {
 }
 
 impl CodeGenerator {
-    pub fn new(typed_nodes: Vec<TypedNode>, types: Vec<TypeKind>, generic_function_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>) -> Self {
+    pub fn new(typed_nodes: Vec<TypedNode>, type_kinds: Vec<TypeKind>, generic_function_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>) -> Self {
         let mut code_generator = Self {
             typed_nodes,
-            types,
+            type_kinds,
             generic_function_usages,
             header_emitter: Emitter::new(0),
             type_prototype_emitter: Emitter::new(0),
@@ -169,7 +169,47 @@ impl CodeGenerator {
             TypedNode {
                 node_kind: NodeKind::Function { declaration, block },
                 node_type,
-            } => self.function(declaration, block, node_type),
+            } => {
+                let NodeKind::FunctionDeclaration { name, params, generic_params, return_type_name, type_kind } = self.typed_nodes[declaration].node_kind.clone() else {
+                    panic!("Invalid function declaration");
+                };
+
+                let TypeKind::Function { generic_type_kinds, .. } = self.type_kinds[node_type.unwrap().type_kind].clone() else {
+                    panic!("Invalid function type");
+                };
+
+                if let Some(generic_usages) = self.generic_function_usages.get(&declaration) {
+                    let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
+                    println!("generic usage count: {}", generic_usages.len());
+
+                    for generic_usage in generic_usages {
+                        println!("generic");
+                        // Replace generic types with their concrete types for this usage.
+                        for (type_name, generic_type_kind) in generic_usage.iter().zip(generic_type_kinds.iter()) {
+                            let NodeKind::TypeName { type_kind } = self.typed_nodes[*type_name].node_kind else {
+                                panic!("Invalid type name in generic usage");
+                            };
+
+                            self.type_kinds[*generic_type_kind] = self.type_kinds[type_kind].clone();
+                        }
+
+                        self.function_declaration(name, params.clone(), Some(generic_usage), return_type_name, node_type);
+                        self.function_declaration_needing_init = Some(declaration);
+                        self.gen_node(block);
+                        self.body_emitters.top().body.newline();
+                        self.body_emitters.top().body.newline();
+                    }
+                } else if generic_type_kinds.is_empty() {
+                    println!("non-generic");
+                    self.function_declaration(name, params, None, return_type_name, node_type);
+                    self.function_declaration_needing_init = Some(declaration);
+                    self.gen_node(block);
+                    self.body_emitters.top().body.newline();
+                    self.body_emitters.top().body.newline();
+                }
+
+                // self.function(declaration, block, node_type)
+            },
             TypedNode {
                 node_kind:
                     NodeKind::FunctionDeclaration {
@@ -181,15 +221,8 @@ impl CodeGenerator {
                     },
                 node_type,
             } => {
-                if let Some(generic_usages) = self.generic_function_usages.get(&index) {
-                    for generic_usage in generic_usages {
-                        let concrete_params = generic_params_to_concrete(param_type_kinds, generic_type_kinds, type_names)
-                    }
-                }
-
-
-
-                self.function_declaration(name, params, generic_params, return_type_name, generic_usages, node_type);
+                // TODO:
+                // self.function_declaration(name, params, generic_usage, return_type_name, node_type)
             },
             TypedNode {
                 node_kind: NodeKind::ExternFunction { declaration },
@@ -450,27 +483,28 @@ impl CodeGenerator {
     }
 
     fn function(&mut self, declaration: usize, block: usize, _node_type: Option<Type>) {
-        self.gen_node(declaration);
-        self.function_declaration_needing_init = Some(declaration);
-        self.gen_node(block);
-        self.body_emitters.top().body.newline();
-        self.body_emitters.top().body.newline();
+        // TODO:
+        // self.gen_node(declaration);
+        // self.function_declaration_needing_init = Some(declaration);
+        // self.gen_node(block);
+        // self.body_emitters.top().body.newline();
+        // self.body_emitters.top().body.newline();
     }
 
     fn function_declaration(
         &mut self,
         name: usize,
         params: Arc<Vec<usize>>,
-        generic_params: Arc<Vec<usize>>,
+        generic_usage: Option<Arc<Vec<usize>>>,
         return_type_name: usize,
-        generic_usages: Option<&HashSet<Arc<Vec<usize>>>>,
         node_type: Option<Type>,
     ) {
         self.emit_function_declaration(
             EmitterKind::Body,
             name,
-            return_type_name,
             &params,
+            generic_usage.clone(),
+            return_type_name,
             node_type.unwrap().type_kind,
         );
         self.body_emitters.top().body.emit(" ");
@@ -478,8 +512,9 @@ impl CodeGenerator {
         self.emit_function_declaration(
             EmitterKind::FunctionPrototype,
             name,
-            return_type_name,
             &params,
+            generic_usage,
+            return_type_name,
             node_type.unwrap().type_kind,
         );
         self.function_prototype_emitter.emitln(";");
@@ -501,8 +536,9 @@ impl CodeGenerator {
         self.emit_function_declaration(
             EmitterKind::FunctionPrototype,
             name,
-            return_type_name,
             &params,
+            None,
+            return_type_name,
             type_kind,
         );
         self.function_prototype_emitter.emitln(";");
@@ -533,7 +569,7 @@ impl CodeGenerator {
 
             let type_kind = node_type.unwrap().type_kind;
 
-            if !is_type_kind_array(&self.types, type_kind) {
+            if !is_type_kind_array(&self.type_kinds, type_kind) {
                 continue;
             }
 
@@ -648,7 +684,7 @@ impl CodeGenerator {
     ) {
         let type_kind = node_type.unwrap().type_kind;
 
-        let is_array = is_type_kind_array(&self.types, type_kind);
+        let is_array = is_type_kind_array(&self.type_kinds, type_kind);
         let needs_const = !is_mutable && !is_array;
 
         self.emit_type_kind_left(type_kind, EmitterKind::Body, false, true);
@@ -684,7 +720,7 @@ impl CodeGenerator {
 
         let type_kind = node_type.unwrap().type_kind;
 
-        if is_type_kind_array(&self.types, type_kind) {
+        if is_type_kind_array(&self.type_kinds, type_kind) {
             if is_typed_expression_array_literal(&self.typed_nodes, expression) {
                 let temp_name = self.temp_variable_name("temp");
 
@@ -817,7 +853,7 @@ impl CodeGenerator {
     fn binary(&mut self, left: usize, op: Op, right: usize, node_type: Option<Type>) {
         if op == Op::Assign {
             let type_kind = node_type.unwrap().type_kind;
-            let is_array = is_type_kind_array(&self.types, type_kind);
+            let is_array = is_type_kind_array(&self.type_kinds, type_kind);
 
             if is_array && !is_typed_expression_array_literal(&self.typed_nodes, left) {
                 self.emit_memmove_expression_to_variable(left, right, type_kind);
@@ -871,7 +907,7 @@ impl CodeGenerator {
 
             if field_access_left_type.instance_kind == InstanceKind::Variable {
                 // We have a variable to pass as the first parameter.
-                if !matches!(self.types[field_access_left_type.type_kind], TypeKind::Pointer { .. }) {
+                if !matches!(self.type_kinds[field_access_left_type.type_kind], TypeKind::Pointer { .. }) {
                     self.body_emitters.top().body.emit("&");
                 }
 
@@ -893,7 +929,7 @@ impl CodeGenerator {
         }
 
         let type_kind = node_type.unwrap().type_kind;
-        if is_type_kind_array(&self.types, type_kind) {
+        if is_type_kind_array(&self.type_kinds, type_kind) {
             if args.len() > 0 {
                 self.body_emitters.top().body.emit(", ");
             }
@@ -920,8 +956,8 @@ impl CodeGenerator {
     fn field_access(&mut self, left: usize, name: usize, node_type: Option<Type>) {
         let left_type = self.typed_nodes[left].node_type.unwrap();
 
-        if matches!(self.types[node_type.unwrap().type_kind], TypeKind::Function { .. }) {
-            let TypeKind::Struct { name: struct_name, .. } = self.types[left_type.type_kind] else {
+        if matches!(self.type_kinds[node_type.unwrap().type_kind], TypeKind::Function { .. }) {
+            let TypeKind::Struct { name: struct_name, .. } = self.type_kinds[left_type.type_kind] else {
                 panic!("Expected function field to be part of a struct");
             };
 
@@ -933,7 +969,7 @@ impl CodeGenerator {
             return;
         }
 
-        match self.types[left_type.type_kind] {
+        match self.type_kinds[left_type.type_kind] {
             TypeKind::Pointer { .. } => {
                 self.gen_node(left);
                 self.body_emitters.top().body.emit("->")
@@ -1114,7 +1150,7 @@ impl CodeGenerator {
     }
 
     fn emit_type_size(&mut self, type_kind: usize) {
-        match self.types[type_kind] {
+        match self.type_kinds[type_kind] {
             TypeKind::Array {
                 element_type_kind,
                 element_count,
@@ -1174,7 +1210,7 @@ impl CodeGenerator {
         do_arrays_as_pointers: bool,
         is_prefix: bool,
     ) {
-        let type_kind = &self.types[type_kind];
+        let type_kind = &self.type_kinds[type_kind];
         let needs_trailing_space = is_prefix
             && !matches!(
                 type_kind,
@@ -1234,7 +1270,9 @@ impl CodeGenerator {
                 );
                 self.emitter(emitter_kind).emit("*");
             }
-            TypeKind::Partial => panic!("Can't emit partial struct"),
+            // TODO:
+            // TypeKind::Partial => panic!("Can't emit partial type"),
+            TypeKind::Partial => self.emitter(emitter_kind).emit("PARTIAL"),
             TypeKind::Function {
                 return_type_kind, ..
             } => {
@@ -1255,7 +1293,7 @@ impl CodeGenerator {
         emitter_kind: EmitterKind,
         do_arrays_as_pointers: bool,
     ) {
-        let type_kind = self.types[type_kind].clone();
+        let type_kind = self.type_kinds[type_kind].clone();
 
         match type_kind {
             TypeKind::Array {
@@ -1315,13 +1353,21 @@ impl CodeGenerator {
         &mut self,
         kind: EmitterKind,
         name: usize,
-        return_type_name: usize,
         params: &Arc<Vec<usize>>,
+        generic_usage: Option<Arc<Vec<usize>>>,
+        return_type_name: usize,
         type_kind: usize,
     ) {
         self.emit_type_name_left(return_type_name, kind, true);
         self.emit_namespace_prefix(kind);
         self.emit_name_node(name, kind);
+
+        if let Some(generic_usage) = generic_usage {
+            for type_name in generic_usage.iter() {
+                self.body_emitters.top().body.emit("_");
+                self.body_emitters.top().body.emit(&(*type_name).to_string());
+            }
+        }
 
         let mut param_count = 0;
 
@@ -1338,12 +1384,12 @@ impl CodeGenerator {
 
         let TypeKind::Function {
             return_type_kind, ..
-        } = self.types[type_kind]
+        } = self.type_kinds[type_kind]
         else {
             panic!("Tried to emit function declaration for non-function type");
         };
 
-        if is_type_kind_array(&self.types, return_type_kind) {
+        if is_type_kind_array(&self.type_kinds, return_type_kind) {
             if param_count > 0 {
                 self.emitter(kind).emit(", ");
             }

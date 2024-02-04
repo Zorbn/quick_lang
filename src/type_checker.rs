@@ -45,7 +45,7 @@ macro_rules! type_error {
 pub struct TypeChecker {
     pub typed_nodes: Vec<Option<TypedNode>>,
     pub nodes: Vec<Node>,
-    pub types: Vec<TypeKind>,
+    pub type_kinds: Vec<TypeKind>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub function_type_kinds: HashMap<FunctionLayout, usize>,
@@ -61,7 +61,7 @@ pub struct TypeChecker {
 impl TypeChecker {
     pub fn new(
         nodes: Vec<Node>,
-        types: Vec<TypeKind>,
+        type_kinds: Vec<TypeKind>,
         array_type_kinds: HashMap<ArrayLayout, usize>,
         pointer_type_kinds: HashMap<usize, usize>,
         function_type_kinds: HashMap<FunctionLayout, usize>,
@@ -74,7 +74,7 @@ impl TypeChecker {
             files,
             typed_nodes: Vec::new(),
             nodes,
-            types,
+            type_kinds,
             array_type_kinds,
             pointer_type_kinds,
             function_type_kinds,
@@ -93,7 +93,7 @@ impl TypeChecker {
     }
 
     fn add_type(&mut self, type_kind: TypeKind) -> usize {
-        add_type(&mut self.types, type_kind)
+        add_type(&mut self.type_kinds, type_kind)
     }
 
     pub fn check(&mut self, start_index: usize) {
@@ -441,7 +441,7 @@ impl TypeChecker {
             type_error!(self, "mismatched types in variable declaration");
         }
 
-        if let TypeKind::Function { .. } = self.types[variable_type.type_kind] {
+        if let TypeKind::Function { .. } = self.type_kinds[variable_type.type_kind] {
             type_error!(
                 self,
                 "variables can't have a function type, try a function pointer instead"
@@ -617,7 +617,7 @@ impl TypeChecker {
                 }
 
                 let pointer_type_kind = get_type_kind_as_pointer(
-                    &mut self.types,
+                    &mut self.type_kinds,
                     &mut self.pointer_type_kinds,
                     right_type.type_kind,
                 );
@@ -635,7 +635,7 @@ impl TypeChecker {
         let left_type = self.check_node(left)?;
 
         if let Op::Dereference = op {
-            let TypeKind::Pointer { inner_type_kind } = &self.types[left_type.type_kind] else {
+            let TypeKind::Pointer { inner_type_kind } = &self.type_kinds[left_type.type_kind] else {
                 type_error!(self, "only pointers can be dereferenced");
             };
 
@@ -661,7 +661,7 @@ impl TypeChecker {
 
         let TypeKind::Function {
             return_type_kind, ..
-        } = self.types[left_type.type_kind]
+        } = self.type_kinds[left_type.type_kind]
         else {
             type_error!(self, "only functions can be called");
         };
@@ -677,7 +677,7 @@ impl TypeChecker {
 
         let element_type_kind = if let TypeKind::Array {
             element_type_kind, ..
-        } = &self.types[left_type.type_kind]
+        } = &self.type_kinds[left_type.type_kind]
         {
             *element_type_kind
         } else {
@@ -700,7 +700,7 @@ impl TypeChecker {
             type_error!(self, "invalid field name");
         };
 
-        let struct_type_kind = match &self.types[parent_type.type_kind] {
+        let struct_type_kind = match &self.type_kinds[parent_type.type_kind] {
             TypeKind::Struct { .. } => parent_type.type_kind,
             TypeKind::Pointer { inner_type_kind } => *inner_type_kind,
             TypeKind::Enum { variant_names, .. } => {
@@ -728,7 +728,8 @@ impl TypeChecker {
             ),
         };
 
-        let TypeKind::Struct { field_kinds, .. } = &self.types[struct_type_kind] else {
+        let TypeKind::Struct { field_kinds, .. } = &self.type_kinds[struct_type_kind] else {
+            println!("{:?}", self.type_kinds[struct_type_kind]);
             type_error!(self, "field access is only allowed on struct types");
         };
 
@@ -750,7 +751,7 @@ impl TypeChecker {
 
             if let TypeKind::Function {
                 param_type_kinds, ..
-            } = &self.types[*field_kind]
+            } = &self.type_kinds[*field_kind]
             {
                 if parent_type.instance_kind == InstanceKind::Literal {
                     type_error!(self, "method calls are not allowed on literals");
@@ -759,7 +760,7 @@ impl TypeChecker {
                 // A method is static if it's first parameter isn't a pointer to it's own struct's type.
                 let mut is_method_static = true;
                 if param_type_kinds.len() > 0 {
-                    if let TypeKind::Pointer { inner_type_kind } = self.types[param_type_kinds[0]] {
+                    if let TypeKind::Pointer { inner_type_kind } = self.type_kinds[param_type_kinds[0]] {
                         is_method_static = inner_type_kind != struct_type_kind;
                     }
                 }
@@ -824,12 +825,16 @@ impl TypeChecker {
     }
 
     fn generic_specifier(&mut self, left: usize, type_names: Arc<Vec<usize>>) -> Option<Type> {
+        for type_name in type_names.iter() {
+            self.check_node(*type_name);
+        }
+
         let left_type = self.check_node(left)?;
         let TypeKind::Function {
             param_type_kinds,
             generic_type_kinds,
             return_type_kind,
-        } = self.types[left_type.type_kind].clone()
+        } = self.type_kinds[left_type.type_kind].clone()
         else {
             type_error!(self, "cannot apply generic specifier to non-function");
         };
@@ -846,9 +851,12 @@ impl TypeChecker {
             type_error!(self, "invalid function before generic specifier");
         };
 
-        let Some(usages) = self.generic_function_usages.get_mut(function_index) else {
-            type_error!(self, "invalid function before generic specifier");
-        };
+        if !self.generic_function_usages.contains_key(function_index) {
+            self.generic_function_usages.insert(*function_index, HashSet::new());
+        }
+
+        // TODO: Also need to concretize the return type.
+        let usages = self.generic_function_usages.get_mut(function_index).unwrap();
 
         usages.insert(type_names.clone());
 
@@ -860,7 +868,7 @@ impl TypeChecker {
             return_type_kind,
         };
 
-        let concrete_type_kind = get_function_type_kind(&mut self.types, &mut self.function_type_kinds, concrete_function);
+        let concrete_type_kind = get_function_type_kind(&mut self.type_kinds, &mut self.function_type_kinds, concrete_function);
 
         Some(Type {
             type_kind: concrete_type_kind,
@@ -928,7 +936,7 @@ impl TypeChecker {
 
         let node_type = self.check_node(*elements.first()?)?;
         let type_kind = get_type_kind_as_array(
-            &mut self.types,
+            &mut self.type_kinds,
             &mut self.array_type_kinds,
             node_type.type_kind,
             elements.len() * repeat_count,
@@ -962,7 +970,7 @@ impl TypeChecker {
             );
         };
 
-        if !matches!(self.types[name_type.type_kind], TypeKind::Struct { .. })
+        if !matches!(self.type_kinds[name_type.type_kind], TypeKind::Struct { .. })
             || name_type.instance_kind != InstanceKind::Name
         {
             type_error!(

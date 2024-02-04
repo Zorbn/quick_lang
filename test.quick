@@ -193,8 +193,8 @@ fun returnFunPtr() *fun(Int, Int) Int {
 }
 
 fun genericFunction<A, B>(a A, b B) A {
-    val arrayA = [a, a, a];
-    val arrayB = [b, b];
-
-    return arrayA[2];
+//     val arrayA = [a, a, a];
+//     val arrayB = [b, b];
+//
+//     return arrayA[2];
 }

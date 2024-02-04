@@ -110,7 +110,7 @@ fn main() -> ExitCode {
 
     let mut type_checker = TypeChecker::new(
         parser.nodes,
-        parser.types,
+        parser.type_kinds,
         parser.array_type_kinds,
         parser.pointer_type_kinds,
         parser.function_type_kinds,
@@ -138,7 +138,7 @@ fn main() -> ExitCode {
         })
         .collect();
 
-    let mut code_generator = CodeGenerator::new(typed_nodes, type_checker.types, type_checker.generic_function_usages);
+    let mut code_generator = CodeGenerator::new(typed_nodes, type_checker.type_kinds, type_checker.generic_function_usages);
     for start_index in &start_indices {
         code_generator.gen(*start_index);
     }

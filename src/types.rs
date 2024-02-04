@@ -5,9 +5,9 @@ use crate::{
     type_checker::TypedNode,
 };
 
-pub fn add_type(types: &mut Vec<TypeKind>, type_kind: TypeKind) -> usize {
-    let index = types.len();
-    types.push(type_kind);
+pub fn add_type(type_kinds: &mut Vec<TypeKind>, type_kind: TypeKind) -> usize {
+    let index = type_kinds.len();
+    type_kinds.push(type_kind);
     index
 }
 
@@ -31,7 +31,7 @@ pub fn generic_params_to_concrete(param_type_kinds: &Arc<Vec<usize>>, generic_ty
 }
 
 pub fn get_function_type_kind(
-    types: &mut Vec<TypeKind>,
+    type_kinds: &mut Vec<TypeKind>,
     function_type_kinds: &mut HashMap<FunctionLayout, usize>,
     function_layout: FunctionLayout,
 ) -> usize {
@@ -41,7 +41,7 @@ pub fn get_function_type_kind(
     } else {
         let index = {
             let function_layout = function_layout.clone();
-            add_type(types, TypeKind::Function {
+            add_type(type_kinds, TypeKind::Function {
                 param_type_kinds: function_layout.param_type_kinds,
                 generic_type_kinds: function_layout.generic_type_kinds,
                 return_type_kind: function_layout.return_type_kind,
@@ -54,7 +54,7 @@ pub fn get_function_type_kind(
 }
 
 pub fn get_type_kind_as_pointer(
-    types: &mut Vec<TypeKind>,
+    type_kinds: &mut Vec<TypeKind>,
     pointer_type_kinds: &mut HashMap<usize, usize>,
     type_kind: usize,
 ) -> usize {
@@ -62,7 +62,7 @@ pub fn get_type_kind_as_pointer(
         *index
     } else {
         let index = add_type(
-            types,
+            type_kinds,
             TypeKind::Pointer {
                 inner_type_kind: type_kind,
             },
@@ -73,7 +73,7 @@ pub fn get_type_kind_as_pointer(
 }
 
 pub fn get_type_kind_as_array(
-    types: &mut Vec<TypeKind>,
+    type_kinds: &mut Vec<TypeKind>,
     array_type_kinds: &mut HashMap<ArrayLayout, usize>,
     element_type_kind: usize,
     element_count: usize,
@@ -87,7 +87,7 @@ pub fn get_type_kind_as_array(
         *index
     } else {
         let index = add_type(
-            types,
+            type_kinds,
             TypeKind::Array {
                 element_type_kind,
                 element_count,
@@ -98,8 +98,8 @@ pub fn get_type_kind_as_array(
     }
 }
 
-pub fn is_type_kind_array(types: &[TypeKind], type_kind: usize) -> bool {
-    let type_kind = &types[type_kind];
+pub fn is_type_kind_array(type_kinds: &[TypeKind], type_kind: usize) -> bool {
+    let type_kind = &type_kinds[type_kind];
 
     matches!(type_kind, TypeKind::Array { .. })
 }

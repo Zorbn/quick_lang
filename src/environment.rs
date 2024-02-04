@@ -31,6 +31,14 @@ impl<T: Clone + Copy> Environment<T> {
             .insert(name, name_type);
     }
 
+    pub fn insert_global(&mut self, name: Arc<str>, name_type: T) {
+        self.stack
+            .first_mut()
+            .unwrap()
+            .name_types
+            .insert(name, name_type);
+    }
+
     pub fn get(&self, name: &str) -> Option<T> {
         for sub_env in self.stack.iter().rev() {
             if let Some(name_type) = sub_env.name_types.get(name) {
