@@ -31,16 +31,18 @@ mod types;
  *     * distinguish between variable (var) and constant (val, fun) bindings.
  *     * function calls.
  *     * struct literal fields.
+ *     * make sure all non-void functions return, and that all functions return the correct value.
  * Incremental and parallel compilation.
  * Default parameters.
  * Variadic arguments.
- * Generics.
+ * Generics. genericFunc.<int, char>(myInt, myChar) fun genericFunc<A, B>(a A, b B) A
+ *           val functionPointer: fun(int, char) int = &genericFunc.<int, char>;
+ *           struct GenericStruct<A> {}        GenericStruct.<int> {}
  * Namespaces.
  *
  * SMALL TODOS:
  * for elem in array {}
  * Bitwise operations.
- * Make sure all non-void functions return, and that all functions return the correct value.
  * Tagged unions? Still need to figure out what those should look like.
  * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
  * Prevent multiple functions, enums, structs with the same name.
@@ -111,6 +113,8 @@ fn main() -> ExitCode {
         parser.types,
         parser.array_type_kinds,
         parser.pointer_type_kinds,
+        parser.function_type_kinds,
+        parser.function_declaration_indices,
         files.clone(),
     );
     for start_index in &start_indices {
@@ -134,7 +138,7 @@ fn main() -> ExitCode {
         })
         .collect();
 
-    let mut code_generator = CodeGenerator::new(typed_nodes, type_checker.types);
+    let mut code_generator = CodeGenerator::new(typed_nodes, type_checker.types, type_checker.generic_function_usages);
     for start_index in &start_indices {
         code_generator.gen(*start_index);
     }

@@ -19,6 +19,9 @@ fun main() Int32 {
         puts("defer in main");
     }
 
+    var inferTwoD = [1, 5];
+    var inferPoint = Point { x = 1, y = 2 };
+
     val a = 542 + 54578 / 3;
     var b Int = a * 2;
     val c = b /= b / 4;
@@ -45,7 +48,6 @@ fun main() Int32 {
     val fromHeapX = heapPoint.x;
     free(heapPoint);
 
-    var twoD [2]Int = [1, 5];
     var myArray [3]Int = makeArray(1, 777, 3);
     var myArrayCopy [3]Int = takeArray(myArray);
     var otherCopy [3]Int = myArrayCopy;
@@ -74,6 +76,7 @@ fun main() Int32 {
 
     Point.Multiply(&xy[0], &xy[1]);
     xy[0].Multiply(&xy[1]);
+
     Point.Static(x);
 
     var ch Char = 'a';
@@ -146,6 +149,8 @@ fun main() Int32 {
         b,
     );
 
+    val genericResult = genericFunction.<Int, Bool>(777, true);
+
     return 0;
 }
 
@@ -185,4 +190,11 @@ fun takeArray(a [3]Int) [3]Int {
 
 fun returnFunPtr() *fun(Int, Int) Int {
     return &add;
+}
+
+fun genericFunction<A, B>(a A, b B) A {
+    val arrayA = [a, a, a];
+    val arrayB = [b, b];
+
+    return arrayA[2];
 }

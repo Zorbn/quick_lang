@@ -1,14 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use crate::{
     environment::Environment,
     file_data::FileData,
     parser::{
-        ArrayLayout, Field, Node, NodeKind, Op, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX,
-        FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX,
-        UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
+        ArrayLayout, Field, FunctionLayout, Node, NodeKind, Op, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX
     },
-    types::get_type_kind_as_pointer,
+    types::{add_type, generic_params_to_concrete, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer},
 };
 
 #[derive(Clone, Debug)]
@@ -47,9 +48,12 @@ pub struct TypeChecker {
     pub types: Vec<TypeKind>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
+    pub function_type_kinds: HashMap<FunctionLayout, usize>,
+    pub function_declaration_indices: HashMap<Vec<Arc<str>>, usize>,
+    pub generic_function_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>,
     pub had_error: bool,
     files: Arc<Vec<FileData>>,
-    environment: Environment,
+    environment: Environment<Type>,
     has_function_opened_block: bool,
     last_visited_index: usize,
 }
@@ -60,6 +64,8 @@ impl TypeChecker {
         types: Vec<TypeKind>,
         array_type_kinds: HashMap<ArrayLayout, usize>,
         pointer_type_kinds: HashMap<usize, usize>,
+        function_type_kinds: HashMap<FunctionLayout, usize>,
+        function_declaration_indices: HashMap<Vec<Arc<str>>, usize>,
         files: Arc<Vec<FileData>>,
     ) -> Self {
         let node_count = nodes.len();
@@ -71,6 +77,9 @@ impl TypeChecker {
             types,
             array_type_kinds,
             pointer_type_kinds,
+            function_type_kinds,
+            function_declaration_indices,
+            generic_function_usages: HashMap::new(),
             had_error: false,
             environment: Environment::new(),
             has_function_opened_block: false,
@@ -81,6 +90,10 @@ impl TypeChecker {
         type_checker.environment.push();
 
         type_checker
+    }
+
+    fn add_type(&mut self, type_kind: TypeKind) -> usize {
+        add_type(&mut self.types, type_kind)
     }
 
     pub fn check(&mut self, start_index: usize) {
@@ -113,8 +126,11 @@ impl TypeChecker {
                 name,
                 return_type_name,
                 params,
+                generic_params,
                 type_kind,
-            } => self.function_declaration(name, return_type_name, params, type_kind),
+            } => {
+                self.function_declaration(name, return_type_name, params, generic_params, type_kind)
+            }
             NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
             NodeKind::Param { name, type_name } => self.param(name, type_name),
             NodeKind::Block { statements } => self.block(statements),
@@ -157,6 +173,9 @@ impl TypeChecker {
             NodeKind::IndexAccess { left, expression } => self.index_access(left, expression),
             NodeKind::FieldAccess { left, name } => self.field_access(left, name),
             NodeKind::Cast { left, type_name } => self.cast(left, type_name),
+            NodeKind::GenericSpecifier { left, type_names } => {
+                self.generic_specifier(left, type_names)
+            }
             NodeKind::Name { text } => self.name(text),
             NodeKind::Identifier { name } => self.identifier(name),
             NodeKind::IntLiteral { text } => self.int_literal(text),
@@ -303,12 +322,30 @@ impl TypeChecker {
         name: usize,
         return_type_name: usize,
         params: Arc<Vec<usize>>,
+        generic_params: Arc<Vec<usize>>,
         type_kind: usize,
     ) -> Option<Type> {
         self.check_node(name);
 
         for param in params.iter() {
             self.check_node(*param);
+        }
+
+        for generic_param in generic_params.iter() {
+            self.check_node(*generic_param);
+
+            let NodeKind::Name { text } = self.nodes[*generic_param].kind.clone() else {
+                panic!("Invalid generic param");
+            };
+
+            let generic_type_kind = self.add_type(TypeKind::Partial);
+            self.environment.insert(
+                text,
+                Type {
+                    type_kind: generic_type_kind,
+                    instance_kind: InstanceKind::Name,
+                },
+            )
         }
 
         self.check_node(return_type_name);
@@ -320,6 +357,18 @@ impl TypeChecker {
     }
 
     fn extern_function(&mut self, declaration: usize) -> Option<Type> {
+        let NodeKind::FunctionDeclaration {
+            generic_params,
+            ..
+        } = &self.nodes[declaration].kind
+        else {
+            type_error!(self, "invalid function declaration");
+        };
+
+        if !generic_params.is_empty() {
+            type_error!(self, "extern function cannot be generic");
+        }
+
         self.check_node(declaration)
     }
 
@@ -680,10 +729,7 @@ impl TypeChecker {
         };
 
         let TypeKind::Struct { field_kinds, .. } = &self.types[struct_type_kind] else {
-            type_error!(
-                self,
-                "field access is only allowed on struct types"
-            );
+            type_error!(self, "field access is only allowed on struct types");
         };
 
         for Field {
@@ -702,15 +748,18 @@ impl TypeChecker {
                 continue;
             }
 
-            if let TypeKind::Function { param_kinds, .. } = &self.types[*field_kind] {
+            if let TypeKind::Function {
+                param_type_kinds, ..
+            } = &self.types[*field_kind]
+            {
                 if parent_type.instance_kind == InstanceKind::Literal {
                     type_error!(self, "method calls are not allowed on literals");
                 }
 
                 // A method is static if it's first parameter isn't a pointer to it's own struct's type.
                 let mut is_method_static = true;
-                if param_kinds.len() > 0 {
-                    if let TypeKind::Pointer { inner_type_kind } = self.types[param_kinds[0]] {
+                if param_type_kinds.len() > 0 {
+                    if let TypeKind::Pointer { inner_type_kind } = self.types[param_type_kinds[0]] {
                         is_method_static = inner_type_kind != struct_type_kind;
                     }
                 }
@@ -737,6 +786,84 @@ impl TypeChecker {
 
         Some(Type {
             type_kind: type_name_type.type_kind,
+            instance_kind: InstanceKind::Literal,
+        })
+    }
+
+    fn get_namespaced_name(&mut self, node: usize) -> Option<Vec<Arc<str>>> {
+        let mut namespaced_name = Vec::new();
+
+        match self.nodes[node].kind.clone() {
+            NodeKind::FieldAccess { left, name } => {
+                let NodeKind::Identifier { name: left_name } = &self.nodes[left].kind else {
+                    return None;
+                };
+
+                let NodeKind::Name { text: left_name_text } = self.nodes[*left_name].kind.clone() else {
+                    return None;
+                };
+
+                let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+                    return None;
+                };
+
+                namespaced_name.push(left_name_text);
+                namespaced_name.push(name_text);
+            },
+            NodeKind::Identifier { name } => {
+                let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+                    return None;
+                };
+
+                namespaced_name.push(name_text);
+            },
+            _ => return None,
+        };
+
+        Some(namespaced_name)
+    }
+
+    fn generic_specifier(&mut self, left: usize, type_names: Arc<Vec<usize>>) -> Option<Type> {
+        let left_type = self.check_node(left)?;
+        let TypeKind::Function {
+            param_type_kinds,
+            generic_type_kinds,
+            return_type_kind,
+        } = self.types[left_type.type_kind].clone()
+        else {
+            type_error!(self, "cannot apply generic specifier to non-function");
+        };
+
+        if generic_type_kinds.is_empty() {
+            type_error!(self, "generic specifier can only be applied to generic functions");
+        }
+
+        let Some(namespaced_name) = self.get_namespaced_name(left) else {
+            type_error!(self, "expected function name before generic specifier");
+        };
+
+        let Some(function_index) = self.function_declaration_indices.get(&namespaced_name) else {
+            type_error!(self, "invalid function before generic specifier");
+        };
+
+        let Some(usages) = self.generic_function_usages.get_mut(function_index) else {
+            type_error!(self, "invalid function before generic specifier");
+        };
+
+        usages.insert(type_names.clone());
+
+        let concrete_param_type_kinds = generic_params_to_concrete(&param_type_kinds, &generic_type_kinds, &type_names);
+
+        let concrete_function = FunctionLayout {
+            param_type_kinds: Arc::new(concrete_param_type_kinds),
+            generic_type_kinds: Arc::new(Vec::new()),
+            return_type_kind,
+        };
+
+        let concrete_type_kind = get_function_type_kind(&mut self.types, &mut self.function_type_kinds, concrete_function);
+
+        Some(Type {
+            type_kind: concrete_type_kind,
             instance_kind: InstanceKind::Literal,
         })
     }
@@ -800,15 +927,15 @@ impl TypeChecker {
         }
 
         let node_type = self.check_node(*elements.first()?)?;
-        let Some(type_kind) = self.array_type_kinds.get(&ArrayLayout {
-            element_type_kind: node_type.type_kind,
-            element_count: elements.len() * repeat_count,
-        }) else {
-            type_error!(self, "array layout has no corresponding type");
-        };
+        let type_kind = get_type_kind_as_array(
+            &mut self.types,
+            &mut self.array_type_kinds,
+            node_type.type_kind,
+            elements.len() * repeat_count,
+        );
 
         Some(Type {
-            type_kind: *type_kind,
+            type_kind,
             instance_kind: InstanceKind::Literal,
         })
     }

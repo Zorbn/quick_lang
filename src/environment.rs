@@ -1,16 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::type_checker::Type;
-
-pub struct SubEnvironment {
-    name_types: HashMap<Arc<str>, Type>,
+pub struct SubEnvironment<T> {
+    name_types: HashMap<Arc<str>, T>,
 }
 
-pub struct Environment {
-    stack: Vec<SubEnvironment>,
+pub struct Environment<T: Clone + Copy> {
+    stack: Vec<SubEnvironment<T>>,
 }
 
-impl Environment {
+impl<T: Clone + Copy> Environment<T> {
     pub fn new() -> Self {
         Self { stack: Vec::new() }
     }
@@ -25,7 +23,7 @@ impl Environment {
         self.stack.pop();
     }
 
-    pub fn insert(&mut self, name: Arc<str>, name_type: Type) {
+    pub fn insert(&mut self, name: Arc<str>, name_type: T) {
         self.stack
             .last_mut()
             .unwrap()
@@ -33,7 +31,7 @@ impl Environment {
             .insert(name, name_type);
     }
 
-    pub fn get(&self, name: &str) -> Option<Type> {
+    pub fn get(&self, name: &str) -> Option<T> {
         for sub_env in self.stack.iter().rev() {
             if let Some(name_type) = sub_env.name_types.get(name) {
                 return Some(*name_type);

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{Arc, OnceLock},
 };
 
@@ -8,7 +8,7 @@ use crate::{
     emitter_stack::EmitterStack,
     parser::{NodeKind, Op, TypeKind},
     type_checker::{InstanceKind, Type, TypedNode},
-    types::{is_type_kind_array, is_typed_expression_array_literal},
+    types::{generic_params_to_concrete, is_type_kind_array, is_typed_expression_array_literal},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -92,6 +92,7 @@ fn reserved_names() -> &'static HashSet<Arc<str>> {
 pub struct CodeGenerator {
     pub typed_nodes: Vec<TypedNode>,
     pub types: Vec<TypeKind>,
+    pub generic_function_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>,
     pub header_emitter: Emitter,
     pub type_prototype_emitter: Emitter,
     pub function_prototype_emitter: Emitter,
@@ -102,10 +103,11 @@ pub struct CodeGenerator {
 }
 
 impl CodeGenerator {
-    pub fn new(typed_nodes: Vec<TypedNode>, types: Vec<TypeKind>) -> Self {
+    pub fn new(typed_nodes: Vec<TypedNode>, types: Vec<TypeKind>, generic_function_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>) -> Self {
         let mut code_generator = Self {
             typed_nodes,
             types,
+            generic_function_usages,
             header_emitter: Emitter::new(0),
             type_prototype_emitter: Emitter::new(0),
             function_prototype_emitter: Emitter::new(0),
@@ -172,12 +174,23 @@ impl CodeGenerator {
                 node_kind:
                     NodeKind::FunctionDeclaration {
                         name,
-                        return_type_name,
                         params,
+                        generic_params,
+                        return_type_name,
                         ..
                     },
                 node_type,
-            } => self.function_declaration(name, return_type_name, params, node_type),
+            } => {
+                if let Some(generic_usages) = self.generic_function_usages.get(&index) {
+                    for generic_usage in generic_usages {
+                        let concrete_params = generic_params_to_concrete(param_type_kinds, generic_type_kinds, type_names)
+                    }
+                }
+
+
+
+                self.function_declaration(name, params, generic_params, return_type_name, generic_usages, node_type);
+            },
             TypedNode {
                 node_kind: NodeKind::ExternFunction { declaration },
                 node_type,
@@ -282,6 +295,10 @@ impl CodeGenerator {
                 node_kind: NodeKind::Cast { left, type_name },
                 node_type,
             } => self.cast(left, type_name, node_type),
+            TypedNode {
+                node_kind: NodeKind::GenericSpecifier { left, type_names },
+                node_type,
+            } => self.generic_specifier(left, type_names, node_type),
             TypedNode {
                 node_kind: NodeKind::Name { text },
                 node_type,
@@ -443,8 +460,10 @@ impl CodeGenerator {
     fn function_declaration(
         &mut self,
         name: usize,
-        return_type_name: usize,
         params: Arc<Vec<usize>>,
+        generic_params: Arc<Vec<usize>>,
+        return_type_name: usize,
+        generic_usages: Option<&HashSet<Arc<Vec<usize>>>>,
         node_type: Option<Type>,
     ) {
         self.emit_function_declaration(
@@ -474,6 +493,7 @@ impl CodeGenerator {
             params,
             return_type_name,
             type_kind,
+            ..
         } = self.typed_nodes[declaration].node_kind.clone()
         else {
             panic!("Invalid function declaration");
@@ -943,6 +963,15 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
+    fn generic_specifier(&mut self, left: usize, type_names: Arc<Vec<usize>>, _node_type: Option<Type>) {
+        self.gen_node(left);
+
+        for type_name in type_names.iter() {
+            self.body_emitters.top().body.emit("_");
+            self.body_emitters.top().body.emit(&(*type_name).to_string());
+        }
+    }
+
     fn name(&mut self, text: Arc<str>, _node_type: Option<Type>) {
         self.emit_name(text, EmitterKind::Body);
     }
@@ -1243,9 +1272,9 @@ impl CodeGenerator {
             TypeKind::Pointer { inner_type_kind } => {
                 self.emit_type_kind_right(inner_type_kind, emitter_kind, do_arrays_as_pointers);
             }
-            TypeKind::Function { param_kinds, .. } => {
+            TypeKind::Function { param_type_kinds, .. } => {
                 self.emitter(emitter_kind).emit(")(");
-                for (i, param_kind) in param_kinds.iter().enumerate() {
+                for (i, param_kind) in param_type_kinds.iter().enumerate() {
                     if i > 0 {
                         self.emitter(emitter_kind).emit(", ");
                     }

@@ -1,10 +1,11 @@
 use std::{collections::HashMap, hash::Hash, sync::Arc};
 
 use crate::{
+    environment::Environment,
     file_data::FileData,
     lexer::{Token, TokenKind},
     position::Position,
-    types::{add_type, get_type_kind_as_pointer},
+    types::{add_type, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -47,6 +48,7 @@ pub struct ArrayLayout {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FunctionLayout {
     pub param_type_kinds: Arc<Vec<usize>>,
+    pub generic_type_kinds: Arc<Vec<usize>>,
     pub return_type_kind: usize,
 }
 
@@ -81,7 +83,8 @@ pub enum TypeKind {
     },
     Partial,
     Function {
-        param_kinds: Arc<Vec<usize>>,
+        param_type_kinds: Arc<Vec<usize>>,
+        generic_type_kinds: Arc<Vec<usize>>,
         return_type_kind: usize,
     },
     Enum {
@@ -118,6 +121,7 @@ pub enum NodeKind {
     FunctionDeclaration {
         name: usize,
         params: Arc<Vec<usize>>,
+        generic_params: Arc<Vec<usize>>,
         return_type_name: usize,
         type_kind: usize,
     },
@@ -205,6 +209,10 @@ pub enum NodeKind {
         left: usize,
         type_name: usize,
     },
+    GenericSpecifier {
+        left: usize,
+        type_names: Arc<Vec<usize>>,
+    },
     Identifier {
         name: usize,
     },
@@ -270,33 +278,15 @@ pub const FLOAT64_INDEX: usize = 15;
 
 macro_rules! assert_token {
     ($self:ident, $token:expr, $start:expr, $end:expr) => {
-        if *$self.token_kind() != $token {
-            $self.error(&format!(
-                "expected \"{}\" but got \"{}\"",
-                $token,
-                $self.token_kind()
-            ));
-            $self.position += 1;
-
-            return $self.add_node(Node {
-                kind: NodeKind::Error,
-                start: $start,
-                end: $end,
-            });
+        if let Some(node) = $self.assert_token($token, $start, $end) {
+            return node;
         }
     };
 }
 
 macro_rules! parse_error {
     ($self:ident, $message:expr, $start:expr, $end:expr) => {{
-        $self.error($message);
-        $self.position += 1;
-
-        return $self.add_node(Node {
-            kind: NodeKind::Error,
-            start: $start,
-            end: $end,
-        });
+        return $self.parse_error($message, $start, $end);
     }};
 }
 
@@ -305,14 +295,16 @@ pub struct Parser {
     pub types: Vec<TypeKind>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
     pub pointer_type_kinds: HashMap<usize, usize>,
-    pub named_type_kinds: HashMap<Arc<str>, usize>,
+    pub named_type_kinds: Environment<usize>,
     pub function_type_kinds: HashMap<FunctionLayout, usize>,
+    pub function_declaration_indices: HashMap<Vec<Arc<str>>, usize>,
     pub had_error: bool,
 
     pub tokens: Option<Vec<Token>>,
     pub position: usize,
 
     files: Arc<Vec<FileData>>,
+    current_namespace_names: Vec<Arc<str>>,
 }
 
 impl Parser {
@@ -324,10 +316,12 @@ impl Parser {
             types: Vec::new(),
             array_type_kinds: HashMap::new(),
             pointer_type_kinds: HashMap::new(),
-            named_type_kinds: HashMap::new(),
+            named_type_kinds: Environment::new(),
             function_type_kinds: HashMap::new(),
+            function_declaration_indices: HashMap::new(),
             had_error: false,
             position: 0,
+            current_namespace_names: Vec::new(),
         };
 
         parser.add_type(TypeKind::Int);
@@ -389,6 +383,41 @@ impl Parser {
     fn token_end(&self) -> Position {
         let tokens = self.tokens.as_ref().unwrap();
         tokens[self.position].end
+    }
+
+    fn assert_token(
+        &mut self,
+        token_kind: TokenKind,
+        start: Position,
+        end: Position,
+    ) -> Option<usize> {
+        if *self.token_kind() != token_kind {
+            self.error(&format!(
+                "expected \"{}\" but got \"{}\"",
+                token_kind,
+                self.token_kind()
+            ));
+            self.position += 1;
+
+            return Some(self.add_node(Node {
+                kind: NodeKind::Error,
+                start,
+                end,
+            }));
+        }
+
+        None
+    }
+
+    fn parse_error(&mut self, message: &str, start: Position, end: Position) -> usize {
+        self.error(message);
+        self.position += 1;
+
+        self.add_node(Node {
+            kind: NodeKind::Error,
+            start,
+            end,
+        })
     }
 
     fn parse_uint_literal(&mut self) -> Option<usize> {
@@ -479,6 +508,12 @@ impl Parser {
 
         let name = self.name();
 
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            parse_error!(self, "invalid struct name", start, self.node_end(name));
+        };
+
+        self.current_namespace_names.push(name_text.clone());
+
         assert_token!(self, TokenKind::LBrace, start, self.token_end());
         self.position += 1;
 
@@ -548,9 +583,7 @@ impl Parser {
         assert_token!(self, TokenKind::RBrace, start, end);
         self.position += 1;
 
-        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-            parse_error!(self, "invalid struct name", start, end);
-        };
+        self.current_namespace_names.pop();
 
         let type_kind = self.add_named_type(
             &name_text,
@@ -639,18 +672,16 @@ impl Parser {
         })
     }
 
-    fn function_declaration(&mut self) -> usize {
-        let start = self.token_start();
-        assert_token!(self, TokenKind::Fun, start, self.token_end());
+    fn parse_function_params(
+        &mut self,
+        start: Position,
+        params: &mut Vec<usize>,
+        param_type_kinds: &mut Vec<usize>,
+    ) -> Option<usize> {
+        if let Some(error_node) = self.assert_token(TokenKind::LParen, start, self.token_end()) {
+            return Some(error_node);
+        }
         self.position += 1;
-
-        let name = self.name();
-
-        assert_token!(self, TokenKind::LParen, start, self.token_end());
-        self.position += 1;
-
-        let mut params = Vec::new();
-        let mut param_type_kinds = Vec::new();
 
         while *self.token_kind() != TokenKind::RParen {
             let param = self.param();
@@ -661,26 +692,110 @@ impl Parser {
                 ..
             } = self.nodes[param].kind
             else {
-                parse_error!(self, "invalid parameter", start, self.token_end());
+                return Some(self.parse_error("invalid parameter", start, self.token_end()));
             };
+
             let NodeKind::TypeName {
                 type_kind: param_type_kind,
             } = self.nodes[param_type_name].kind
             else {
-                parse_error!(self, "invalid parameter type kind", start, self.token_end());
+                return Some(self.parse_error(
+                    "invalid parameter type kind",
+                    start,
+                    self.token_end(),
+                ));
             };
+
             param_type_kinds.push(param_type_kind);
 
             if *self.token_kind() != TokenKind::Comma {
                 break;
             }
 
-            assert_token!(self, TokenKind::Comma, start, self.token_end());
+            if let Some(error_node) = self.assert_token(TokenKind::Comma, start, self.token_end()) {
+                return Some(error_node);
+            }
             self.position += 1;
         }
 
-        assert_token!(self, TokenKind::RParen, start, self.token_end());
+        if let Some(error_node) = self.assert_token(TokenKind::RParen, start, self.token_end()) {
+            return Some(error_node);
+        }
         self.position += 1;
+
+        None
+    }
+
+    fn parse_generic_params(
+        &mut self,
+        start: Position,
+        generic_params: &mut Vec<usize>,
+        generic_type_kinds: &mut Vec<usize>,
+    ) -> Option<usize> {
+        if let Some(error_node) = self.assert_token(TokenKind::Less, start, self.token_end()) {
+            return Some(error_node);
+        }
+        self.position += 1;
+
+        while *self.token_kind() != TokenKind::Greater {
+            let name = self.name();
+            generic_params.push(name);
+
+            let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+                return Some(self.parse_error("invalid generic name", start, self.token_end()));
+            };
+
+            let type_kind = self.add_named_type(&name_text, TypeKind::Partial);
+            generic_type_kinds.push(type_kind);
+
+            if *self.token_kind() != TokenKind::Comma {
+                break;
+            }
+
+            if let Some(error_node) = self.assert_token(TokenKind::Comma, start, self.token_end()) {
+                return Some(error_node);
+            }
+            self.position += 1;
+        }
+
+        if let Some(error_node) = self.assert_token(TokenKind::Greater, start, self.token_end()) {
+            return Some(error_node);
+        }
+        self.position += 1;
+
+        None
+    }
+
+    fn function_declaration(&mut self) -> usize {
+        let start = self.token_start();
+        assert_token!(self, TokenKind::Fun, start, self.token_end());
+        self.position += 1;
+
+        let name = self.name();
+
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            parse_error!(self, "invalid function name", start, self.node_end(name));
+        };
+
+        let mut generic_params = Vec::new();
+        let mut generic_type_kinds = Vec::new();
+
+        if *self.token_kind() == TokenKind::Less {
+            if let Some(error_node) =
+                self.parse_generic_params(start, &mut generic_params, &mut generic_type_kinds)
+            {
+                return error_node;
+            }
+        }
+
+        let mut params = Vec::new();
+        let mut param_type_kinds = Vec::new();
+
+        if let Some(error_node) =
+            self.parse_function_params(start, &mut params, &mut param_type_kinds)
+        {
+            return error_node;
+        }
 
         let return_type_name = self.type_name();
         let end = self.node_end(return_type_name);
@@ -694,37 +809,45 @@ impl Parser {
 
         let function_layout = FunctionLayout {
             param_type_kinds: Arc::new(param_type_kinds),
+            generic_type_kinds: Arc::new(generic_type_kinds),
             return_type_kind,
         };
+        let type_kind = get_function_type_kind(&mut self.types, &mut self.function_type_kinds, function_layout);
 
-        let type_kind = if let Some(type_kind) = self.function_type_kinds.get(&function_layout) {
-            *type_kind
-        } else {
-            let type_kind = self.add_type(TypeKind::Function {
-                param_kinds: function_layout.param_type_kinds.clone(),
-                return_type_kind: function_layout.return_type_kind,
-            });
-            self.function_type_kinds.insert(function_layout, type_kind);
-            type_kind
-        };
-
-        self.add_node(Node {
+        let index = self.add_node(Node {
             kind: NodeKind::FunctionDeclaration {
                 name,
-                return_type_name,
                 params: Arc::new(params),
+                generic_params: Arc::new(generic_params),
+                return_type_name,
                 type_kind,
             },
             start,
             end,
-        })
+        });
+
+        let mut namespaced_name = Vec::new();
+
+        for namespace in &self.current_namespace_names {
+            namespaced_name.push(namespace.clone());
+        }
+
+        namespaced_name.push(name_text);
+
+        self.function_declaration_indices.insert(namespaced_name, index);
+
+        index
     }
 
     fn function(&mut self) -> usize {
+        self.named_type_kinds.push();
+
         let start = self.token_start();
         let declaration = self.function_declaration();
         let block = self.block();
         let end = self.node_end(block);
+
+        self.named_type_kinds.pop();
 
         self.add_node(Node {
             kind: NodeKind::Function { declaration, block },
@@ -1065,7 +1188,7 @@ impl Parser {
      * Primary: Literals, identifiers, parenthesized expressions
      *
      * (Nestable, eg. &pointer^)
-     * UnarySuffix: .*, [], (), ., as
+     * UnarySuffix: .<, .*, [], (), ., as
      * UnaryPrefix: &, !, +, -
      *
      * (Chainable, eg. a * b / c)
@@ -1283,6 +1406,35 @@ impl Parser {
                         start,
                         end,
                     });
+                }
+                TokenKind::GenericSpecifier => {
+                    self.position += 1;
+
+                    let mut type_names = Vec::new();
+
+                    while *self.token_kind() != TokenKind::Greater {
+                        type_names.push(self.type_name());
+
+                        if *self.token_kind() != TokenKind::Comma {
+                            break;
+                        }
+
+                        assert_token!(self, TokenKind::Comma, start, self.token_end());
+                        self.position += 1;
+                    }
+
+                    let end = self.token_end();
+                    assert_token!(self, TokenKind::Greater, start, end);
+                    self.position += 1;
+
+                    left = self.add_node(Node {
+                        kind: NodeKind::GenericSpecifier {
+                            left,
+                            type_names: Arc::new(type_names),
+                        },
+                        start,
+                        end,
+                    })
                 }
                 TokenKind::Period => {
                     self.position += 1;
@@ -1646,27 +1798,17 @@ impl Parser {
 
                 let function_layout = FunctionLayout {
                     param_type_kinds: Arc::new(param_type_kinds),
+                    generic_type_kinds: Arc::new(Vec::new()),
                     return_type_kind,
                 };
-
-                let type_kind =
-                    if let Some(type_kind) = self.function_type_kinds.get(&function_layout) {
-                        *type_kind
-                    } else {
-                        let type_kind = self.add_type(TypeKind::Function {
-                            param_kinds: function_layout.param_type_kinds.clone(),
-                            return_type_kind: function_layout.return_type_kind,
-                        });
-                        self.function_type_kinds.insert(function_layout, type_kind);
-                        type_kind
-                    };
+                let type_kind = get_function_type_kind(&mut self.types, &mut self.function_type_kinds, function_layout);
 
                 return type_kind;
             }
             TokenKind::LBracket => {
                 self.position += 1;
 
-                let length = self.parse_uint_literal().unwrap_or_else(|| {
+                let element_count = self.parse_uint_literal().unwrap_or_else(|| {
                     parse_error!(self, "expected uint literal", start, self.token_end())
                 });
                 self.position += 1;
@@ -1676,21 +1818,12 @@ impl Parser {
 
                 let element_type_kind = self.type_kind();
 
-                let array_layout = ArrayLayout {
+                let type_kind = get_type_kind_as_array(
+                    &mut self.types,
+                    &mut self.array_type_kinds,
                     element_type_kind,
-                    element_count: length,
-                };
-
-                let type_kind = if let Some(type_kind) = self.array_type_kinds.get(&array_layout) {
-                    *type_kind
-                } else {
-                    let type_kind = self.add_type(TypeKind::Array {
-                        element_type_kind,
-                        element_count: length,
-                    });
-                    self.array_type_kinds.insert(array_layout, type_kind);
-                    type_kind
-                };
+                    element_count,
+                );
 
                 return type_kind;
             }
@@ -1737,8 +1870,8 @@ impl Parser {
 
     fn add_named_type(&mut self, name_text: &Arc<str>, new_type_kind: TypeKind) -> usize {
         if let Some(type_kind) = self.named_type_kinds.get(name_text) {
-            self.types[*type_kind] = new_type_kind;
-            *type_kind
+            self.types[type_kind] = new_type_kind;
+            type_kind
         } else {
             let type_kind = self.add_type(new_type_kind);
             self.named_type_kinds.insert(name_text.clone(), type_kind);
@@ -1748,7 +1881,7 @@ impl Parser {
 
     fn get_named_type(&mut self, name_text: &Arc<str>) -> usize {
         if let Some(type_kind) = self.named_type_kinds.get(name_text) {
-            *type_kind
+            type_kind
         } else {
             let type_kind = self.add_type(TypeKind::Partial);
             self.named_type_kinds.insert(name_text.clone(), type_kind);
