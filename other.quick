@@ -19,3 +19,24 @@ struct Point {
     fun GenericThing<T>(self *Point, a T) Void {
     }
 }
+
+// struct GenericStruct<A, B> {
+//     a A;
+//     b B;
+
+//     fun SetA(self *GenericStruct.<A, B>, a A) Void {
+//         self.a = a;
+//     }
+
+//     fun SetB(self *GenericStruct.<A, B>, b B) Void {
+//         self.b = b;
+//     }
+
+//     fun GetA(self *GenericStruct.<A, B>) A {
+//         return self.a;
+//     }
+
+//     fun GetB(self *GenericStruct.<A, B>) B {
+//         return self.b;
+//     }
+// }

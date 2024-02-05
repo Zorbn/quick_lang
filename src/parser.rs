@@ -52,6 +52,12 @@ pub struct FunctionLayout {
     pub return_type_kind: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct StructLayout {
+    pub name: Arc<str>,
+    pub type_names: Arc<Vec<usize>>,
+}
+
 #[derive(Clone, Debug)]
 pub enum TypeKind {
     Int,
@@ -80,6 +86,7 @@ pub enum TypeKind {
     Struct {
         name: usize,
         field_kinds: Arc<Vec<Field>>,
+        generic_type_kinds: Arc<Vec<usize>>,
     },
     Partial,
     Function {
@@ -106,6 +113,7 @@ pub enum NodeKind {
     StructDefinition {
         name: usize,
         fields: Arc<Vec<usize>>,
+        generic_params: Arc<Vec<usize>>,
         functions: Arc<Vec<usize>>,
         type_kind: usize,
     },
@@ -236,7 +244,7 @@ pub enum NodeKind {
         repeat_count: usize,
     },
     StructLiteral {
-        name: usize,
+        left: usize,
         fields: Arc<Vec<usize>>,
     },
     FieldLiteral {
@@ -297,7 +305,8 @@ pub struct Parser {
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub named_type_kinds: Environment<usize>,
     pub function_type_kinds: HashMap<FunctionLayout, usize>,
-    pub function_declaration_indices: HashMap<Vec<Arc<str>>, usize>,
+    pub struct_type_kinds: HashMap<StructLayout, usize>,
+    pub declaration_indices: HashMap<Vec<Arc<str>>, usize>,
     pub had_error: bool,
 
     pub tokens: Option<Vec<Token>>,
@@ -318,7 +327,8 @@ impl Parser {
             pointer_type_kinds: HashMap::new(),
             named_type_kinds: Environment::new(),
             function_type_kinds: HashMap::new(),
-            function_declaration_indices: HashMap::new(),
+            struct_type_kinds: HashMap::new(),
+            declaration_indices: HashMap::new(),
             had_error: false,
             position: 0,
             current_namespace_names: Vec::new(),
@@ -516,6 +526,17 @@ impl Parser {
 
         self.current_namespace_names.push(name_text.clone());
 
+        let mut generic_params = Vec::new();
+        let mut generic_type_kinds = Vec::new();
+
+        if *self.token_kind() == TokenKind::Less {
+            if let Some(error_node) =
+                self.parse_generic_params(start, &mut generic_params, &mut generic_type_kinds)
+            {
+                return error_node;
+            }
+        }
+
         assert_token!(self, TokenKind::LBrace, start, self.token_end());
         self.position += 1;
 
@@ -592,20 +613,30 @@ impl Parser {
             TypeKind::Struct {
                 name,
                 field_kinds: Arc::new(field_kinds),
+                generic_type_kinds: Arc::new(generic_type_kinds),
             },
             false,
         );
 
-        self.add_node(Node {
+        let struct_layout = StructLayout { name: name_text.clone(), type_names: Arc::new(Vec::new()) };
+        self.struct_type_kinds.insert(struct_layout, type_kind);
+
+        let index = self.add_node(Node {
             kind: NodeKind::StructDefinition {
                 name,
                 fields: Arc::new(fields),
+                generic_params: Arc::new(generic_params),
                 functions: Arc::new(functions),
                 type_kind,
             },
             start,
             end,
-        })
+        });
+
+        let namespaced_name = self.get_namespaced_name(name_text);
+        self.declaration_indices.insert(namespaced_name, index);
+        
+        index
     }
 
     fn enum_definition(&mut self) -> usize {
@@ -733,7 +764,6 @@ impl Parser {
     fn parse_generic_params(
         &mut self,
         start: Position,
-        // TODO: Are generic params even needed, or only generic type kinds?
         generic_params: &mut Vec<usize>,
         generic_type_kinds: &mut Vec<usize>,
     ) -> Option<usize> {
@@ -792,7 +822,7 @@ impl Parser {
                 return error_node;
             }
         }
-
+        
         let mut params = Vec::new();
         let mut param_type_kinds = Vec::new();
 
@@ -831,15 +861,8 @@ impl Parser {
             end,
         });
 
-        let mut namespaced_name = Vec::new();
-
-        for namespace in &self.current_namespace_names {
-            namespaced_name.push(namespace.clone());
-        }
-
-        namespaced_name.push(name_text);
-
-        self.function_declaration_indices.insert(namespaced_name, index);
+        let namespaced_name = self.get_namespaced_name(name_text);
+        self.declaration_indices.insert(namespaced_name, index);
 
         index
     }
@@ -1441,6 +1464,9 @@ impl Parser {
                         end,
                     })
                 }
+                TokenKind::LBrace if allow_struct_literal => {
+                    left = self.struct_literal(left, start);
+                },
                 TokenKind::Period => {
                     self.position += 1;
 
@@ -1501,15 +1527,41 @@ impl Parser {
         left
     }
 
+    fn struct_literal(&mut self, left: usize, start: Position) -> usize {
+        assert_token!(self, TokenKind::LBrace, start, self.token_end());
+        self.position += 1;
+
+        let mut fields = Vec::new();
+
+        while *self.token_kind() != TokenKind::RBrace {
+            fields.push(self.field_literal());
+
+            if *self.token_kind() != TokenKind::Comma {
+                break;
+            }
+
+            assert_token!(self, TokenKind::Comma, start, self.token_end());
+            self.position += 1;
+        }
+
+        let end = self.token_end();
+        assert_token!(self, TokenKind::RBrace, start, end);
+        self.position += 1;
+
+        self.add_node(Node {
+            kind: NodeKind::StructLiteral {
+                left,
+                fields: Arc::new(fields),
+            },
+            start,
+            end,
+        })
+    }
+
     fn primary(&mut self, allow_struct_literal: bool) -> usize {
         let start = self.token_start();
         match *self.token_kind() {
             TokenKind::LParen => self.parenthesized_expression(),
-            TokenKind::Identifier { .. }
-                if allow_struct_literal && *self.peek_token_kind() == TokenKind::LBrace =>
-            {
-                self.struct_literal()
-            }
             TokenKind::Identifier { .. } => self.identifier(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
             TokenKind::Float32Literal { .. } => self.float32_literal(),
@@ -1692,40 +1744,6 @@ impl Parser {
         })
     }
 
-    fn struct_literal(&mut self) -> usize {
-        let start = self.token_start();
-        let name = self.name();
-
-        assert_token!(self, TokenKind::LBrace, start, self.token_end());
-        self.position += 1;
-
-        let mut fields = Vec::new();
-
-        while *self.token_kind() != TokenKind::RBrace {
-            fields.push(self.field_literal());
-
-            if *self.token_kind() != TokenKind::Comma {
-                break;
-            }
-
-            assert_token!(self, TokenKind::Comma, start, self.token_end());
-            self.position += 1;
-        }
-
-        let end = self.token_end();
-        assert_token!(self, TokenKind::RBrace, start, end);
-        self.position += 1;
-
-        self.add_node(Node {
-            kind: NodeKind::StructLiteral {
-                name,
-                fields: Arc::new(fields),
-            },
-            start,
-            end,
-        })
-    }
-
     fn field_literal(&mut self) -> usize {
         let start = self.token_start();
         let name = self.name();
@@ -1896,5 +1914,17 @@ impl Parser {
             self.named_type_kinds.insert_global(name_text.clone(), type_kind);
             type_kind
         }
+    }
+    
+    fn get_namespaced_name(&mut self, name_text: Arc<str>) -> Vec<Arc<str>> {
+        let mut namespaced_name = Vec::new();
+
+        for namespace in &self.current_namespace_names {
+            namespaced_name.push(namespace.clone());
+        }
+
+        namespaced_name.push(name_text);
+        
+        namespaced_name
     }
 }
