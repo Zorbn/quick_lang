@@ -3,6 +3,9 @@
 	"name": "Quick",
 	"patterns": [
 		{
+			"include": "#function-declaration"
+		},
+		{
 			"include": "#keyword"
 		},
 		{
@@ -21,7 +24,7 @@
 			"include": "#decimal-literal"
 		},
 		{
-			"include": "#function"
+			"include": "#function-call"
 		},
 		{
 			"include": "#type"
@@ -31,6 +34,17 @@
 		}
 	],
 	"repository": {
+		"function-declaration": {
+			"match": "\\b(fun)\\b\\s*(\\w+)",
+			"captures": {
+				"1": {
+					"name": "keyword.control.quick"
+				},
+				"2": {
+					"name": "entity.name.function.quick"
+				}
+			}
+		},
 		"keyword": {
 			"patterns": [{
 				"name": "keyword.control.quick",
@@ -49,7 +63,7 @@
 			]
 		},
 		"char": {
-			"name": "string.quoted.single",
+			"name": "string.quoted.single.quick",
 			"match": "'.'"
 		},
 		"single-line-comment": {
@@ -71,11 +85,11 @@
 			"name": "constant.numeric.decimal.quick",
 			"match": "\\b\\d\\d*(\\.\\d*)?\\b"
 		},
-		"function": {
-			"match": "(\\w+)\\s*\\(",
+		"function-call": {
+			"match": "(\\w+)\\s*(\\(|\\.<)",
 			"captures": {
 				"1": {
-					"name": "entity.name.function"
+					"name": "entity.name.function.quick"
 				}
 			}
 		},

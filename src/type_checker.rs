@@ -664,14 +664,20 @@ impl TypeChecker {
         }
 
         let TypeKind::Function {
-            return_type_kind, ..
-        } = self.type_kinds[left_type.type_kind]
+            return_type_kind,
+            generic_type_kinds,
+            ..
+        } = &self.type_kinds[left_type.type_kind]
         else {
             type_error!(self, "only functions can be called");
         };
 
+        if !generic_type_kinds.is_empty() {
+            type_error!(self, "cannot call generic function without generic specifier");
+        }
+
         Some(Type {
-            type_kind: return_type_kind,
+            type_kind: *return_type_kind,
             instance_kind: InstanceKind::Literal,
         })
     }
@@ -800,7 +806,11 @@ impl TypeChecker {
 
         match self.nodes[node].kind.clone() {
             NodeKind::FieldAccess { left, name } => {
-                let NodeKind::Identifier { name: left_name } = &self.nodes[left].kind else {
+                let Some(Type { type_kind, .. }) = &self.typed_nodes[left].as_ref().unwrap().node_type else {
+                    return None;
+                };
+
+                let TypeKind::Struct { name: left_name, .. } = &self.type_kinds[*type_kind] else {
                     return None;
                 };
 

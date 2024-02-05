@@ -76,7 +76,7 @@ fun main() Int32 {
 
     Point.Multiply(&xy[0], &xy[1]);
     xy[0].Multiply(&xy[1]);
-    xy[0].GenericThing.<Point>(&xy[1]);
+    xy[0].GenericThing.<*Point>(&xy[1]);
 
     Point.Static(x);
 

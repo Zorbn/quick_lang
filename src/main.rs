@@ -35,9 +35,6 @@ mod types;
  * Incremental and parallel compilation.
  * Default parameters.
  * Variadic arguments.
- * Generics. genericFunc.<int, char>(myInt, myChar) fun genericFunc<A, B>(a A, b B) A
- *           val functionPointer: fun(int, char) int = &genericFunc.<int, char>;
- *           struct GenericStruct<A> {}        GenericStruct.<int> {}
  * Namespaces.
  *
  * SMALL TODOS:
@@ -48,6 +45,8 @@ mod types;
  * Prevent multiple functions, enums, structs with the same name.
  * Prevent name collisions in struct members.
  * Don't use keywords for primitive types, use named types instead.
+ * Generic structs.
+ * Generic type inference if possible.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.

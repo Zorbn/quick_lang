@@ -878,11 +878,15 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn call(&mut self, left: usize, args: Arc<Vec<usize>>, node_type: Option<Type>) {
+    fn call(&mut self, mut left: usize, args: Arc<Vec<usize>>, node_type: Option<Type>) {
         self.gen_node(left);
 
         self.body_emitters.top().body.emit("(");
         let mut i = 0;
+
+        if let NodeKind::GenericSpecifier { left: new_left, .. } = &self.typed_nodes[left].node_kind {
+            left = *new_left;
+        }
 
         // If the left node is a field access, then we must be calling a method. If we were calling a function pointer,
         // the left node wouldn't be a field access because the function pointer would need to be dereferenced before calling.
@@ -899,8 +903,7 @@ impl CodeGenerator {
 
                 i += 1;
             }
-        }
-
+        };
 
         for arg in args.iter() {
             if i > 0 {
