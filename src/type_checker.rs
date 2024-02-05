@@ -128,9 +128,7 @@ impl TypeChecker {
                 params,
                 generic_params,
                 type_kind,
-            } => {
-                self.function_declaration(name, return_type_name, params, generic_params, type_kind)
-            }
+            } => self.function_declaration(name, return_type_name, params, generic_params, type_kind),
             NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
             NodeKind::Param { name, type_name } => self.param(name, type_name),
             NodeKind::Block { statements } => self.block(statements),

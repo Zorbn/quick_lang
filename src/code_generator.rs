@@ -169,58 +169,17 @@ impl CodeGenerator {
             TypedNode {
                 node_kind: NodeKind::Function { declaration, block },
                 node_type,
-            } => {
-                let NodeKind::FunctionDeclaration { name, params, return_type_name, .. } = self.typed_nodes[declaration].node_kind.clone() else {
-                    panic!("Invalid function declaration");
-                };
-
-                let TypeKind::Function { generic_type_kinds, .. } = self.type_kinds[node_type.unwrap().type_kind].clone() else {
-                    panic!("Invalid function type");
-                };
-
-                if let Some(generic_usages) = self.generic_function_usages.get(&declaration) {
-                    let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
-
-                    for generic_usage in generic_usages {
-                        // Replace generic types with their concrete types for this usage.
-                        for (type_name, generic_type_kind) in generic_usage.iter().zip(generic_type_kinds.iter()) {
-                            let NodeKind::TypeName { type_kind } = self.typed_nodes[*type_name].node_kind else {
-                                panic!("Invalid type name in generic usage");
-                            };
-
-                            self.type_kinds[*generic_type_kind] = self.type_kinds[type_kind].clone();
-                        }
-
-                        self.function_declaration(name, params.clone(), Some(generic_usage), return_type_name, node_type);
-                        self.function_declaration_needing_init = Some(declaration);
-                        self.gen_node(block);
-                        self.body_emitters.top().body.newline();
-                        self.body_emitters.top().body.newline();
-                    }
-                } else if generic_type_kinds.is_empty() {
-                    self.function_declaration(name, params, None, return_type_name, node_type);
-                    self.function_declaration_needing_init = Some(declaration);
-                    self.gen_node(block);
-                    self.body_emitters.top().body.newline();
-                    self.body_emitters.top().body.newline();
-                }
-
-                // self.function(declaration, block, node_type)
-            },
+            } => self.function(declaration, block, node_type),
             TypedNode {
                 node_kind:
                     NodeKind::FunctionDeclaration {
                         name,
                         params,
-                        generic_params,
                         return_type_name,
                         ..
                     },
                 node_type,
-            } => {
-                // TODO:
-                // self.function_declaration(name, params, generic_usage, return_type_name, node_type)
-            },
+            } => self.function_declaration(name, params, None, return_type_name, node_type),
             TypedNode {
                 node_kind: NodeKind::ExternFunction { declaration },
                 node_type,
@@ -479,13 +438,41 @@ impl CodeGenerator {
         self.type_prototype_emitter.emitln(";");
     }
 
-    fn function(&mut self, declaration: usize, block: usize, _node_type: Option<Type>) {
-        // TODO:
-        // self.gen_node(declaration);
-        // self.function_declaration_needing_init = Some(declaration);
-        // self.gen_node(block);
-        // self.body_emitters.top().body.newline();
-        // self.body_emitters.top().body.newline();
+    fn function(&mut self, declaration: usize, block: usize, node_type: Option<Type>) {
+        let NodeKind::FunctionDeclaration { name, params, return_type_name, .. } = self.typed_nodes[declaration].node_kind.clone() else {
+            panic!("Invalid function declaration");
+        };
+
+        let TypeKind::Function { generic_type_kinds, .. } = self.type_kinds[node_type.unwrap().type_kind].clone() else {
+            panic!("Invalid function type");
+        };
+
+        if let Some(generic_usages) = self.generic_function_usages.get(&declaration) {
+            let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
+
+            for generic_usage in generic_usages {
+                // Replace generic types with their concrete types for this usage.
+                for (type_name, generic_type_kind) in generic_usage.iter().zip(generic_type_kinds.iter()) {
+                    let NodeKind::TypeName { type_kind } = self.typed_nodes[*type_name].node_kind else {
+                        panic!("Invalid type name in generic usage");
+                    };
+
+                    self.type_kinds[*generic_type_kind] = self.type_kinds[type_kind].clone();
+                }
+
+                self.function_declaration(name, params.clone(), Some(generic_usage), return_type_name, node_type);
+                self.function_declaration_needing_init = Some(declaration);
+                self.gen_node(block);
+                self.body_emitters.top().body.newline();
+                self.body_emitters.top().body.newline();
+            }
+        } else if generic_type_kinds.is_empty() {
+            self.function_declaration(name, params, None, return_type_name, node_type);
+            self.function_declaration_needing_init = Some(declaration);
+            self.gen_node(block);
+            self.body_emitters.top().body.newline();
+            self.body_emitters.top().body.newline();
+        }
     }
 
     fn function_declaration(
@@ -999,9 +986,11 @@ impl CodeGenerator {
     fn generic_specifier(&mut self, left: usize, type_names: Arc<Vec<usize>>, _node_type: Option<Type>) {
         self.gen_node(left);
 
+        self.body_emitters.top().body.emit("_");
+
         for type_name in type_names.iter() {
             self.body_emitters.top().body.emit("_");
-            self.body_emitters.top().body.emit(&(*type_name).to_string());
+            self.body_emitters.top().body.emit(&type_name.to_string());
         }
     }
 
@@ -1354,15 +1343,7 @@ impl CodeGenerator {
         type_kind: usize,
     ) {
         self.emit_type_name_left(return_type_name, kind, true);
-        self.emit_namespace_prefix(kind);
-        self.emit_name_node(name, kind);
-
-        if let Some(generic_usage) = generic_usage {
-            for type_name in generic_usage.iter() {
-                self.emitter(kind).emit("_");
-                self.emitter(kind).emit(&(*type_name).to_string());
-            }
-        }
+        self.emit_function_name(name, generic_usage, kind);
 
         let mut param_count = 0;
 
@@ -1456,6 +1437,20 @@ impl CodeGenerator {
             };
 
             self.emitter(kind).emit(&namespace_text);
+        }
+    }
+
+    fn emit_function_name(&mut self, name: usize, generic_usage: Option<Arc<Vec<usize>>>, kind: EmitterKind) {
+        self.emit_namespace_prefix(kind);
+        self.emit_name_node(name, kind);
+
+        if let Some(generic_usage) = generic_usage {
+            self.emitter(kind).emit("_");
+
+            for type_name in generic_usage.iter() {
+                self.emitter(kind).emit("_");
+                self.emitter(kind).emit(&type_name.to_string());
+            }
         }
     }
 

@@ -15,4 +15,7 @@ struct Point {
     fun Static(a Int) Void {
 
     }
+
+    fun GenericThing<T>(self *Point, a T) Void {
+    }
 }
