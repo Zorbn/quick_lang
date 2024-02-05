@@ -54,19 +54,20 @@ pub fn generic_function_to_concrete(
     type_kinds: &mut Vec<TypeKind>,
     function_type_kind: usize,
     function_type_kinds: &mut HashMap<FunctionLayout, usize>,
-    generic_type_kinds: &Arc<Vec<usize>>,
     type_names: &Arc<Vec<usize>>,
 ) -> usize {
     let TypeKind::Function {
         param_type_kinds,
         generic_type_kinds,
         return_type_kind,
-    } = type_kinds[function_type_kind];
+    } = &type_kinds[function_type_kind] else {
+        panic!("Type kind is not a function");
+    };
 
     let concrete_param_type_kinds =
         generic_params_to_concrete(nodes, &param_type_kinds, &generic_type_kinds, &type_names);
     let return_type_kind =
-        generic_type_kind_to_concrete(nodes, return_type_kind, &generic_type_kinds, &type_names);
+        generic_type_kind_to_concrete(nodes, *return_type_kind, &generic_type_kinds, &type_names);
 
     let concrete_function = FunctionLayout {
         param_type_kinds: Arc::new(concrete_param_type_kinds),

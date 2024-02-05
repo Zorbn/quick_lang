@@ -325,9 +325,9 @@ impl CodeGenerator {
                 node_type,
             } => self.array_literal(elements, repeat_count, node_type),
             TypedNode {
-                node_kind: NodeKind::StructLiteral { name, fields },
+                node_kind: NodeKind::StructLiteral { left, fields },
                 node_type,
-            } => self.struct_literal(name, fields, node_type),
+            } => self.struct_literal(left, fields, node_type),
             TypedNode {
                 node_kind: NodeKind::FieldLiteral { name, expression },
                 node_type,
@@ -1067,7 +1067,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn struct_literal(&mut self, _name: usize, fields: Arc<Vec<usize>>, node_type: Option<Type>) {
+    fn struct_literal(&mut self, _left: usize, fields: Arc<Vec<usize>>, node_type: Option<Type>) {
         let type_kind = node_type.unwrap().type_kind;
 
         self.body_emitters.top().body.emit("(");

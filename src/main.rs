@@ -114,6 +114,7 @@ fn main() -> ExitCode {
         parser.array_type_kinds,
         parser.pointer_type_kinds,
         parser.function_type_kinds,
+        parser.struct_type_kinds,
         parser.declaration_indices,
         files.clone(),
     );

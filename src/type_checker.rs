@@ -13,9 +13,8 @@ use crate::{
         UINT_INDEX,
     },
     types::{
-        add_type, generic_function_to_concrete, generic_params_to_concrete,
-        generic_type_kind_to_concrete, get_function_type_kind, get_type_kind_as_array,
-        get_type_kind_as_pointer,
+        add_type, generic_function_to_concrete, generic_type_kind_to_concrete,
+        get_type_kind_as_array, get_type_kind_as_pointer,
     },
 };
 
@@ -866,9 +865,8 @@ impl TypeChecker {
             .clone()
         {
             TypeKind::Function {
-                param_type_kinds,
                 generic_type_kinds,
-                return_type_kind,
+                ..
             } => {
                 if generic_type_kinds.is_empty() {
                     type_error!(
@@ -890,7 +888,6 @@ impl TypeChecker {
                     &mut self.type_kinds,
                     left_type.type_kind,
                     &mut self.function_type_kinds,
-                    &generic_type_kinds,
                     &type_names,
                 );
 
@@ -918,7 +915,7 @@ impl TypeChecker {
 
                 let struct_layout = StructLayout {
                     name: namespaced_name.last().unwrap().clone(),
-                    type_names,
+                    type_names: type_names.clone(),
                 };
 
                 let concrete_type_kind =
@@ -928,28 +925,30 @@ impl TypeChecker {
                         let mut concrete_field_kinds = Vec::new();
 
                         for field_kind in field_kinds.iter() {
-                            match self.type_kinds[field_kind.type_kind] {
+                            match &self.type_kinds[field_kind.type_kind] {
                                 TypeKind::Function {
-                                    param_type_kinds,
-                                    generic_type_kinds,
-                                    return_type_kind,
+                                    ..
                                 } => {
                                     let concrete_type_kind = generic_function_to_concrete(
                                         &self.nodes,
                                         &mut self.type_kinds,
                                         field_kind.type_kind,
                                         &mut self.function_type_kinds,
-                                        &generic_type_kinds,
                                         &type_names,
                                     );
-                                    
+
                                     concrete_field_kinds.push(Field {
                                         name: field_kind.name,
                                         type_kind: concrete_type_kind,
                                     });
-                                },
+                                }
                                 _ => {
-                                    let concrete_type_kind = generic_type_kind_to_concrete(&self.nodes, field_kind.type_kind, &generic_type_kinds, &type_names);
+                                    let concrete_type_kind = generic_type_kind_to_concrete(
+                                        &self.nodes,
+                                        field_kind.type_kind,
+                                        &generic_type_kinds,
+                                        &type_names,
+                                    );
 
                                     concrete_field_kinds.push(Field {
                                         name: field_kind.name,
@@ -1068,17 +1067,29 @@ impl TypeChecker {
         })
     }
 
-    fn struct_literal(&mut self, left: usize, fields: Arc<Vec<usize>>) -> Option<Type> {
-        self.check_node(name);
+    fn struct_literal(&mut self, mut left: usize, fields: Arc<Vec<usize>>) -> Option<Type> {
+        self.check_node(left);
 
         for field in fields.iter() {
             self.check_node(*field);
         }
 
+        if let NodeKind::GenericSpecifier { left: new_left, .. } = &self.nodes[left].kind {
+            left = *new_left;
+        }
+
+        let Node {
+            kind: NodeKind::Identifier { name },
+            ..
+        } = &self.nodes[left]
+        else {
+            type_error!(self, "invalid struct identifier");
+        };
+
         let Node {
             kind: NodeKind::Name { text: name_text },
             ..
-        } = &self.nodes[name]
+        } = &self.nodes[*name]
         else {
             type_error!(self, "invalid struct name");
         };
@@ -1086,7 +1097,7 @@ impl TypeChecker {
         let Some(name_type) = self.environment.get(name_text) else {
             type_error!(
                 self,
-                &format!("struct with name \"{}\" does not exist", name)
+                &format!("struct with name \"{}\" does not exist", name_text)
             );
         };
 
@@ -1097,7 +1108,10 @@ impl TypeChecker {
         {
             type_error!(
                 self,
-                &format!("expected the name of a struct type, but got \"{}\"", name)
+                &format!(
+                    "expected the name of a struct type, but got \"{}\"",
+                    name_text
+                )
             );
         }
 

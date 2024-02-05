@@ -1167,7 +1167,7 @@ impl Parser {
         assert_token!(self, TokenKind::Of, start, self.token_end());
         self.position += 1;
 
-        let from = self.term(true);
+        let from = self.term(false);
 
         let op = match *self.token_kind() {
             TokenKind::Less => Op::Less,
@@ -1183,14 +1183,14 @@ impl Parser {
         };
         self.position += 1;
 
-        let to = self.term(true);
+        let to = self.term(false);
 
         let mut by = None;
 
         if *self.token_kind() == TokenKind::By {
             self.position += 1;
 
-            by = Some(self.term(true));
+            by = Some(self.term(false));
         }
 
         let block = self.block();
@@ -1216,7 +1216,7 @@ impl Parser {
      * Primary: Literals, identifiers, parenthesized expressions
      *
      * (Nestable, eg. &pointer^)
-     * UnarySuffix: .<, .*, [], (), ., as
+     * UnarySuffix: .<, .*, [], (), ., as, {}
      * UnaryPrefix: &, !, +, -
      *
      * (Chainable, eg. a * b / c)
