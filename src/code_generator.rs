@@ -170,7 +170,7 @@ impl CodeGenerator {
                 node_kind: NodeKind::Function { declaration, block },
                 node_type,
             } => {
-                let NodeKind::FunctionDeclaration { name, params, generic_params, return_type_name, type_kind } = self.typed_nodes[declaration].node_kind.clone() else {
+                let NodeKind::FunctionDeclaration { name, params, return_type_name, .. } = self.typed_nodes[declaration].node_kind.clone() else {
                     panic!("Invalid function declaration");
                 };
 
@@ -180,10 +180,8 @@ impl CodeGenerator {
 
                 if let Some(generic_usages) = self.generic_function_usages.get(&declaration) {
                     let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
-                    println!("generic usage count: {}", generic_usages.len());
 
                     for generic_usage in generic_usages {
-                        println!("generic");
                         // Replace generic types with their concrete types for this usage.
                         for (type_name, generic_type_kind) in generic_usage.iter().zip(generic_type_kinds.iter()) {
                             let NodeKind::TypeName { type_kind } = self.typed_nodes[*type_name].node_kind else {
@@ -200,7 +198,6 @@ impl CodeGenerator {
                         self.body_emitters.top().body.newline();
                     }
                 } else if generic_type_kinds.is_empty() {
-                    println!("non-generic");
                     self.function_declaration(name, params, None, return_type_name, node_type);
                     self.function_declaration_needing_init = Some(declaration);
                     self.gen_node(block);
@@ -1270,9 +1267,7 @@ impl CodeGenerator {
                 );
                 self.emitter(emitter_kind).emit("*");
             }
-            // TODO:
-            // TypeKind::Partial => panic!("Can't emit partial type"),
-            TypeKind::Partial => self.emitter(emitter_kind).emit("PARTIAL"),
+            TypeKind::Partial => panic!("Can't emit partial type"),
             TypeKind::Function {
                 return_type_kind, ..
             } => {

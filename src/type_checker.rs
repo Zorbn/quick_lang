@@ -616,6 +616,12 @@ impl TypeChecker {
                     type_error!(self, "references must refer to a variable");
                 }
 
+                if let TypeKind::Function { generic_type_kinds, .. } = &self.type_kinds[right_type.type_kind] {
+                    if !generic_type_kinds.is_empty() {
+                        type_error!(self, "cannot take a function pointer to a generic function, specify its types first");
+                    }
+                }
+
                 let pointer_type_kind = get_type_kind_as_pointer(
                     &mut self.type_kinds,
                     &mut self.pointer_type_kinds,
@@ -859,8 +865,8 @@ impl TypeChecker {
 
         usages.insert(type_names.clone());
 
-        let concrete_param_type_kinds = generic_params_to_concrete(&self.nodes, &self.type_kinds, &param_type_kinds, &generic_type_kinds, &type_names);
-        let return_type_kind = generic_type_kind_to_concrete(&self.nodes, &self.type_kinds, return_type_kind, &generic_type_kinds, &type_names);
+        let concrete_param_type_kinds = generic_params_to_concrete(&self.nodes, &param_type_kinds, &generic_type_kinds, &type_names);
+        let return_type_kind = generic_type_kind_to_concrete(&self.nodes, return_type_kind, &generic_type_kinds, &type_names);
 
         let concrete_function = FunctionLayout {
             param_type_kinds: Arc::new(concrete_param_type_kinds),
@@ -872,7 +878,7 @@ impl TypeChecker {
 
         Some(Type {
             type_kind: concrete_type_kind,
-            instance_kind: InstanceKind::Literal,
+            instance_kind: InstanceKind::Variable,
         })
     }
 

@@ -150,6 +150,9 @@ fun main() Int32 {
     );
 
     val genericResult = genericFunction.<Int, Bool>(777, true);
+    val genericResult2 = genericFunction.<Bool, Bool>(false, true);
+
+    val nonGenericPtr = &genericFunction.<Int, Int>;
 
     return 0;
 }

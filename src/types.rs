@@ -11,7 +11,7 @@ pub fn add_type(type_kinds: &mut Vec<TypeKind>, type_kind: TypeKind) -> usize {
     index
 }
 
-pub fn generic_type_kind_to_concrete(nodes: &Vec<Node>, type_kinds: &Vec<TypeKind>, type_kind: usize, generic_type_kinds: &Arc<Vec<usize>>, type_names: &Arc<Vec<usize>>) -> usize {
+pub fn generic_type_kind_to_concrete(nodes: &[Node], type_kind: usize, generic_type_kinds: &Arc<Vec<usize>>, type_names: &Arc<Vec<usize>>) -> usize {
     for (i, generic_type_kind) in generic_type_kinds.iter().enumerate() {
         if type_kind != *generic_type_kind {
             continue;
@@ -27,11 +27,11 @@ pub fn generic_type_kind_to_concrete(nodes: &Vec<Node>, type_kinds: &Vec<TypeKin
     type_kind
 }
 
-pub fn generic_params_to_concrete(nodes: &Vec<Node>, type_kinds: &Vec<TypeKind>, param_type_kinds: &Arc<Vec<usize>>, generic_type_kinds: &Arc<Vec<usize>>, type_names: &Arc<Vec<usize>>) -> Vec<usize> {
+pub fn generic_params_to_concrete(nodes: &[Node], param_type_kinds: &Arc<Vec<usize>>, generic_type_kinds: &Arc<Vec<usize>>, type_names: &Arc<Vec<usize>>) -> Vec<usize> {
     let mut concrete_param_type_kinds = Vec::new();
 
     for param_type_kind in param_type_kinds.iter() {
-        let concrete_type_kind = generic_type_kind_to_concrete(nodes, type_kinds, *param_type_kind, generic_type_kinds, type_names);
+        let concrete_type_kind = generic_type_kind_to_concrete(nodes, *param_type_kind, generic_type_kinds, type_names);
         concrete_param_type_kinds.push(concrete_type_kind);
     }
 
