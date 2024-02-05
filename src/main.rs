@@ -45,8 +45,9 @@ mod types;
  * Prevent multiple functions, enums, structs with the same name.
  * Prevent name collisions in struct members.
  * Don't use keywords for primitive types, use named types instead.
- * Generic structs.
+ * Generic structs. For the sake of parsing struct literals will probably need to become a unary operator {} that acts on names or generic specified names.
  * Generic type inference if possible.
+ * Try requiring for/while/if/etc to be enclosed in parens, and change them to have a statement instead of a block afterwards. Just to see if it's better.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.
