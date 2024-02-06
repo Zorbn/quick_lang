@@ -27,10 +27,6 @@ mod types;
 
 /*
  * CURRENTLY BROKEN:
- * Count generic usages that are part of type name generic specifiers.
- * Defining unique generic usages inside of an already generic context leads to stack overflow, probably an alias loop.
- *     * If the generics have the same names then it will be a stack overflow, otherwise, it's crashes trying to emit a partial type.
- *
  * Can't call functions from files that are processed later than the current file.
  *
  * BIG TODOS:
@@ -52,7 +48,6 @@ mod types;
  * Prevent multiple functions, enums, structs with the same name.
  * Prevent name collisions in struct members.
  * Don't use keywords for primitive types, use named types instead.
- * Generic structs. For the sake of parsing struct literals will probably need to become a unary operator {} that acts on names or generic specified names.
  * Generic type inference if possible.
  * Try requiring for/while/if/etc to be enclosed in parens, and change them to have a statement instead of a block afterwards. Just to see if it's better.
  *
@@ -133,8 +128,6 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    println!("type checking done");
-
     let typed_nodes = type_checker
         .typed_nodes
         .iter()
@@ -185,7 +178,7 @@ fn main() -> ExitCode {
         .args(["bin/out.c", "-o", "bin/out.exe"])
         .output()
     {
-        Err(_) => panic!("Couldn't compile using the system compiler!"),
+        Err(_) => panic!("couldn't compile using the system compiler!"),
         Ok(output) => {
             if !output.stderr.is_empty() {
                 println!("System compiler error:\n");

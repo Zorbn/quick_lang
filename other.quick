@@ -42,8 +42,8 @@ struct GenericStruct<A, B> {
         return self.b;
     }
 
-    // fun DoThingWithStringStruct(self *GenericStruct.<String, Bool>) Void {
-    // }
+    fun DoThingWithStringStruct(self *GenericStruct.<String, A>) Void {
+    }
 }
 
 fun genericFunction2<C, D>(a C, b D) C {

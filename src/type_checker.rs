@@ -13,7 +13,7 @@ use crate::{
         UINT_INDEX,
     },
     types::{
-        add_type, generic_function_to_concrete, generic_struct_to_concrete, get_type_kind_as_array,
+        generic_function_to_concrete, generic_struct_to_concrete, get_type_kind_as_array,
         get_type_kind_as_pointer,
     },
 };
@@ -105,55 +105,8 @@ impl TypeChecker {
 
         type_checker.typed_nodes.resize(node_count, None);
         type_checker.environment.push();
-        type_checker.resolve_partial_generics();
 
         type_checker
-    }
-
-    fn resolve_partial_generics(&mut self) {
-        for i in 0..self.type_kinds.len() {
-            if let TypeKind::PartialGeneric {
-                inner_type_kind,
-                generic_param_type_kinds,
-            } = self.type_kinds[i].clone()
-            {
-                let TypeKind::Struct { name, .. } = self.type_kinds[inner_type_kind].clone() else {
-                    // TODO: type_error!(self, "cannot apply generic specifier to non-struct type name");
-                    panic!("cannot apply generic specifier to non-struct type name");
-                };
-
-                let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-                    // TODO: type_error!(self, "invalid name in generic struct");
-                    panic!("invalid name in generic struct");
-                };
-
-                let struct_layout = StructLayout {
-                    name: name_text.clone(),
-                    generic_param_type_kinds: generic_param_type_kinds.clone(),
-                };
-
-                // TODO: This creates an extra type in the list instead of replacing the old one, should that change?
-                let concrete_index = generic_struct_to_concrete(
-                    struct_layout,
-                    &mut self.type_kinds,
-                    inner_type_kind,
-                    &mut self.struct_type_kinds,
-                    &mut self.function_type_kinds,
-                    &generic_param_type_kinds,
-                );
-                self.type_kinds[i] = self.type_kinds[concrete_index].clone();
-
-//                 let Some(index) = self.definition_indices.get(&vec![name_text]) else {
-//                     // TODO: type_error!(self, "invalid struct before generic specifier");
-//                     panic!("invalid struct before generic specifier");
-//                 };
-//
-//                 self.pending_generic_usages.push(PendingGenericUsage {
-//                     index: *index,
-//                     usage: generic_param_type_kinds.clone(),
-//                 });
-            }
-        }
     }
 
     pub fn check(&mut self, start_index: usize) {
@@ -175,7 +128,12 @@ impl TypeChecker {
             self.generic_usages.entry(pending_usage.index).or_default();
 
             let dealiased_usage = Arc::new(dealiased_usage);
-            if !self.generic_usages.get_mut(&pending_usage.index).unwrap().insert(dealiased_usage.clone()) {
+            if !self
+                .generic_usages
+                .get_mut(&pending_usage.index)
+                .unwrap()
+                .insert(dealiased_usage.clone())
+            {
                 continue;
             }
 
@@ -183,10 +141,21 @@ impl TypeChecker {
                 NodeKind::Function { declaration, block } => {
                     self.function(declaration, block, Some(dealiased_usage))
                 }
-                NodeKind::StructDefinition { name, fields, generic_params, functions, type_kind } => {
-                    self.struct_definition(name, fields, generic_params, functions, type_kind, Some(dealiased_usage))
-                }
-                _ => panic!("Invalid generic usage")
+                NodeKind::StructDefinition {
+                    name,
+                    fields,
+                    generic_params,
+                    functions,
+                    type_kind,
+                } => self.struct_definition(
+                    name,
+                    fields,
+                    generic_params,
+                    functions,
+                    type_kind,
+                    Some(dealiased_usage),
+                ),
+                _ => panic!("invalid generic usage"),
             };
 
             self.typed_nodes[pending_usage.index] = Some(TypedNode {
@@ -334,7 +303,10 @@ impl TypeChecker {
         }
 
         for struct_definition in structs.iter() {
-            let NodeKind::StructDefinition { name, type_kind, .. } = &self.nodes[*struct_definition].kind else {
+            let NodeKind::StructDefinition {
+                name, type_kind, ..
+            } = &self.nodes[*struct_definition].kind
+            else {
                 type_error!(self, "invalid struct definition");
             };
             let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
@@ -351,7 +323,10 @@ impl TypeChecker {
         }
 
         for enum_definition in enums.iter() {
-            let NodeKind::EnumDefinition { name, type_kind, .. } = &self.nodes[*enum_definition].kind else {
+            let NodeKind::EnumDefinition {
+                name, type_kind, ..
+            } = &self.nodes[*enum_definition].kind
+            else {
                 type_error!(self, "invalid enum definition");
             };
             let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
@@ -391,7 +366,10 @@ impl TypeChecker {
         type_kind: usize,
         generic_usage: Option<Arc<Vec<usize>>>,
     ) -> Option<Type> {
-        let TypeKind::Struct { generic_type_kinds, .. } = self.type_kinds[type_kind].clone() else {
+        let TypeKind::Struct {
+            generic_type_kinds, ..
+        } = self.type_kinds[type_kind].clone()
+        else {
             type_error!(self, "invalid struct definition");
         };
 
@@ -404,8 +382,6 @@ impl TypeChecker {
             for (generic_param_type_kind, generic_type_kind) in
                 generic_usage.iter().zip(generic_type_kinds.iter())
             {
-                println!("TYPE CHECKER STRUCT Alias {} -> {} to {:?}", *generic_type_kind, *generic_param_type_kind, self.type_kinds[*generic_param_type_kind]);
-
                 self.type_kinds[*generic_type_kind] = TypeKind::Alias {
                     inner_type_kind: *generic_param_type_kind,
                 };
@@ -425,7 +401,10 @@ impl TypeChecker {
         self.environment.insert(name_text, struct_type);
 
         self.environment.push();
-        self.add_generic_params_to_environment(generic_params);
+
+        for generic_param in generic_params.iter() {
+            self.check_node(*generic_param);
+        }
 
         for field in fields.iter() {
             self.check_node(*field);
@@ -470,11 +449,19 @@ impl TypeChecker {
         self.check_node(type_name)
     }
 
-    fn function(&mut self, declaration: usize, block: usize, generic_usage: Option<Arc<Vec<usize>>>) -> Option<Type> {
+    fn function(
+        &mut self,
+        declaration: usize,
+        block: usize,
+        generic_usage: Option<Arc<Vec<usize>>>,
+    ) -> Option<Type> {
         self.environment.push();
         let declaration_type = self.check_node(declaration)?;
 
-        let TypeKind::Function { generic_type_kinds, .. } = self.type_kinds[declaration_type.type_kind].clone() else {
+        let TypeKind::Function {
+            generic_type_kinds, ..
+        } = self.type_kinds[declaration_type.type_kind].clone()
+        else {
             type_error!(self, "invalid function declaration");
         };
 
@@ -490,8 +477,6 @@ impl TypeChecker {
             for (generic_param_type_kind, generic_type_kind) in
                 generic_usage.iter().zip(generic_type_kinds.iter())
             {
-                println!("TYPE CHECKER FN Alias {} -> {} to {:?}", *generic_type_kind, *generic_param_type_kind, self.type_kinds[*generic_param_type_kind]);
-
                 self.type_kinds[*generic_type_kind] = TypeKind::Alias {
                     inner_type_kind: *generic_param_type_kind,
                 };
@@ -517,7 +502,9 @@ impl TypeChecker {
             self.check_node(*param);
         }
 
-        self.add_generic_params_to_environment(generic_params);
+        for generic_param in generic_params.iter() {
+            self.check_node(*generic_param);
+        }
 
         self.check_node(return_type_name);
 
@@ -1030,87 +1017,86 @@ impl TypeChecker {
         generic_param_type_kinds: Arc<Vec<usize>>,
     ) -> Option<Type> {
         let left_type = self.check_node(left)?;
-        let (index, concrete_type_kind, instance_kind) = match self.type_kinds[left_type.type_kind]
-            .clone()
-        {
-            TypeKind::Function {
-                generic_type_kinds, ..
-            } => {
-                if generic_type_kinds.is_empty() {
-                    type_error!(
-                        self,
-                        "generic specifier cannot be applied to non-generic functions"
+        let (index, concrete_type_kind, instance_kind) =
+            match self.type_kinds[left_type.type_kind].clone() {
+                TypeKind::Function {
+                    generic_type_kinds, ..
+                } => {
+                    if generic_type_kinds.is_empty() {
+                        type_error!(
+                            self,
+                            "generic specifier cannot be applied to non-generic functions"
+                        );
+                    }
+
+                    let Some(namespaced_name) = self.get_namespaced_name(left) else {
+                        type_error!(self, "expected function name before generic specifier");
+                    };
+
+                    let Some(function_index) = self.definition_indices.get(&namespaced_name) else {
+                        type_error!(self, "invalid function before generic specifier");
+                    };
+
+                    let concrete_type_kind = generic_function_to_concrete(
+                        &mut self.type_kinds,
+                        left_type.type_kind,
+                        &mut self.function_type_kinds,
+                        &generic_param_type_kinds,
                     );
+
+                    (function_index, concrete_type_kind, InstanceKind::Variable)
                 }
+                TypeKind::Struct {
+                    generic_type_kinds, ..
+                } => {
+                    if generic_type_kinds.is_empty() {
+                        type_error!(
+                            self,
+                            "generic specifier cannot be applied to non-generic functions"
+                        );
+                    }
 
-                let Some(namespaced_name) = self.get_namespaced_name(left) else {
-                    type_error!(self, "expected function name before generic specifier");
-                };
+                    let Some(namespaced_name) = self.get_namespaced_name(left) else {
+                        type_error!(self, "expected struct name before generic specifier");
+                    };
 
-                let Some(function_index) = self.definition_indices.get(&namespaced_name) else {
-                    type_error!(self, "invalid function before generic specifier");
-                };
+                    let Some(struct_index) = self.definition_indices.get(&namespaced_name) else {
+                        type_error!(self, "invalid struct before generic specifier");
+                    };
 
-                let concrete_type_kind = generic_function_to_concrete(
-                    &mut self.type_kinds,
-                    left_type.type_kind,
-                    &mut self.function_type_kinds,
-                    &generic_param_type_kinds,
-                );
+                    let struct_layout = StructLayout {
+                        name: namespaced_name.last().unwrap().clone(),
+                        generic_param_type_kinds: generic_param_type_kinds.clone(),
+                    };
 
-                (function_index, concrete_type_kind, InstanceKind::Variable)
-            }
-            TypeKind::Struct {
-                generic_type_kinds, ..
-            } => {
-                if generic_type_kinds.is_empty() {
-                    type_error!(
-                        self,
-                        "generic specifier cannot be applied to non-generic functions"
+                    let concrete_type_kind = generic_struct_to_concrete(
+                        struct_layout,
+                        &mut self.type_kinds,
+                        left_type.type_kind,
+                        &mut self.struct_type_kinds,
+                        &mut self.function_type_kinds,
+                        &generic_param_type_kinds,
                     );
+
+                    (struct_index, concrete_type_kind, InstanceKind::Name)
                 }
-
-                let Some(namespaced_name) = self.get_namespaced_name(left) else {
-                    type_error!(self, "expected struct name before generic specifier");
-                };
-
-                let Some(struct_index) = self.definition_indices.get(&namespaced_name) else {
-                    type_error!(self, "invalid struct before generic specifier");
-                };
-
-                let struct_layout = StructLayout {
-                    name: namespaced_name.last().unwrap().clone(),
-                    generic_param_type_kinds: generic_param_type_kinds.clone(),
-                };
-
-                let concrete_type_kind = generic_struct_to_concrete(
-                    struct_layout,
-                    &mut self.type_kinds,
-                    left_type.type_kind,
-                    &mut self.struct_type_kinds,
-                    &mut self.function_type_kinds,
-                    &generic_param_type_kinds,
-                );
-
-                (struct_index, concrete_type_kind, InstanceKind::Name)
-            }
-            _ => type_error!(
-                self,
-                "generic specifier can only be applied to functions and structs"
-            ),
-        };
+                _ => type_error!(
+                    self,
+                    "generic specifier can only be applied to functions and structs"
+                ),
+            };
 
         // if !self.generic_usages.contains_key(index) {
-            // self.generic_usages.insert(*index, HashSet::new());
+        // self.generic_usages.insert(*index, HashSet::new());
         // }
 
         // let usages = self.generic_usages.get_mut(index).unwrap();
 
         // if usages.insert(generic_param_type_kinds.clone()) {
-            self.pending_generic_usages.push(PendingGenericUsage {
-                index: *index,
-                usage: generic_param_type_kinds.clone(),
-            });
+        self.pending_generic_usages.push(PendingGenericUsage {
+            index: *index,
+            usage: generic_param_type_kinds.clone(),
+        });
         // }
 
         Some(Type {
@@ -1229,31 +1215,66 @@ impl TypeChecker {
         })
     }
 
+    fn resolve_partial_generics(&mut self, type_kind: usize) -> usize {
+        // TODO: Resolve nested partial generics inside other partial generics of functions.
+        // TODO: Convert panics in this function into type errors using similar system as parser.
+        match self.type_kinds[type_kind].clone() {
+            TypeKind::Array { element_type_kind, element_count } => {
+                let element_type_kind = self.resolve_partial_generics(element_type_kind);
+                get_type_kind_as_array(&mut self.type_kinds, &mut self.array_type_kinds, element_type_kind, element_count)
+            },
+            TypeKind::Pointer { inner_type_kind } => {
+                let inner_type_kind = self.resolve_partial_generics(inner_type_kind);
+                get_type_kind_as_pointer(&mut self.type_kinds, &mut self.pointer_type_kinds, inner_type_kind)
+            },
+            TypeKind::PartialGeneric {
+                inner_type_kind,
+                generic_param_type_kinds,
+            } => {
+                let TypeKind::Struct { name, .. } = self.type_kinds[inner_type_kind].clone() else {
+                    panic!("cannot apply generic specifier to non-struct type name");
+                };
+
+                let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+                    panic!("invalid name in generic struct");
+                };
+
+                let struct_layout = StructLayout {
+                    name: name_text.clone(),
+                    generic_param_type_kinds: generic_param_type_kinds.clone(),
+                };
+
+                let concrete_index = generic_struct_to_concrete(
+                    struct_layout,
+                    &mut self.type_kinds,
+                    inner_type_kind,
+                    &mut self.struct_type_kinds,
+                    &mut self.function_type_kinds,
+                    &generic_param_type_kinds,
+                );
+
+                let Some(index) = self.definition_indices.get(&vec![name_text]) else {
+                    panic!("invalid struct before generic specifier");
+                };
+
+                self.pending_generic_usages.push(PendingGenericUsage {
+                    index: *index,
+                    usage: generic_param_type_kinds.clone(),
+                });
+
+                concrete_index
+            }
+            _ => type_kind,
+        }
+    }
+
     fn type_name(&mut self, type_kind: usize) -> Option<Type> {
+        let type_kind = self.resolve_partial_generics(type_kind);
+
         Some(Type {
             type_kind,
             instance_kind: InstanceKind::Name,
         })
-    }
-
-    // TODO:
-    fn add_generic_params_to_environment(&mut self, generic_params: Arc<Vec<usize>>) {
-        for generic_param in generic_params.iter() {
-            self.check_node(*generic_param);
-
-//             let NodeKind::Name { text } = self.nodes[*generic_param].kind.clone() else {
-//                 panic!("Invalid generic param");
-//             };
-//
-//             let generic_type_kind = self.add_type(TypeKind::Partial);
-//             self.environment.insert(
-//                 text,
-//                 Type {
-//                     type_kind: generic_type_kind,
-//                     instance_kind: InstanceKind::Name,
-//                 },
-//             )
-        }
     }
 
     fn is_type_numeric(type_kind: usize) -> bool {

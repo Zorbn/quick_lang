@@ -95,7 +95,7 @@ impl EmitterStack {
     pub fn write(&self, file: &mut File) {
         if self.stack.len() != 1 {
             panic!(
-                "Invalid stack length while trying to get result of emitter stack: {}",
+                "invalid stack length while trying to get result of emitter stack: {}",
                 self.stack.len()
             );
         }

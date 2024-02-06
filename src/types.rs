@@ -58,7 +58,7 @@ pub fn generic_function_to_concrete(
         return_type_kind,
     } = &type_kinds[function_type_kind]
     else {
-        panic!("Type kind is not a function");
+        panic!("type kind is not a function");
     };
 
     let concrete_param_type_kinds =
@@ -90,7 +90,7 @@ pub fn generic_struct_to_concrete(
         ..
     } = type_kinds[struct_type_kind].clone()
     else {
-        panic!("Type kind is not a struct");
+        panic!("type kind is not a struct");
     };
 
     if let Some(concrete_type_kind) = struct_type_kinds.get(&struct_layout) {

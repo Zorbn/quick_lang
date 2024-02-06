@@ -353,11 +353,11 @@ impl CodeGenerator {
             TypedNode {
                 node_kind: NodeKind::TypeName { .. },
                 ..
-            } => panic!("Cannot generate type name with gen_node"),
+            } => panic!("cannot generate type name with gen_node"),
             TypedNode {
                 node_kind: NodeKind::Error,
                 ..
-            } => panic!("Cannot generate error node"),
+            } => panic!("cannot generate error node"),
         }
     }
 
@@ -393,11 +393,11 @@ impl CodeGenerator {
             generic_type_kinds, ..
         } = self.type_kinds[node_type.unwrap().type_kind].clone()
         else {
-            panic!("Invalid function type");
+            panic!("invalid function type");
         };
 
         let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
-            panic!("Invalid name in generic struct");
+            panic!("invalid name in generic struct");
         };
 
         if let Some(generic_usages) = self.generic_usages.get(&index) {
@@ -409,7 +409,6 @@ impl CodeGenerator {
                 for (generic_param_type_kind, generic_type_kind) in
                     generic_usage.iter().zip(generic_type_kinds.iter())
                 {
-                    println!("Alias to {:?}", self.type_kinds[*generic_param_type_kind]);
                     self.type_kinds[*generic_type_kind] = TypeKind::Alias {
                         inner_type_kind: *generic_param_type_kind,
                     };
@@ -482,7 +481,7 @@ impl CodeGenerator {
         self.type_prototype_emitter.indent();
 
         let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
-            panic!("Invalid name in enum");
+            panic!("invalid name in enum");
         };
 
         self.current_namespace_names.push(NamespaceName {
@@ -531,14 +530,14 @@ impl CodeGenerator {
             ..
         } = self.typed_nodes[declaration].node_kind.clone()
         else {
-            panic!("Invalid function declaration");
+            panic!("invalid function declaration");
         };
 
         let TypeKind::Function {
             generic_type_kinds, ..
         } = self.type_kinds[node_type.type_kind].clone()
         else {
-            panic!("Invalid function type");
+            panic!("invalid function type");
         };
 
         if let Some(generic_usages) = self.generic_usages.get(&index) {
@@ -549,14 +548,6 @@ impl CodeGenerator {
                 for (generic_param_type_kind, generic_type_kind) in
                     generic_usage.iter().zip(generic_type_kinds.iter())
                 {
-                    println!("FN Alias to {:?}", self.type_kinds[*generic_param_type_kind]);
-
-                    // let generic_param_type_kind = if let TypeKind::Alias { inner_type_kind } = &self.type_kinds[*generic_param_type_kind] {
-                    //     *inner_type_kind
-                    // } else {
-                    //     *generic_param_type_kind
-                    // };
-
                     self.type_kinds[*generic_type_kind] = TypeKind::Alias {
                         inner_type_kind: *generic_param_type_kind,
                     };
@@ -623,7 +614,7 @@ impl CodeGenerator {
             ..
         } = self.typed_nodes[declaration].node_kind.clone()
         else {
-            panic!("Invalid function declaration");
+            panic!("invalid function declaration");
         };
         self.emit_function_declaration(
             EmitterKind::FunctionPrototype,
@@ -647,7 +638,7 @@ impl CodeGenerator {
             ..
         } = self.typed_nodes[function_declaration].clone()
         else {
-            panic!("Invalid function declaration needing init");
+            panic!("invalid function declaration needing init");
         };
 
         for param in params.iter() {
@@ -656,7 +647,7 @@ impl CodeGenerator {
                 node_type,
             } = self.typed_nodes[*param].clone()
             else {
-                panic!("Invalid param in function declaration needing init");
+                panic!("invalid param in function declaration needing init");
             };
 
             let type_kind = node_type.unwrap().type_kind;
@@ -667,7 +658,7 @@ impl CodeGenerator {
 
             let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
             else {
-                panic!("Invalid parameter name");
+                panic!("invalid parameter name");
             };
             let copy_name = format!("__{}", &name_text);
 
@@ -706,7 +697,7 @@ impl CodeGenerator {
                 ..
             } = self.typed_nodes[*last_statement]
             else {
-                panic!("Last statement is not a statement");
+                panic!("last statement is not a statement");
             };
             matches!(
                 self.typed_nodes[inner],
@@ -791,7 +782,7 @@ impl CodeGenerator {
 
             let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
             else {
-                panic!("Invalid variable name");
+                panic!("invalid variable name");
             };
             self.emit_memmove_expression_to_name(&name_text, expression, type_kind);
         } else {
@@ -969,7 +960,7 @@ impl CodeGenerator {
             Op::Minus => "-",
             Op::Not => "!",
             Op::Reference => "&",
-            _ => panic!("Expected unary prefix operator"),
+            _ => panic!("expected unary prefix operator"),
         });
 
         self.gen_node(right);
@@ -979,7 +970,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("(");
         self.body_emitters.top().body.emit(match op {
             Op::Dereference => "*",
-            _ => panic!("Expected unary suffix operator"),
+            _ => panic!("expected unary suffix operator"),
         });
 
         self.gen_node(left);
@@ -1067,14 +1058,14 @@ impl CodeGenerator {
                 name: struct_name, ..
             } = self.type_kinds[left_type.type_kind]
             else {
-                panic!("Expected function field to be part of a struct");
+                panic!("expected function field to be part of a struct");
             };
 
             let NodeKind::Name {
                 text: struct_name_text,
             } = self.typed_nodes[struct_name].node_kind.clone()
             else {
-                panic!("Invalid name in struct field access");
+                panic!("invalid name in struct field access");
             };
 
             self.current_namespace_names.push(NamespaceName {
@@ -1103,7 +1094,7 @@ impl CodeGenerator {
                 self.body_emitters.top().body.emit("__");
                 self.gen_node(enum_name);
             }
-            _ => panic!("Tried to access type that cannot be accessed"),
+            _ => panic!("tried to access type that cannot be accessed"),
         }
 
         self.gen_node(name);
@@ -1302,7 +1293,7 @@ impl CodeGenerator {
             ..
         } = self.typed_nodes[type_name]
         else {
-            panic!("Tried to emit node that wasn't a type name");
+            panic!("tried to emit node that wasn't a type name");
         };
         self.emit_type_kind_left(type_kind, emitter_kind, do_arrays_as_pointers, true);
     }
@@ -1318,7 +1309,7 @@ impl CodeGenerator {
             ..
         } = self.typed_nodes[type_name]
         else {
-            panic!("Tried to emit node that wasn't a type name");
+            panic!("tried to emit node that wasn't a type name");
         };
         self.emit_type_kind_right(type_kind, emitter_kind, do_arrays_as_pointers);
     }
@@ -1330,7 +1321,6 @@ impl CodeGenerator {
         do_arrays_as_pointers: bool,
         is_prefix: bool,
     ) {
-        let original_type_kind = type_kind; // TODO
         let type_kind = &self.type_kinds[type_kind];
         let needs_trailing_space = is_prefix
             && !matches!(
@@ -1362,7 +1352,7 @@ impl CodeGenerator {
             } => {
                 self.emitter(emitter_kind).emit("struct ");
                 let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
-                    panic!("Invalid struct name");
+                    panic!("invalid struct name");
                 };
                 self.emit_name(text, emitter_kind);
                 self.emit_generic_param_suffix(generic_param_type_kinds, emitter_kind);
@@ -1370,7 +1360,7 @@ impl CodeGenerator {
             TypeKind::Enum { name, .. } => {
                 self.emitter(emitter_kind).emit("enum ");
                 let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
-                    panic!("Invalid enum name");
+                    panic!("invalid enum name");
                 };
                 self.emit_name(text, emitter_kind);
             }
@@ -1397,17 +1387,15 @@ impl CodeGenerator {
                 self.emitter(emitter_kind).emit("*");
             }
             TypeKind::Alias { inner_type_kind } => {
-                println!("alias start {} -> {}", original_type_kind, inner_type_kind);
                 self.emit_type_kind_left(
                     inner_type_kind,
                     emitter_kind,
                     do_arrays_as_pointers,
                     is_prefix,
                 );
-                println!("alias end");
             }
             TypeKind::Partial | TypeKind::PartialGeneric { .. } => {
-                panic!("Can't emit partial type: {:?}", type_kind)
+                panic!("can't emit partial type: {:?}", type_kind)
             }
             TypeKind::Function {
                 return_type_kind, ..
@@ -1490,7 +1478,7 @@ impl CodeGenerator {
             Op::MinusAssign => " -= ",
             Op::MultiplyAssign => " *= ",
             Op::DivideAssign => " /= ",
-            _ => panic!("Expected binary operator"),
+            _ => panic!("expected binary operator"),
         });
     }
 
@@ -1523,7 +1511,7 @@ impl CodeGenerator {
             return_type_kind, ..
         } = self.type_kinds[type_kind]
         else {
-            panic!("Tried to emit function declaration for non-function type");
+            panic!("tried to emit function declaration for non-function type");
         };
 
         if is_type_kind_array(&self.type_kinds, return_type_kind) {
@@ -1547,7 +1535,7 @@ impl CodeGenerator {
 
     fn emit_param_node(&mut self, param: usize, kind: EmitterKind) {
         let NodeKind::Param { name, type_name } = self.typed_nodes[param].node_kind else {
-            panic!("Invalid param");
+            panic!("invalid param");
         };
 
         self.emit_param(name, type_name, kind);
@@ -1567,7 +1555,7 @@ impl CodeGenerator {
 
     fn emit_name_node(&mut self, name: usize, kind: EmitterKind) {
         let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
-            panic!("Invalid name");
+            panic!("invalid name");
         };
 
         self.emit_name(text, kind);
