@@ -115,13 +115,13 @@ impl TypeChecker {
                     panic!("cannot apply generic specifier to non-struct type name");
                 };
 
-                let NodeKind::Name { text } = self.nodes[name].kind.clone() else {
+                let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
                     // TODO: type_error!(self, "invalid name in generic struct");
                     panic!("invalid name in generic struct");
                 };
 
                 let struct_layout = StructLayout {
-                    name: text,
+                    name: name_text.clone(),
                     generic_param_type_kinds: generic_param_type_kinds.clone(),
                 };
 
@@ -135,6 +135,21 @@ impl TypeChecker {
                     &generic_param_type_kinds,
                 );
                 self.type_kinds[i] = self.type_kinds[concrete_index].clone();
+
+                // TODO: Duplicate.
+//                 let Some(index) = self.declaration_indices.get(&vec![name_text]) else {
+//                     // TODO: type_error!(self, "invalid struct before generic specifier");
+//                     panic!("invalid struct before generic specifier");
+//                 };
+//
+//                 if !self.generic_usages.contains_key(index) {
+//                     self.generic_usages.insert(*index, HashSet::new());
+//                 }
+//
+//                 let usages = self.generic_usages.get_mut(index).unwrap();
+//
+//                 usages.insert(generic_param_type_kinds.clone());
+//                 println!("{:?}", usages.len());
             }
         }
     }

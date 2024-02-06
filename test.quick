@@ -205,5 +205,7 @@ fun genericFunction<A, B>(a A, b B) A {
     val arrayA = [a, a, a];
     val arrayB = [b, b];
 
+    // val genericStruct = GenericStruct.<A, B> { a = 5, b = false };
+
     return arrayA[2];
 }

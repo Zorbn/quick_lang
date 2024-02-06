@@ -403,11 +403,16 @@ impl CodeGenerator {
         if let Some(generic_usages) = self.generic_usages.get(&index) {
             let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
 
+
             for generic_usage in generic_usages {
+                // TODO:
+                let types_backup = self.type_kinds.to_owned();
+
                 // Replace generic types with their concrete types for this usage.
                 for (generic_param_type_kind, generic_type_kind) in
                     generic_usage.iter().zip(generic_type_kinds.iter())
                 {
+                    println!("Alias to {:?}", self.type_kinds[*generic_param_type_kind]);
                     self.type_kinds[*generic_type_kind] = TypeKind::Alias {
                         inner_type_kind: *generic_param_type_kind,
                     };
@@ -439,6 +444,8 @@ impl CodeGenerator {
                 self.type_prototype_emitter.unindent();
                 self.type_prototype_emitter.emitln("};");
                 self.type_prototype_emitter.newline();
+
+                self.type_kinds = types_backup;
             }
         } else if generic_type_kinds.is_empty() {
             // TODO: Duplication.
@@ -543,6 +550,7 @@ impl CodeGenerator {
                 for (generic_param_type_kind, generic_type_kind) in
                     generic_usage.iter().zip(generic_type_kinds.iter())
                 {
+                    println!("FN Alias to {:?}", self.type_kinds[*generic_param_type_kind]);
                     self.type_kinds[*generic_type_kind] = TypeKind::Alias {
                         inner_type_kind: *generic_param_type_kind,
                     };

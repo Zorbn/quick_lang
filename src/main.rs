@@ -28,6 +28,10 @@ mod types;
 /*
  * CURRENTLY BROKEN:
  * Count generic usages that are part of type name generic specifiers.
+ * Defining unique generic usages inside of an already generic context leads to stack overflow, probably an alias loop.
+ *     * If the generics have the same names then it will be a stack overflow, otherwise, it's crashes trying to emit a partial type.
+ *
+ * Can't call functions from files that are processed later than the current file.
  *
  * BIG TODOS:
  * Complete type checking
@@ -128,6 +132,8 @@ fn main() -> ExitCode {
     if type_checker.had_error {
         return ExitCode::FAILURE;
     }
+
+    println!("type checking done");
 
     let typed_nodes = type_checker
         .typed_nodes
