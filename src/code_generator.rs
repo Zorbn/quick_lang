@@ -89,25 +89,35 @@ fn reserved_names() -> &'static HashSet<Arc<str>> {
     })
 }
 
+#[derive(Clone)]
+struct NamespaceName {
+    name: Arc<str>,
+    generic_param_type_kinds: Option<Arc<Vec<usize>>>,
+}
+
 pub struct CodeGenerator {
     pub typed_nodes: Vec<TypedNode>,
     pub type_kinds: Vec<TypeKind>,
-    pub generic_function_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>,
+    pub generic_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>,
     pub header_emitter: Emitter,
     pub type_prototype_emitter: Emitter,
     pub function_prototype_emitter: Emitter,
     pub body_emitters: EmitterStack,
     function_declaration_needing_init: Option<usize>,
     temp_variable_count: usize,
-    current_namespace_names: Vec<usize>,
+    current_namespace_names: Vec<NamespaceName>,
 }
 
 impl CodeGenerator {
-    pub fn new(typed_nodes: Vec<TypedNode>, type_kinds: Vec<TypeKind>, generic_function_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>) -> Self {
+    pub fn new(
+        typed_nodes: Vec<TypedNode>,
+        type_kinds: Vec<TypeKind>,
+        generic_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>,
+    ) -> Self {
         let mut code_generator = Self {
             typed_nodes,
             type_kinds,
-            generic_function_usages,
+            generic_usages,
             header_emitter: Emitter::new(0),
             type_prototype_emitter: Emitter::new(0),
             function_prototype_emitter: Emitter::new(0),
@@ -152,7 +162,7 @@ impl CodeGenerator {
                         ..
                     },
                 node_type,
-            } => self.struct_definition(name, fields, functions, node_type),
+            } => self.struct_definition(name, fields, functions, index, node_type),
             TypedNode {
                 node_kind:
                     NodeKind::EnumDefinition {
@@ -285,9 +295,13 @@ impl CodeGenerator {
                 node_type,
             } => self.cast(left, type_name, node_type),
             TypedNode {
-                node_kind: NodeKind::GenericSpecifier { left, type_names },
+                node_kind:
+                    NodeKind::GenericSpecifier {
+                        left,
+                        generic_param_type_kinds,
+                    },
                 node_type,
-            } => self.generic_specifier(left, type_names, node_type),
+            } => self.generic_specifier(left, generic_param_type_kinds, node_type),
             TypedNode {
                 node_kind: NodeKind::Name { text },
                 node_type,
@@ -372,28 +386,86 @@ impl CodeGenerator {
         name: usize,
         fields: Arc<Vec<usize>>,
         functions: Arc<Vec<usize>>,
-        _node_type: Option<Type>,
+        index: usize,
+        node_type: Option<Type>,
     ) {
-        self.current_namespace_names.push(name);
+        let TypeKind::Struct {
+            generic_type_kinds, ..
+        } = self.type_kinds[node_type.unwrap().type_kind].clone()
+        else {
+            panic!("Invalid function type");
+        };
 
-        for function in functions.iter() {
-            self.gen_node(*function);
+        let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
+            panic!("Invalid name in generic struct");
+        };
+
+        if let Some(generic_usages) = self.generic_usages.get(&index) {
+            let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
+
+            for generic_usage in generic_usages {
+                // Replace generic types with their concrete types for this usage.
+                for (generic_param_type_kind, generic_type_kind) in
+                    generic_usage.iter().zip(generic_type_kinds.iter())
+                {
+                    self.type_kinds[*generic_type_kind] = TypeKind::Alias {
+                        inner_type_kind: *generic_param_type_kind,
+                    };
+                }
+
+                // TODO: Duplication.
+                self.current_namespace_names.push(NamespaceName {
+                    name: name_text.clone(),
+                    generic_param_type_kinds: Some(generic_usage.clone()),
+                });
+
+                for function in functions.iter() {
+                    self.gen_node(*function);
+                }
+
+                self.current_namespace_names.pop();
+
+                self.type_prototype_emitter.emit("struct ");
+                self.emit_name_node(name, EmitterKind::TypePrototype);
+                self.emit_generic_param_suffix(generic_usage, EmitterKind::TypePrototype);
+
+                self.type_prototype_emitter.emitln(" {");
+                self.type_prototype_emitter.indent();
+
+                for field in fields.iter() {
+                    self.gen_node(*field);
+                }
+
+                self.type_prototype_emitter.unindent();
+                self.type_prototype_emitter.emitln("};");
+                self.type_prototype_emitter.newline();
+            }
+        } else if generic_type_kinds.is_empty() {
+            // TODO: Duplication.
+            self.current_namespace_names.push(NamespaceName {
+                name: name_text,
+                generic_param_type_kinds: None,
+            });
+
+            for function in functions.iter() {
+                self.gen_node(*function);
+            }
+
+            self.current_namespace_names.pop();
+
+            self.type_prototype_emitter.emit("struct ");
+            self.emit_name_node(name, EmitterKind::TypePrototype);
+            self.type_prototype_emitter.emitln(" {");
+            self.type_prototype_emitter.indent();
+
+            for field in fields.iter() {
+                self.gen_node(*field);
+            }
+
+            self.type_prototype_emitter.unindent();
+            self.type_prototype_emitter.emitln("};");
+            self.type_prototype_emitter.newline();
         }
-
-        self.current_namespace_names.pop();
-
-        self.type_prototype_emitter.emit("struct ");
-        self.emit_name_node(name, EmitterKind::TypePrototype);
-        self.type_prototype_emitter.emitln(" {");
-        self.type_prototype_emitter.indent();
-
-        for field in fields.iter() {
-            self.gen_node(*field);
-        }
-
-        self.type_prototype_emitter.unindent();
-        self.type_prototype_emitter.emitln("};");
-        self.type_prototype_emitter.newline();
     }
 
     fn enum_definition(
@@ -407,7 +479,14 @@ impl CodeGenerator {
         self.type_prototype_emitter.emitln(" {");
         self.type_prototype_emitter.indent();
 
-        self.current_namespace_names.push(name);
+        let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
+            panic!("Invalid name in enum");
+        };
+
+        self.current_namespace_names.push(NamespaceName {
+            name: name_text,
+            generic_param_type_kinds: None,
+        });
 
         for variant_name in variant_names.iter() {
             self.emit_namespace_prefix(EmitterKind::TypePrototype);
@@ -439,28 +518,43 @@ impl CodeGenerator {
     }
 
     fn function(&mut self, declaration: usize, block: usize, node_type: Option<Type>) {
-        let NodeKind::FunctionDeclaration { name, params, return_type_name, .. } = self.typed_nodes[declaration].node_kind.clone() else {
+        let NodeKind::FunctionDeclaration {
+            name,
+            params,
+            return_type_name,
+            ..
+        } = self.typed_nodes[declaration].node_kind.clone()
+        else {
             panic!("Invalid function declaration");
         };
 
-        let TypeKind::Function { generic_type_kinds, .. } = self.type_kinds[node_type.unwrap().type_kind].clone() else {
+        let TypeKind::Function {
+            generic_type_kinds, ..
+        } = self.type_kinds[node_type.unwrap().type_kind].clone()
+        else {
             panic!("Invalid function type");
         };
 
-        if let Some(generic_usages) = self.generic_function_usages.get(&declaration) {
+        if let Some(generic_usages) = self.generic_usages.get(&declaration) {
             let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
 
             for generic_usage in generic_usages {
                 // Replace generic types with their concrete types for this usage.
-                for (type_name, generic_type_kind) in generic_usage.iter().zip(generic_type_kinds.iter()) {
-                    let NodeKind::TypeName { type_kind } = self.typed_nodes[*type_name].node_kind else {
-                        panic!("Invalid type name in generic usage");
+                for (generic_param_type_kind, generic_type_kind) in
+                    generic_usage.iter().zip(generic_type_kinds.iter())
+                {
+                    self.type_kinds[*generic_type_kind] = TypeKind::Alias {
+                        inner_type_kind: *generic_param_type_kind,
                     };
-
-                    self.type_kinds[*generic_type_kind] = self.type_kinds[type_kind].clone();
                 }
 
-                self.function_declaration(name, params.clone(), Some(generic_usage), return_type_name, node_type);
+                self.function_declaration(
+                    name,
+                    params.clone(),
+                    Some(generic_usage),
+                    return_type_name,
+                    node_type,
+                );
                 self.function_declaration_needing_init = Some(declaration);
                 self.gen_node(block);
                 self.body_emitters.top().body.newline();
@@ -884,18 +978,26 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("(");
         let mut i = 0;
 
-        if let NodeKind::GenericSpecifier { left: new_left, .. } = &self.typed_nodes[left].node_kind {
+        if let NodeKind::GenericSpecifier { left: new_left, .. } = &self.typed_nodes[left].node_kind
+        {
             left = *new_left;
         }
 
         // If the left node is a field access, then we must be calling a method. If we were calling a function pointer,
         // the left node wouldn't be a field access because the function pointer would need to be dereferenced before calling.
-        if let NodeKind::FieldAccess { left: field_access_left, .. } = &self.typed_nodes[left].node_kind {
+        if let NodeKind::FieldAccess {
+            left: field_access_left,
+            ..
+        } = &self.typed_nodes[left].node_kind
+        {
             let field_access_left_type = self.typed_nodes[*field_access_left].node_type.unwrap();
 
             if field_access_left_type.instance_kind == InstanceKind::Variable {
                 // We have a variable to pass as the first parameter.
-                if !matches!(self.type_kinds[field_access_left_type.type_kind], TypeKind::Pointer { .. }) {
+                if !matches!(
+                    self.type_kinds[field_access_left_type.type_kind],
+                    TypeKind::Pointer { .. }
+                ) {
                     self.body_emitters.top().body.emit("&");
                 }
 
@@ -943,12 +1045,28 @@ impl CodeGenerator {
     fn field_access(&mut self, left: usize, name: usize, node_type: Option<Type>) {
         let left_type = self.typed_nodes[left].node_type.unwrap();
 
-        if matches!(self.type_kinds[node_type.unwrap().type_kind], TypeKind::Function { .. }) {
-            let TypeKind::Struct { name: struct_name, .. } = self.type_kinds[left_type.type_kind] else {
+        if matches!(
+            self.type_kinds[node_type.unwrap().type_kind],
+            TypeKind::Function { .. }
+        ) {
+            let TypeKind::Struct {
+                name: struct_name, ..
+            } = self.type_kinds[left_type.type_kind]
+            else {
                 panic!("Expected function field to be part of a struct");
             };
 
-            self.current_namespace_names.push(struct_name);
+            let NodeKind::Name {
+                text: struct_name_text,
+            } = self.typed_nodes[struct_name].node_kind.clone()
+            else {
+                panic!("Invalid name in struct field access");
+            };
+
+            self.current_namespace_names.push(NamespaceName {
+                name: struct_name_text,
+                generic_param_type_kinds: None,
+            });
             self.emit_namespace_prefix(EmitterKind::Body);
             self.gen_node(name);
             self.current_namespace_names.pop();
@@ -986,15 +1104,14 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn generic_specifier(&mut self, left: usize, type_names: Arc<Vec<usize>>, _node_type: Option<Type>) {
+    fn generic_specifier(
+        &mut self,
+        left: usize,
+        generic_param_type_kinds: Arc<Vec<usize>>,
+        _node_type: Option<Type>,
+    ) {
         self.gen_node(left);
-
-        self.body_emitters.top().body.emit("_");
-
-        for type_name in type_names.iter() {
-            self.body_emitters.top().body.emit("_");
-            self.body_emitters.top().body.emit(&type_name.to_string());
-        }
+        self.emit_generic_param_suffix(generic_param_type_kinds, EmitterKind::Body);
     }
 
     fn name(&mut self, text: Arc<str>, _node_type: Option<Type>) {
@@ -1167,7 +1284,7 @@ impl CodeGenerator {
         do_arrays_as_pointers: bool,
     ) {
         let TypedNode {
-            node_kind: NodeKind::TypeName { type_kind },
+            node_type: Some(Type { type_kind, .. }),
             ..
         } = self.typed_nodes[type_name]
         else {
@@ -1183,7 +1300,7 @@ impl CodeGenerator {
         do_arrays_as_pointers: bool,
     ) {
         let TypedNode {
-            node_kind: NodeKind::TypeName { type_kind },
+            node_type: Some(Type { type_kind, .. }),
             ..
         } = self.typed_nodes[type_name]
         else {
@@ -1223,12 +1340,17 @@ impl CodeGenerator {
             TypeKind::UInt64 => self.emitter(emitter_kind).emit("uint64_t"),
             TypeKind::Float32 => self.emitter(emitter_kind).emit("float"),
             TypeKind::Float64 => self.emitter(emitter_kind).emit("double"),
-            TypeKind::Struct { name, .. } => {
+            TypeKind::Struct {
+                name,
+                generic_param_type_kinds,
+                ..
+            } => {
                 self.emitter(emitter_kind).emit("struct ");
                 let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
                     panic!("Invalid struct name");
                 };
                 self.emit_name(text, emitter_kind);
+                self.emit_generic_param_suffix(generic_param_type_kinds, emitter_kind);
             }
             TypeKind::Enum { name, .. } => {
                 self.emitter(emitter_kind).emit("enum ");
@@ -1259,7 +1381,17 @@ impl CodeGenerator {
                 );
                 self.emitter(emitter_kind).emit("*");
             }
-            TypeKind::Partial => panic!("Can't emit partial type"),
+            TypeKind::Alias { inner_type_kind } => {
+                self.emit_type_kind_left(
+                    inner_type_kind,
+                    emitter_kind,
+                    do_arrays_as_pointers,
+                    is_prefix,
+                );
+            }
+            TypeKind::Partial | TypeKind::PartialGeneric { .. } => {
+                panic!("Can't emit partial type: {:?}", type_kind)
+            }
             TypeKind::Function {
                 return_type_kind, ..
             } => {
@@ -1297,7 +1429,9 @@ impl CodeGenerator {
             TypeKind::Pointer { inner_type_kind } => {
                 self.emit_type_kind_right(inner_type_kind, emitter_kind, do_arrays_as_pointers);
             }
-            TypeKind::Function { param_type_kinds, .. } => {
+            TypeKind::Function {
+                param_type_kinds, ..
+            } => {
                 self.emitter(emitter_kind).emit(")(");
                 for (i, param_kind) in param_type_kinds.iter().enumerate() {
                     if i > 0 {
@@ -1423,6 +1557,37 @@ impl CodeGenerator {
         self.emitter(kind).emit(&text);
     }
 
+    // Used for name mangling, so that multiple versions of a generic function can be generated without colliding.
+    fn emit_generic_param_suffix(
+        &mut self,
+        generic_param_type_kinds: Arc<Vec<usize>>,
+        kind: EmitterKind,
+    ) {
+        if generic_param_type_kinds.is_empty() {
+            return;
+        }
+
+        self.emitter(kind).emit("_");
+
+        for mut generic_param_type_kind in generic_param_type_kinds.iter().copied() {
+            if let TypeKind::Alias { inner_type_kind } = self.type_kinds[generic_param_type_kind] {
+                generic_param_type_kind = inner_type_kind;
+            }
+
+            self.emitter(kind).emit("_");
+
+            // This prints the number backwards, but it doesn't matter for the purpose of name mangling.
+            let mut number = generic_param_type_kind;
+            let mut digit = 0;
+            while number > 0 || digit == 0 {
+                self.emitter(kind)
+                    .emit_char(((number % 10) as u8 + b'0') as char);
+                number /= 10;
+                digit += 1;
+            }
+        }
+    }
+
     fn emit_namespace_prefix(&mut self, kind: EmitterKind) {
         if self.current_namespace_names.is_empty() {
             return;
@@ -1431,29 +1596,25 @@ impl CodeGenerator {
         self.emitter(kind).emit("__");
 
         for i in 0..self.current_namespace_names.len() {
-            let namespace_name = self.current_namespace_names[i];
-            let NodeKind::Name {
-                text: namespace_text,
-            } = self.typed_nodes[namespace_name].node_kind.clone()
-            else {
-                panic!("Invalid namespace name");
-            };
+            let namespace_name = self.current_namespace_names[i].clone();
+            self.emitter(kind).emit(&namespace_name.name);
 
-            self.emitter(kind).emit(&namespace_text);
+            if let Some(generic_param_type_kinds) = namespace_name.generic_param_type_kinds {
+                self.emit_generic_param_suffix(generic_param_type_kinds, kind);
+            }
         }
     }
 
-    fn emit_function_name(&mut self, name: usize, generic_usage: Option<Arc<Vec<usize>>>, kind: EmitterKind) {
+    fn emit_function_name(
+        &mut self,
+        name: usize,
+        generic_usage: Option<Arc<Vec<usize>>>,
+        kind: EmitterKind,
+    ) {
         self.emit_namespace_prefix(kind);
         self.emit_name_node(name, kind);
-
         if let Some(generic_usage) = generic_usage {
-            self.emitter(kind).emit("_");
-
-            for type_name in generic_usage.iter() {
-                self.emitter(kind).emit("_");
-                self.emitter(kind).emit(&type_name.to_string());
-            }
+            self.emit_generic_param_suffix(generic_usage, kind);
         }
     }
 

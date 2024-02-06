@@ -26,6 +26,9 @@ mod type_checker;
 mod types;
 
 /*
+ * CURRENTLY BROKEN:
+ * Count generic usages that are part of type name generic specifiers.
+ *
  * BIG TODOS:
  * Complete type checking
  *     * distinguish between variable (var) and constant (val, fun) bindings.
@@ -139,7 +142,11 @@ fn main() -> ExitCode {
         })
         .collect();
 
-    let mut code_generator = CodeGenerator::new(typed_nodes, type_checker.type_kinds, type_checker.generic_usages);
+    let mut code_generator = CodeGenerator::new(
+        typed_nodes,
+        type_checker.type_kinds,
+        type_checker.generic_usages,
+    );
     for start_index in &start_indices {
         code_generator.gen(*start_index);
     }

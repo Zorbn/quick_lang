@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    parser::{ArrayLayout, FunctionLayout, Node, NodeKind, TypeKind},
+    parser::{ArrayLayout, Field, FunctionLayout, NodeKind, StructLayout, TypeKind},
     type_checker::TypedNode,
 };
 
@@ -12,37 +12,34 @@ pub fn add_type(type_kinds: &mut Vec<TypeKind>, type_kind: TypeKind) -> usize {
 }
 
 pub fn generic_type_kind_to_concrete(
-    nodes: &[Node],
     type_kind: usize,
     generic_type_kinds: &Arc<Vec<usize>>,
-    type_names: &Arc<Vec<usize>>,
+    generic_param_type_kinds: &Arc<Vec<usize>>,
 ) -> usize {
     for (i, generic_type_kind) in generic_type_kinds.iter().enumerate() {
         if type_kind != *generic_type_kind {
             continue;
         }
 
-        let NodeKind::TypeName { type_kind } = &nodes[type_names[i]].kind else {
-            panic!("Invalid type name");
-        };
-
-        return *type_kind;
+        return generic_param_type_kinds[i];
     }
 
     type_kind
 }
 
 pub fn generic_params_to_concrete(
-    nodes: &[Node],
     param_type_kinds: &Arc<Vec<usize>>,
     generic_type_kinds: &Arc<Vec<usize>>,
-    type_names: &Arc<Vec<usize>>,
+    generic_param_type_kinds: &Arc<Vec<usize>>,
 ) -> Vec<usize> {
     let mut concrete_param_type_kinds = Vec::new();
 
     for param_type_kind in param_type_kinds.iter() {
-        let concrete_type_kind =
-            generic_type_kind_to_concrete(nodes, *param_type_kind, generic_type_kinds, type_names);
+        let concrete_type_kind = generic_type_kind_to_concrete(
+            *param_type_kind,
+            generic_type_kinds,
+            generic_param_type_kinds,
+        );
         concrete_param_type_kinds.push(concrete_type_kind);
     }
 
@@ -50,7 +47,6 @@ pub fn generic_params_to_concrete(
 }
 
 pub fn generic_function_to_concrete(
-    nodes: &[Node],
     type_kinds: &mut Vec<TypeKind>,
     function_type_kind: usize,
     function_type_kinds: &mut HashMap<FunctionLayout, usize>,
@@ -60,14 +56,15 @@ pub fn generic_function_to_concrete(
         param_type_kinds,
         generic_type_kinds,
         return_type_kind,
-    } = &type_kinds[function_type_kind] else {
+    } = &type_kinds[function_type_kind]
+    else {
         panic!("Type kind is not a function");
     };
 
     let concrete_param_type_kinds =
-        generic_params_to_concrete(nodes, &param_type_kinds, &generic_type_kinds, &type_names);
+        generic_params_to_concrete(param_type_kinds, generic_type_kinds, type_names);
     let return_type_kind =
-        generic_type_kind_to_concrete(nodes, *return_type_kind, &generic_type_kinds, &type_names);
+        generic_type_kind_to_concrete(*return_type_kind, generic_type_kinds, type_names);
 
     let concrete_function = FunctionLayout {
         param_type_kinds: Arc::new(concrete_param_type_kinds),
@@ -76,6 +73,75 @@ pub fn generic_function_to_concrete(
     };
 
     get_function_type_kind(type_kinds, function_type_kinds, concrete_function)
+}
+
+pub fn generic_struct_to_concrete(
+    struct_layout: StructLayout,
+    type_kinds: &mut Vec<TypeKind>,
+    struct_type_kind: usize,
+    struct_type_kinds: &mut HashMap<StructLayout, usize>,
+    function_type_kinds: &mut HashMap<FunctionLayout, usize>,
+    generic_param_type_kinds: &Arc<Vec<usize>>,
+) -> usize {
+    let TypeKind::Struct {
+        name,
+        field_kinds,
+        generic_type_kinds,
+        ..
+    } = type_kinds[struct_type_kind].clone()
+    else {
+        panic!("Type kind is not a struct");
+    };
+
+    if let Some(concrete_type_kind) = struct_type_kinds.get(&struct_layout) {
+        return *concrete_type_kind;
+    }
+
+    let mut concrete_field_kinds = Vec::new();
+
+    for field_kind in field_kinds.iter() {
+        match &type_kinds[field_kind.type_kind] {
+            TypeKind::Function { .. } => {
+                let concrete_type_kind = generic_function_to_concrete(
+                    type_kinds,
+                    field_kind.type_kind,
+                    function_type_kinds,
+                    generic_param_type_kinds,
+                );
+
+                concrete_field_kinds.push(Field {
+                    name: field_kind.name,
+                    type_kind: concrete_type_kind,
+                });
+            }
+            _ => {
+                let concrete_type_kind = generic_type_kind_to_concrete(
+                    field_kind.type_kind,
+                    &generic_type_kinds,
+                    generic_param_type_kinds,
+                );
+
+                concrete_field_kinds.push(Field {
+                    name: field_kind.name,
+                    type_kind: concrete_type_kind,
+                });
+            }
+        }
+    }
+
+    let concrete_type_kind = add_type(
+        type_kinds,
+        TypeKind::Struct {
+            name,
+            field_kinds: Arc::new(concrete_field_kinds),
+            generic_type_kinds: Arc::new(Vec::new()),
+            generic_param_type_kinds: generic_param_type_kinds.clone(),
+        },
+    );
+
+    struct_type_kinds.insert(struct_layout, concrete_type_kind);
+
+    concrete_type_kind
 }
 
 pub fn get_function_type_kind(

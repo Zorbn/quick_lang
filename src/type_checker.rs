@@ -13,8 +13,8 @@ use crate::{
         UINT_INDEX,
     },
     types::{
-        add_type, generic_function_to_concrete, generic_type_kind_to_concrete,
-        get_type_kind_as_array, get_type_kind_as_pointer,
+        add_type, generic_function_to_concrete, generic_struct_to_concrete, get_type_kind_as_array,
+        get_type_kind_as_pointer,
     },
 };
 
@@ -66,6 +66,7 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         nodes: Vec<Node>,
         type_kinds: Vec<TypeKind>,
@@ -97,8 +98,45 @@ impl TypeChecker {
 
         type_checker.typed_nodes.resize(node_count, None);
         type_checker.environment.push();
+        type_checker.resolve_partial_generics();
 
         type_checker
+    }
+
+    fn resolve_partial_generics(&mut self) {
+        for i in 0..self.type_kinds.len() {
+            if let TypeKind::PartialGeneric {
+                inner_type_kind,
+                generic_param_type_kinds,
+            } = self.type_kinds[i].clone()
+            {
+                let TypeKind::Struct { name, .. } = self.type_kinds[inner_type_kind].clone() else {
+                    // TODO: type_error!(self, "cannot apply generic specifier to non-struct type name");
+                    panic!("cannot apply generic specifier to non-struct type name");
+                };
+
+                let NodeKind::Name { text } = self.nodes[name].kind.clone() else {
+                    // TODO: type_error!(self, "invalid name in generic struct");
+                    panic!("invalid name in generic struct");
+                };
+
+                let struct_layout = StructLayout {
+                    name: text,
+                    generic_param_type_kinds: generic_param_type_kinds.clone(),
+                };
+
+                // TODO: This creates an extra type in the list instead of replacing the old one, should that change?
+                let concrete_index = generic_struct_to_concrete(
+                    struct_layout,
+                    &mut self.type_kinds,
+                    inner_type_kind,
+                    &mut self.struct_type_kinds,
+                    &mut self.function_type_kinds,
+                    &generic_param_type_kinds,
+                );
+                self.type_kinds[i] = self.type_kinds[concrete_index].clone();
+            }
+        }
     }
 
     fn add_type(&mut self, type_kind: TypeKind) -> usize {
@@ -183,9 +221,10 @@ impl TypeChecker {
             NodeKind::IndexAccess { left, expression } => self.index_access(left, expression),
             NodeKind::FieldAccess { left, name } => self.field_access(left, name),
             NodeKind::Cast { left, type_name } => self.cast(left, type_name),
-            NodeKind::GenericSpecifier { left, type_names } => {
-                self.generic_specifier(left, type_names)
-            }
+            NodeKind::GenericSpecifier {
+                left,
+                generic_param_type_kinds,
+            } => self.generic_specifier(left, generic_param_type_kinds),
             NodeKind::Name { text } => self.name(text),
             NodeKind::Identifier { name } => self.identifier(name),
             NodeKind::IntLiteral { text } => self.int_literal(text),
@@ -746,7 +785,6 @@ impl TypeChecker {
         };
 
         let TypeKind::Struct { field_kinds, .. } = &self.type_kinds[struct_type_kind] else {
-            println!("{:?}", self.type_kinds[struct_type_kind]);
             type_error!(self, "field access is only allowed on struct types");
         };
 
@@ -855,18 +893,17 @@ impl TypeChecker {
         Some(namespaced_name)
     }
 
-    fn generic_specifier(&mut self, left: usize, type_names: Arc<Vec<usize>>) -> Option<Type> {
-        for type_name in type_names.iter() {
-            self.check_node(*type_name);
-        }
-
+    fn generic_specifier(
+        &mut self,
+        left: usize,
+        generic_param_type_kinds: Arc<Vec<usize>>,
+    ) -> Option<Type> {
         let left_type = self.check_node(left)?;
         let (index, concrete_type_kind, instance_kind) = match self.type_kinds[left_type.type_kind]
             .clone()
         {
             TypeKind::Function {
-                generic_type_kinds,
-                ..
+                generic_type_kinds, ..
             } => {
                 if generic_type_kinds.is_empty() {
                     type_error!(
@@ -884,19 +921,16 @@ impl TypeChecker {
                 };
 
                 let concrete_type_kind = generic_function_to_concrete(
-                    &self.nodes,
                     &mut self.type_kinds,
                     left_type.type_kind,
                     &mut self.function_type_kinds,
-                    &type_names,
+                    &generic_param_type_kinds,
                 );
 
                 (function_index, concrete_type_kind, InstanceKind::Variable)
             }
             TypeKind::Struct {
-                name,
-                field_kinds,
-                generic_type_kinds,
+                generic_type_kinds, ..
             } => {
                 if generic_type_kinds.is_empty() {
                     type_error!(
@@ -915,63 +949,17 @@ impl TypeChecker {
 
                 let struct_layout = StructLayout {
                     name: namespaced_name.last().unwrap().clone(),
-                    type_names: type_names.clone(),
+                    generic_param_type_kinds: generic_param_type_kinds.clone(),
                 };
 
-                let concrete_type_kind =
-                    if let Some(concrete_type_kind) = self.struct_type_kinds.get(&struct_layout) {
-                        *concrete_type_kind
-                    } else {
-                        let mut concrete_field_kinds = Vec::new();
-
-                        for field_kind in field_kinds.iter() {
-                            match &self.type_kinds[field_kind.type_kind] {
-                                TypeKind::Function {
-                                    ..
-                                } => {
-                                    let concrete_type_kind = generic_function_to_concrete(
-                                        &self.nodes,
-                                        &mut self.type_kinds,
-                                        field_kind.type_kind,
-                                        &mut self.function_type_kinds,
-                                        &type_names,
-                                    );
-
-                                    concrete_field_kinds.push(Field {
-                                        name: field_kind.name,
-                                        type_kind: concrete_type_kind,
-                                    });
-                                }
-                                _ => {
-                                    let concrete_type_kind = generic_type_kind_to_concrete(
-                                        &self.nodes,
-                                        field_kind.type_kind,
-                                        &generic_type_kinds,
-                                        &type_names,
-                                    );
-
-                                    concrete_field_kinds.push(Field {
-                                        name: field_kind.name,
-                                        type_kind: concrete_type_kind,
-                                    });
-                                }
-                            }
-                        }
-
-                        let concrete_type_kind = add_type(
-                            &mut self.type_kinds,
-                            TypeKind::Struct {
-                                name,
-                                field_kinds: Arc::new(concrete_field_kinds),
-                                generic_type_kinds: Arc::new(Vec::new()),
-                            },
-                        );
-
-                        self.struct_type_kinds
-                            .insert(struct_layout, concrete_type_kind);
-
-                        concrete_type_kind
-                    };
+                let concrete_type_kind = generic_struct_to_concrete(
+                    struct_layout,
+                    &mut self.type_kinds,
+                    left_type.type_kind,
+                    &mut self.struct_type_kinds,
+                    &mut self.function_type_kinds,
+                    &generic_param_type_kinds,
+                );
 
                 (struct_index, concrete_type_kind, InstanceKind::Name)
             }
@@ -987,7 +975,7 @@ impl TypeChecker {
 
         let usages = self.generic_usages.get_mut(index).unwrap();
 
-        usages.insert(type_names.clone());
+        usages.insert(generic_param_type_kinds.clone());
 
         Some(Type {
             type_kind: concrete_type_kind,
@@ -1067,56 +1055,26 @@ impl TypeChecker {
         })
     }
 
-    fn struct_literal(&mut self, mut left: usize, fields: Arc<Vec<usize>>) -> Option<Type> {
-        self.check_node(left);
+    fn struct_literal(&mut self, left: usize, fields: Arc<Vec<usize>>) -> Option<Type> {
+        let struct_type = self.check_node(left)?;
 
         for field in fields.iter() {
             self.check_node(*field);
         }
 
-        if let NodeKind::GenericSpecifier { left: new_left, .. } = &self.nodes[left].kind {
-            left = *new_left;
-        }
-
-        let Node {
-            kind: NodeKind::Identifier { name },
-            ..
-        } = &self.nodes[left]
-        else {
-            type_error!(self, "invalid struct identifier");
-        };
-
-        let Node {
-            kind: NodeKind::Name { text: name_text },
-            ..
-        } = &self.nodes[*name]
-        else {
-            type_error!(self, "invalid struct name");
-        };
-
-        let Some(name_type) = self.environment.get(name_text) else {
-            type_error!(
-                self,
-                &format!("struct with name \"{}\" does not exist", name_text)
-            );
-        };
-
         if !matches!(
-            self.type_kinds[name_type.type_kind],
+            self.type_kinds[struct_type.type_kind],
             TypeKind::Struct { .. }
-        ) || name_type.instance_kind != InstanceKind::Name
+        ) || struct_type.instance_kind != InstanceKind::Name
         {
             type_error!(
                 self,
-                &format!(
-                    "expected the name of a struct type, but got \"{}\"",
-                    name_text
-                )
+                "expected struct literal to start with the name of a struct type"
             );
         }
 
         Some(Type {
-            type_kind: name_type.type_kind,
+            type_kind: struct_type.type_kind,
             instance_kind: InstanceKind::Literal,
         })
     }

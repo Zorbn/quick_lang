@@ -31,7 +31,7 @@ impl Emitter {
         }
     }
 
-    pub fn emit(&mut self, str: &str) {
+    fn indent_on_newlines(&mut self) {
         if self.is_on_newline {
             for _ in 0..self.indent_count {
                 self.string.push('\t');
@@ -39,8 +39,16 @@ impl Emitter {
 
             self.is_on_newline = false;
         }
+    }
 
+    pub fn emit(&mut self, str: &str) {
+        self.indent_on_newlines();
         self.string.push_str(str);
+    }
+
+    pub fn emit_char(&mut self, c: char) {
+        self.indent_on_newlines();
+        self.string.push(c);
     }
 
     pub fn newline(&mut self) {

@@ -152,8 +152,13 @@ fun main() Int32 {
 
     val genericResult = genericFunction.<Int, Bool>(777, true);
     val genericResult2 = genericFunction.<Bool, Bool>(false, true);
+    val genericResult3 = genericFunction.<Bool, Bool>(false, true);
 
     val nonGenericPtr = &genericFunction.<Int, Int>;
+
+    val genericStruct = GenericStruct.<Int, Int> { a = 5, b = 6 };
+    val genericStruct2 = GenericStruct.<Bool, Int> { a = true, b = 6 };
+    val genericStruct3 = GenericStruct.<Int, Int> { a = 5, b = 6 };
 
     return 0;
 }

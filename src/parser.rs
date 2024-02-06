@@ -55,7 +55,7 @@ pub struct FunctionLayout {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StructLayout {
     pub name: Arc<str>,
-    pub type_names: Arc<Vec<usize>>,
+    pub generic_param_type_kinds: Arc<Vec<usize>>,
 }
 
 #[derive(Clone, Debug)]
@@ -87,8 +87,13 @@ pub enum TypeKind {
         name: usize,
         field_kinds: Arc<Vec<Field>>,
         generic_type_kinds: Arc<Vec<usize>>,
+        generic_param_type_kinds: Arc<Vec<usize>>,
     },
     Partial,
+    PartialGeneric {
+        inner_type_kind: usize,
+        generic_param_type_kinds: Arc<Vec<usize>>,
+    },
     Function {
         param_type_kinds: Arc<Vec<usize>>,
         generic_type_kinds: Arc<Vec<usize>>,
@@ -97,6 +102,9 @@ pub enum TypeKind {
     Enum {
         name: usize,
         variant_names: Arc<Vec<usize>>,
+    },
+    Alias {
+        inner_type_kind: usize,
     },
 }
 
@@ -219,7 +227,7 @@ pub enum NodeKind {
     },
     GenericSpecifier {
         left: usize,
-        type_names: Arc<Vec<usize>>,
+        generic_param_type_kinds: Arc<Vec<usize>>,
     },
     Identifier {
         name: usize,
@@ -359,15 +367,6 @@ impl Parser {
     fn token_kind(&self) -> &TokenKind {
         let tokens = self.tokens.as_ref().unwrap();
         if let Some(token) = tokens.get(self.position) {
-            &token.kind
-        } else {
-            &TokenKind::Eof
-        }
-    }
-
-    fn peek_token_kind(&self) -> &TokenKind {
-        let tokens = self.tokens.as_ref().unwrap();
-        if let Some(token) = tokens.get(self.position + 1) {
             &token.kind
         } else {
             &TokenKind::Eof
@@ -608,17 +607,23 @@ impl Parser {
 
         self.current_namespace_names.pop();
 
+        let generic_param_type_kinds = Arc::new(Vec::new());
+
         let type_kind = self.add_named_type(
             &name_text,
             TypeKind::Struct {
                 name,
                 field_kinds: Arc::new(field_kinds),
                 generic_type_kinds: Arc::new(generic_type_kinds),
+                generic_param_type_kinds: generic_param_type_kinds.clone(),
             },
             false,
         );
 
-        let struct_layout = StructLayout { name: name_text.clone(), type_names: Arc::new(Vec::new()) };
+        let struct_layout = StructLayout {
+            name: name_text.clone(),
+            generic_param_type_kinds,
+        };
         self.struct_type_kinds.insert(struct_layout, type_kind);
 
         let index = self.add_node(Node {
@@ -635,7 +640,7 @@ impl Parser {
 
         let namespaced_name = self.get_namespaced_name(name_text);
         self.declaration_indices.insert(namespaced_name, index);
-        
+
         index
     }
 
@@ -822,7 +827,7 @@ impl Parser {
                 return error_node;
             }
         }
-        
+
         let mut params = Vec::new();
         let mut param_type_kinds = Vec::new();
 
@@ -847,7 +852,11 @@ impl Parser {
             generic_type_kinds: Arc::new(generic_type_kinds),
             return_type_kind,
         };
-        let type_kind = get_function_type_kind(&mut self.type_kinds, &mut self.function_type_kinds, function_layout);
+        let type_kind = get_function_type_kind(
+            &mut self.type_kinds,
+            &mut self.function_type_kinds,
+            function_layout,
+        );
 
         let index = self.add_node(Node {
             kind: NodeKind::FunctionDeclaration {
@@ -1400,9 +1409,49 @@ impl Parser {
         })
     }
 
+    fn parse_generic_specifier_list(
+        &mut self,
+        start: Position,
+        end: &mut Position,
+        generic_param_type_kinds: &mut Vec<usize>,
+    ) -> Option<usize> {
+        if let Some(error_node) =
+            self.assert_token(TokenKind::GenericSpecifier, start, self.token_end())
+        {
+            return Some(error_node);
+        }
+        self.position += 1;
+
+        while *self.token_kind() != TokenKind::Greater {
+            let mut type_kind = 0;
+            if let Some(error_node) = self.type_kind(&mut type_kind) {
+                return Some(error_node);
+            }
+
+            generic_param_type_kinds.push(type_kind);
+
+            if *self.token_kind() != TokenKind::Comma {
+                break;
+            }
+
+            if let Some(error_node) = self.assert_token(TokenKind::Comma, start, self.token_end()) {
+                return Some(error_node);
+            }
+            self.position += 1;
+        }
+
+        *end = self.token_end();
+        if let Some(error_node) = self.assert_token(TokenKind::Greater, start, *end) {
+            return Some(error_node);
+        }
+        self.position += 1;
+
+        None
+    }
+
     fn unary_suffix(&mut self, allow_struct_literal: bool) -> usize {
         let start = self.token_start();
-        let mut left = self.primary(allow_struct_literal);
+        let mut left = self.primary();
 
         loop {
             match *self.token_kind() {
@@ -1436,29 +1485,20 @@ impl Parser {
                     });
                 }
                 TokenKind::GenericSpecifier => {
-                    self.position += 1;
-
-                    let mut type_names = Vec::new();
-
-                    while *self.token_kind() != TokenKind::Greater {
-                        type_names.push(self.type_name());
-
-                        if *self.token_kind() != TokenKind::Comma {
-                            break;
-                        }
-
-                        assert_token!(self, TokenKind::Comma, start, self.token_end());
-                        self.position += 1;
+                    let mut generic_param_type_kinds = Vec::new();
+                    let mut end = self.token_end();
+                    if let Some(error_node) = self.parse_generic_specifier_list(
+                        start,
+                        &mut end,
+                        &mut generic_param_type_kinds,
+                    ) {
+                        return error_node;
                     }
-
-                    let end = self.token_end();
-                    assert_token!(self, TokenKind::Greater, start, end);
-                    self.position += 1;
 
                     left = self.add_node(Node {
                         kind: NodeKind::GenericSpecifier {
                             left,
-                            type_names: Arc::new(type_names),
+                            generic_param_type_kinds: Arc::new(generic_param_type_kinds),
                         },
                         start,
                         end,
@@ -1466,7 +1506,7 @@ impl Parser {
                 }
                 TokenKind::LBrace if allow_struct_literal => {
                     left = self.struct_literal(left, start);
-                },
+                }
                 TokenKind::Period => {
                     self.position += 1;
 
@@ -1558,7 +1598,7 @@ impl Parser {
         })
     }
 
-    fn primary(&mut self, allow_struct_literal: bool) -> usize {
+    fn primary(&mut self) -> usize {
         let start = self.token_start();
         match *self.token_kind() {
             TokenKind::LParen => self.parenthesized_expression(),
@@ -1778,7 +1818,10 @@ impl Parser {
 
     fn type_name(&mut self) -> usize {
         let start = self.token_start();
-        let type_kind = self.type_kind();
+        let mut type_kind = 0;
+        if let Some(error_node) = self.type_kind(&mut type_kind) {
+            return error_node;
+        }
         let end = self.last_token_end();
 
         self.add_node(Node {
@@ -1788,7 +1831,7 @@ impl Parser {
         })
     }
 
-    fn type_kind(&mut self) -> usize {
+    fn type_kind(&mut self, type_kind: &mut usize) -> Option<usize> {
         let start = self.token_start();
         let token_kind = self.token_kind().clone();
 
@@ -1796,13 +1839,20 @@ impl Parser {
             TokenKind::Fun => {
                 self.position += 1;
 
-                assert_token!(self, TokenKind::LParen, start, self.token_end());
+                if let Some(error_node) =
+                    self.assert_token(TokenKind::LParen, start, self.token_end())
+                {
+                    return Some(error_node);
+                }
                 self.position += 1;
 
                 let mut param_type_kinds = Vec::new();
 
                 while *self.token_kind() != TokenKind::RParen {
-                    let param_type_kind = self.type_kind();
+                    let mut param_type_kind = 0;
+                    if let Some(error_node) = self.type_kind(&mut param_type_kind) {
+                        return Some(error_node);
+                    }
 
                     param_type_kinds.push(param_type_kind);
 
@@ -1810,23 +1860,38 @@ impl Parser {
                         break;
                     }
 
-                    assert_token!(self, TokenKind::Comma, start, self.token_end());
+                    if let Some(error_node) =
+                        self.assert_token(TokenKind::Comma, start, self.token_end())
+                    {
+                        return Some(error_node);
+                    }
                     self.position += 1;
                 }
 
-                assert_token!(self, TokenKind::RParen, start, self.token_end());
+                if let Some(error_node) =
+                    self.assert_token(TokenKind::RParen, start, self.token_end())
+                {
+                    return Some(error_node);
+                }
                 self.position += 1;
 
-                let return_type_kind = self.type_kind();
+                let mut return_type_kind = 0;
+                if let Some(error_node) = self.type_kind(&mut return_type_kind) {
+                    return Some(error_node);
+                }
 
                 let function_layout = FunctionLayout {
                     param_type_kinds: Arc::new(param_type_kinds),
                     generic_type_kinds: Arc::new(Vec::new()),
                     return_type_kind,
                 };
-                let type_kind = get_function_type_kind(&mut self.type_kinds, &mut self.function_type_kinds, function_layout);
+                *type_kind = get_function_type_kind(
+                    &mut self.type_kinds,
+                    &mut self.function_type_kinds,
+                    function_layout,
+                );
 
-                return type_kind;
+                return None;
             }
             TokenKind::LBracket => {
                 self.position += 1;
@@ -1836,37 +1901,71 @@ impl Parser {
                 });
                 self.position += 1;
 
-                assert_token!(self, TokenKind::RBracket, start, self.token_end());
+                if let Some(error_node) =
+                    self.assert_token(TokenKind::RBracket, start, self.token_end())
+                {
+                    return Some(error_node);
+                }
                 self.position += 1;
 
-                let element_type_kind = self.type_kind();
+                let mut element_type_kind = 0;
+                if let Some(error_node) = self.type_kind(&mut element_type_kind) {
+                    return Some(error_node);
+                }
 
-                let type_kind = get_type_kind_as_array(
+                *type_kind = get_type_kind_as_array(
                     &mut self.type_kinds,
                     &mut self.array_type_kinds,
                     element_type_kind,
                     element_count,
                 );
 
-                return type_kind;
+                return None;
             }
             TokenKind::Asterisk => {
                 self.position += 1;
 
-                let inner_type_kind = self.type_kind();
+                let mut inner_type_kind = 0;
+                if let Some(error_node) = self.type_kind(&mut inner_type_kind) {
+                    return Some(error_node);
+                }
 
-                let type_kind = get_type_kind_as_pointer(
+                *type_kind = get_type_kind_as_pointer(
                     &mut self.type_kinds,
                     &mut self.pointer_type_kinds,
                     inner_type_kind,
                 );
 
-                return type_kind;
+                return None;
+            }
+            TokenKind::Identifier { text } => {
+                *type_kind = self.get_named_type(&text);
+                self.position += 1;
+
+                if *self.token_kind() == TokenKind::GenericSpecifier {
+                    let mut generic_param_type_kinds = Vec::new();
+                    let mut end = self.token_end();
+
+                    if let Some(error_node) = self.parse_generic_specifier_list(
+                        start,
+                        &mut end,
+                        &mut generic_param_type_kinds,
+                    ) {
+                        return Some(error_node);
+                    }
+
+                    *type_kind = self.add_type(TypeKind::PartialGeneric {
+                        inner_type_kind: *type_kind,
+                        generic_param_type_kinds: Arc::new(generic_param_type_kinds),
+                    });
+                }
+
+                return None;
             }
             _ => {}
         }
 
-        let type_kind = match token_kind {
+        *type_kind = match token_kind {
             TokenKind::Int => INT_INDEX,
             TokenKind::String => STRING_INDEX,
             TokenKind::Bool => BOOL_INDEX,
@@ -1883,15 +1982,19 @@ impl Parser {
             TokenKind::UInt64 => UINT64_INDEX,
             TokenKind::Float32 => FLOAT32_INDEX,
             TokenKind::Float64 => FLOAT64_INDEX,
-            TokenKind::Identifier { text } => self.get_named_type(&text),
-            _ => parse_error!(self, "expected type name", start, self.token_end()),
+            _ => return Some(self.parse_error("expected type name", start, self.token_end())),
         };
         self.position += 1;
 
-        type_kind
+        None
     }
 
-    fn add_named_type(&mut self, name_text: &Arc<str>, new_type_kind: TypeKind, is_generic: bool) -> usize {
+    fn add_named_type(
+        &mut self,
+        name_text: &Arc<str>,
+        new_type_kind: TypeKind,
+        is_generic: bool,
+    ) -> usize {
         if let Some(type_kind) = self.named_type_kinds.get(name_text) {
             self.type_kinds[type_kind] = new_type_kind;
             type_kind
@@ -1900,7 +2003,8 @@ impl Parser {
             if is_generic {
                 self.named_type_kinds.insert(name_text.clone(), type_kind);
             } else {
-                self.named_type_kinds.insert_global(name_text.clone(), type_kind);
+                self.named_type_kinds
+                    .insert_global(name_text.clone(), type_kind);
             }
             type_kind
         }
@@ -1911,11 +2015,12 @@ impl Parser {
             type_kind
         } else {
             let type_kind = self.add_type(TypeKind::Partial);
-            self.named_type_kinds.insert_global(name_text.clone(), type_kind);
+            self.named_type_kinds
+                .insert_global(name_text.clone(), type_kind);
             type_kind
         }
     }
-    
+
     fn get_namespaced_name(&mut self, name_text: Arc<str>) -> Vec<Arc<str>> {
         let mut namespaced_name = Vec::new();
 
@@ -1924,7 +2029,7 @@ impl Parser {
         }
 
         namespaced_name.push(name_text);
-        
+
         namespaced_name
     }
 }
