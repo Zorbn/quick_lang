@@ -314,7 +314,7 @@ pub struct Parser {
     pub named_type_kinds: Environment<usize>,
     pub function_type_kinds: HashMap<FunctionLayout, usize>,
     pub struct_type_kinds: HashMap<StructLayout, usize>,
-    pub declaration_indices: HashMap<Vec<Arc<str>>, usize>,
+    pub definition_indices: HashMap<Vec<Arc<str>>, usize>,
     pub had_error: bool,
 
     pub tokens: Option<Vec<Token>>,
@@ -336,7 +336,7 @@ impl Parser {
             named_type_kinds: Environment::new(),
             function_type_kinds: HashMap::new(),
             struct_type_kinds: HashMap::new(),
-            declaration_indices: HashMap::new(),
+            definition_indices: HashMap::new(),
             had_error: false,
             position: 0,
             current_namespace_names: Vec::new(),
@@ -639,7 +639,7 @@ impl Parser {
         });
 
         let namespaced_name = self.get_namespaced_name(name_text);
-        self.declaration_indices.insert(namespaced_name, index);
+        self.definition_indices.insert(namespaced_name, index);
 
         index
     }
@@ -813,10 +813,6 @@ impl Parser {
 
         let name = self.name();
 
-        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-            parse_error!(self, "invalid function name", start, self.node_end(name));
-        };
-
         let mut generic_params = Vec::new();
         let mut generic_type_kinds = Vec::new();
 
@@ -858,7 +854,7 @@ impl Parser {
             function_layout,
         );
 
-        let index = self.add_node(Node {
+        self.add_node(Node {
             kind: NodeKind::FunctionDeclaration {
                 name,
                 params: Arc::new(params),
@@ -868,12 +864,7 @@ impl Parser {
             },
             start,
             end,
-        });
-
-        let namespaced_name = self.get_namespaced_name(name_text);
-        self.declaration_indices.insert(namespaced_name, index);
-
-        index
+        })
     }
 
     fn function(&mut self) -> usize {
@@ -886,11 +877,24 @@ impl Parser {
 
         self.named_type_kinds.pop();
 
-        self.add_node(Node {
+        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration].kind else {
+            parse_error!(self, "invalid function declaration", start, end);
+        };
+
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            parse_error!(self, "invalid function name", start, self.node_end(name));
+        };
+
+        let index = self.add_node(Node {
             kind: NodeKind::Function { declaration, block },
             start,
             end,
-        })
+        });
+
+        let namespaced_name = self.get_namespaced_name(name_text);
+        self.definition_indices.insert(namespaced_name, index);
+
+        index
     }
 
     fn extern_function(&mut self) -> usize {

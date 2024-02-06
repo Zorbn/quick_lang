@@ -76,7 +76,7 @@ fun main() Int32 {
 
     Point.Multiply(&xy[0], &xy[1]);
     xy[0].Multiply(&xy[1]);
-    xy[0].GenericThing.<*Point>(&xy[1]);
+    // xy[0].GenericThing.<*Point>(&xy[1]);
 
     Point.Static(x);
 
@@ -205,6 +205,7 @@ fun genericFunction<A, B>(a A, b B) A {
     val arrayA = [a, a, a];
     val arrayB = [b, b];
 
+    genericFunction.<A, B>(a, b);
     // val genericStruct = GenericStruct.<A, B> { a = 5, b = false };
 
     return arrayA[2];

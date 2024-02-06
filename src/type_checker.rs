@@ -48,6 +48,11 @@ macro_rules! type_error {
     }};
 }
 
+struct PendingGenericUsage {
+    index: usize,
+    usage: Arc<Vec<usize>>,
+}
+
 pub struct TypeChecker {
     pub typed_nodes: Vec<Option<TypedNode>>,
     pub nodes: Vec<Node>,
@@ -56,13 +61,14 @@ pub struct TypeChecker {
     pub pointer_type_kinds: HashMap<usize, usize>,
     pub function_type_kinds: HashMap<FunctionLayout, usize>,
     pub struct_type_kinds: HashMap<StructLayout, usize>,
-    pub declaration_indices: HashMap<Vec<Arc<str>>, usize>,
+    pub definition_indices: HashMap<Vec<Arc<str>>, usize>,
     pub generic_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>,
     pub had_error: bool,
     files: Arc<Vec<FileData>>,
     environment: Environment<Type>,
     has_function_opened_block: bool,
     last_visited_index: usize,
+    pending_generic_usages: Vec<PendingGenericUsage>,
 }
 
 impl TypeChecker {
@@ -74,7 +80,7 @@ impl TypeChecker {
         pointer_type_kinds: HashMap<usize, usize>,
         function_type_kinds: HashMap<FunctionLayout, usize>,
         struct_type_kinds: HashMap<StructLayout, usize>,
-        declaration_indices: HashMap<Vec<Arc<str>>, usize>,
+        definition_indices: HashMap<Vec<Arc<str>>, usize>,
         files: Arc<Vec<FileData>>,
     ) -> Self {
         let node_count = nodes.len();
@@ -88,12 +94,13 @@ impl TypeChecker {
             pointer_type_kinds,
             function_type_kinds,
             struct_type_kinds,
-            declaration_indices,
+            definition_indices,
             generic_usages: HashMap::new(),
             had_error: false,
             environment: Environment::new(),
             has_function_opened_block: false,
             last_visited_index: 0,
+            pending_generic_usages: Vec::new(),
         };
 
         type_checker.typed_nodes.resize(node_count, None);
@@ -146,7 +153,12 @@ impl TypeChecker {
 //                     self.generic_usages.insert(*index, HashSet::new());
 //                 }
 //
-//                 let usages = self.generic_usages.get_mut(index).unwrap();
+                // if usages.insert(generic_param_type_kinds.clone()) {
+                //     self.pending_generic_usages.push(PendingGenericUsage {
+                //         index: *index,
+                //         usage: generic_param_type_kinds.clone(),
+                //     });
+                // }
 //
 //                 usages.insert(generic_param_type_kinds.clone());
 //                 println!("{:?}", usages.len());
@@ -160,6 +172,42 @@ impl TypeChecker {
 
     pub fn check(&mut self, start_index: usize) {
         self.check_node(start_index);
+        self.handle_generic_usages();
+    }
+
+    pub fn handle_generic_usages(&mut self) {
+        while let Some(pending_usage) = self.pending_generic_usages.pop() {
+            let mut dealiased_usage = Vec::new();
+            for mut type_kind in pending_usage.usage.iter().copied() {
+                while let TypeKind::Alias { inner_type_kind } = &self.type_kinds[type_kind] {
+                    type_kind = *inner_type_kind
+                }
+
+                dealiased_usage.push(type_kind);
+            }
+
+            self.generic_usages.entry(pending_usage.index).or_default();
+
+            let dealiased_usage = Arc::new(dealiased_usage);
+            if !self.generic_usages.get_mut(&pending_usage.index).unwrap().insert(dealiased_usage.clone()) {
+                continue;
+            }
+
+            let type_kind = match self.nodes[pending_usage.index].kind.clone() {
+                NodeKind::Function { declaration, block } => {
+                    self.function(declaration, block, Some(dealiased_usage))
+                }
+                NodeKind::StructDefinition { name, fields, generic_params, functions, type_kind } => {
+                    continue;
+                }
+                _ => panic!("Invalid generic usage")
+            };
+
+            self.typed_nodes[pending_usage.index] = Some(TypedNode {
+                node_kind: self.nodes[pending_usage.index].kind.clone(),
+                node_type: type_kind,
+            });
+        }
     }
 
     fn check_node(&mut self, index: usize) -> Option<Type> {
@@ -184,7 +232,7 @@ impl TypeChecker {
                 type_kind,
             } => self.enum_definition(name, variant_names, type_kind),
             NodeKind::Field { name, type_name } => self.field(name, type_name),
-            NodeKind::Function { declaration, block } => self.function(declaration, block),
+            NodeKind::Function { declaration, block } => self.function(declaration, block, None),
             NodeKind::FunctionDeclaration {
                 name,
                 return_type_name,
@@ -378,13 +426,42 @@ impl TypeChecker {
         self.check_node(type_name)
     }
 
-    fn function(&mut self, declaration: usize, block: usize) -> Option<Type> {
+    fn function(&mut self, declaration: usize, block: usize, generic_usage: Option<Arc<Vec<usize>>>) -> Option<Type> {
         self.environment.push();
+        let declaration_type = self.check_node(declaration)?;
+
+        let TypeKind::Function { generic_type_kinds, .. } = self.type_kinds[declaration_type.type_kind].clone() else {
+            type_error!(self, "invalid function declaration");
+        };
+
+        if !generic_type_kinds.is_empty() && generic_usage.is_none() {
+            self.environment.pop();
+            return None;
+        }
+
         self.has_function_opened_block = true;
-        let type_kind = self.check_node(declaration);
+
+        // TODO: Duplication.
+        if let Some(generic_usage) = generic_usage {
+            for (generic_param_type_kind, generic_type_kind) in
+                generic_usage.iter().zip(generic_type_kinds.iter())
+            {
+                println!("TYPE CHECKER FN Alias {} -> {} to {:?}", *generic_type_kind, *generic_param_type_kind, self.type_kinds[*generic_param_type_kind]);
+                // let generic_param_type_kind = if let TypeKind::Alias { inner_type_kind } = &self.type_kinds[*generic_param_type_kind] {
+                //     *inner_type_kind
+                // } else {
+                //     *generic_param_type_kind
+                // };
+
+                self.type_kinds[*generic_type_kind] = TypeKind::Alias {
+                    inner_type_kind: *generic_param_type_kind,
+                };
+            }
+        }
+
         self.check_node(block);
 
-        type_kind
+        Some(declaration_type)
     }
 
     fn function_declaration(
@@ -931,7 +1008,7 @@ impl TypeChecker {
                     type_error!(self, "expected function name before generic specifier");
                 };
 
-                let Some(function_index) = self.declaration_indices.get(&namespaced_name) else {
+                let Some(function_index) = self.definition_indices.get(&namespaced_name) else {
                     type_error!(self, "invalid function before generic specifier");
                 };
 
@@ -958,7 +1035,7 @@ impl TypeChecker {
                     type_error!(self, "expected struct name before generic specifier");
                 };
 
-                let Some(struct_index) = self.declaration_indices.get(&namespaced_name) else {
+                let Some(struct_index) = self.definition_indices.get(&namespaced_name) else {
                     type_error!(self, "invalid struct before generic specifier");
                 };
 
@@ -984,13 +1061,18 @@ impl TypeChecker {
             ),
         };
 
-        if !self.generic_usages.contains_key(index) {
-            self.generic_usages.insert(*index, HashSet::new());
-        }
+        // if !self.generic_usages.contains_key(index) {
+            // self.generic_usages.insert(*index, HashSet::new());
+        // }
 
-        let usages = self.generic_usages.get_mut(index).unwrap();
+        // let usages = self.generic_usages.get_mut(index).unwrap();
 
-        usages.insert(generic_param_type_kinds.clone());
+        // if usages.insert(generic_param_type_kinds.clone()) {
+            self.pending_generic_usages.push(PendingGenericUsage {
+                index: *index,
+                usage: generic_param_type_kinds.clone(),
+            });
+        // }
 
         Some(Type {
             type_kind: concrete_type_kind,
@@ -1115,22 +1197,23 @@ impl TypeChecker {
         })
     }
 
+    // TODO:
     fn add_generic_params_to_environment(&mut self, generic_params: Arc<Vec<usize>>) {
         for generic_param in generic_params.iter() {
             self.check_node(*generic_param);
 
-            let NodeKind::Name { text } = self.nodes[*generic_param].kind.clone() else {
-                panic!("Invalid generic param");
-            };
-
-            let generic_type_kind = self.add_type(TypeKind::Partial);
-            self.environment.insert(
-                text,
-                Type {
-                    type_kind: generic_type_kind,
-                    instance_kind: InstanceKind::Name,
-                },
-            )
+//             let NodeKind::Name { text } = self.nodes[*generic_param].kind.clone() else {
+//                 panic!("Invalid generic param");
+//             };
+//
+//             let generic_type_kind = self.add_type(TypeKind::Partial);
+//             self.environment.insert(
+//                 text,
+//                 Type {
+//                     type_kind: generic_type_kind,
+//                     instance_kind: InstanceKind::Name,
+//                 },
+//             )
         }
     }
 

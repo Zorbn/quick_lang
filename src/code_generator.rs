@@ -179,7 +179,7 @@ impl CodeGenerator {
             TypedNode {
                 node_kind: NodeKind::Function { declaration, block },
                 node_type,
-            } => self.function(declaration, block, node_type),
+            } => self.function(declaration, block, index, node_type),
             TypedNode {
                 node_kind:
                     NodeKind::FunctionDeclaration {
@@ -403,12 +403,9 @@ impl CodeGenerator {
         if let Some(generic_usages) = self.generic_usages.get(&index) {
             let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
 
-
             for generic_usage in generic_usages {
-                // TODO:
-                let types_backup = self.type_kinds.to_owned();
-
                 // Replace generic types with their concrete types for this usage.
+                // TODO: This should become a function.
                 for (generic_param_type_kind, generic_type_kind) in
                     generic_usage.iter().zip(generic_type_kinds.iter())
                 {
@@ -444,8 +441,6 @@ impl CodeGenerator {
                 self.type_prototype_emitter.unindent();
                 self.type_prototype_emitter.emitln("};");
                 self.type_prototype_emitter.newline();
-
-                self.type_kinds = types_backup;
             }
         } else if generic_type_kinds.is_empty() {
             // TODO: Duplication.
@@ -524,7 +519,7 @@ impl CodeGenerator {
         self.type_prototype_emitter.emitln(";");
     }
 
-    fn function(&mut self, declaration: usize, block: usize, node_type: Option<Type>) {
+    fn function(&mut self, declaration: usize, block: usize, index: usize, node_type: Option<Type>) {
         let NodeKind::FunctionDeclaration {
             name,
             params,
@@ -542,7 +537,7 @@ impl CodeGenerator {
             panic!("Invalid function type");
         };
 
-        if let Some(generic_usages) = self.generic_usages.get(&declaration) {
+        if let Some(generic_usages) = self.generic_usages.get(&index) {
             let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
 
             for generic_usage in generic_usages {
@@ -551,6 +546,13 @@ impl CodeGenerator {
                     generic_usage.iter().zip(generic_type_kinds.iter())
                 {
                     println!("FN Alias to {:?}", self.type_kinds[*generic_param_type_kind]);
+
+                    // let generic_param_type_kind = if let TypeKind::Alias { inner_type_kind } = &self.type_kinds[*generic_param_type_kind] {
+                    //     *inner_type_kind
+                    // } else {
+                    //     *generic_param_type_kind
+                    // };
+
                     self.type_kinds[*generic_type_kind] = TypeKind::Alias {
                         inner_type_kind: *generic_param_type_kind,
                     };
@@ -1324,6 +1326,7 @@ impl CodeGenerator {
         do_arrays_as_pointers: bool,
         is_prefix: bool,
     ) {
+        let original_type_kind = type_kind; // TODO
         let type_kind = &self.type_kinds[type_kind];
         let needs_trailing_space = is_prefix
             && !matches!(
@@ -1390,12 +1393,14 @@ impl CodeGenerator {
                 self.emitter(emitter_kind).emit("*");
             }
             TypeKind::Alias { inner_type_kind } => {
+                println!("alias start {} -> {}", original_type_kind, inner_type_kind);
                 self.emit_type_kind_left(
                     inner_type_kind,
                     emitter_kind,
                     do_arrays_as_pointers,
                     is_prefix,
                 );
+                println!("alias end");
             }
             TypeKind::Partial | TypeKind::PartialGeneric { .. } => {
                 panic!("Can't emit partial type: {:?}", type_kind)
@@ -1450,6 +1455,13 @@ impl CodeGenerator {
                     self.emit_type_kind_right(*param_kind, emitter_kind, false);
                 }
                 self.emitter(emitter_kind).emit(")");
+            }
+            TypeKind::Alias { inner_type_kind } => {
+                self.emit_type_kind_right(
+                    inner_type_kind,
+                    emitter_kind,
+                    do_arrays_as_pointers,
+                );
             }
             _ => {}
         }

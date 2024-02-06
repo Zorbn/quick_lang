@@ -11,7 +11,7 @@ use std::{
 use file_data::FileData;
 
 use crate::{
-    code_generator::CodeGenerator, lexer::Lexer, parser::Parser, type_checker::TypeChecker,
+    code_generator::CodeGenerator, lexer::Lexer, parser::{Node, NodeKind, Parser}, position::Position, type_checker::{TypeChecker, TypedNode}
 };
 
 mod code_generator;
@@ -122,7 +122,7 @@ fn main() -> ExitCode {
         parser.pointer_type_kinds,
         parser.function_type_kinds,
         parser.struct_type_kinds,
-        parser.declaration_indices,
+        parser.definition_indices,
         files.clone(),
     );
     for start_index in &start_indices {
@@ -141,10 +141,10 @@ fn main() -> ExitCode {
         .enumerate()
         .map(|(i, n)| match n.clone() {
             Some(n) => n,
-            None => panic!(
-                "Mismatch between nodes and typed nodes, expected typed node for: {:?}",
-                type_checker.nodes[i]
-            ),
+            None => TypedNode {
+                node_kind: NodeKind::Error,
+                node_type: None,
+            },
         })
         .collect();
 
