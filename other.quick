@@ -25,7 +25,7 @@ struct GenericStruct<A, B> {
     b B;
 
     fun SetA(self *GenericStruct.<A, B>, a A) Void {
-        // val genericStruct = GenericStruct.<A, B> { a = 5, b = false };
+        val genericStruct = GenericStruct.<A, B> { a = self.a, b = self.b };
         // genericFunction2.<A, B>("hello", "world");
         self.a = a;
     }
@@ -41,13 +41,16 @@ struct GenericStruct<A, B> {
     fun GetB(self *GenericStruct.<A, B>) B {
         return self.b;
     }
+
+    // fun DoThingWithStringStruct(self *GenericStruct.<String, Bool>) Void {
+    // }
 }
 
 fun genericFunction2<C, D>(a C, b D) C {
     val arrayA = [a, a, a];
     val arrayB = [b, b];
 
-    // val genericStruct = GenericStruct.<A, B> { a = 5, b = false };
+    val genericStruct = GenericStruct.<A, B> { a = 5, b = false };
 
     return arrayA[2];
 }

@@ -11,7 +11,7 @@ use std::{
 use file_data::FileData;
 
 use crate::{
-    code_generator::CodeGenerator, lexer::Lexer, parser::{Node, NodeKind, Parser}, position::Position, type_checker::{TypeChecker, TypedNode}
+    code_generator::CodeGenerator, lexer::Lexer, parser::{NodeKind, Parser}, type_checker::{TypeChecker, TypedNode}
 };
 
 mod code_generator;
@@ -138,8 +138,7 @@ fn main() -> ExitCode {
     let typed_nodes = type_checker
         .typed_nodes
         .iter()
-        .enumerate()
-        .map(|(i, n)| match n.clone() {
+        .map(|n| match n.clone() {
             Some(n) => n,
             None => TypedNode {
                 node_kind: NodeKind::Error,

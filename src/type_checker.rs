@@ -143,31 +143,17 @@ impl TypeChecker {
                 );
                 self.type_kinds[i] = self.type_kinds[concrete_index].clone();
 
-                // TODO: Duplicate.
-//                 let Some(index) = self.declaration_indices.get(&vec![name_text]) else {
+//                 let Some(index) = self.definition_indices.get(&vec![name_text]) else {
 //                     // TODO: type_error!(self, "invalid struct before generic specifier");
 //                     panic!("invalid struct before generic specifier");
 //                 };
 //
-//                 if !self.generic_usages.contains_key(index) {
-//                     self.generic_usages.insert(*index, HashSet::new());
-//                 }
-//
-                // if usages.insert(generic_param_type_kinds.clone()) {
-                //     self.pending_generic_usages.push(PendingGenericUsage {
-                //         index: *index,
-                //         usage: generic_param_type_kinds.clone(),
-                //     });
-                // }
-//
-//                 usages.insert(generic_param_type_kinds.clone());
-//                 println!("{:?}", usages.len());
+//                 self.pending_generic_usages.push(PendingGenericUsage {
+//                     index: *index,
+//                     usage: generic_param_type_kinds.clone(),
+//                 });
             }
         }
-    }
-
-    fn add_type(&mut self, type_kind: TypeKind) -> usize {
-        add_type(&mut self.type_kinds, type_kind)
     }
 
     pub fn check(&mut self, start_index: usize) {
@@ -320,7 +306,8 @@ impl TypeChecker {
         structs: Arc<Vec<usize>>,
         enums: Arc<Vec<usize>>,
     ) -> Option<Type> {
-        // TODO: Do this for structs and enums too, so that they are in the environment regardless of order ("hoisting").
+        // TODO: Will this loop for functions do the right thing for functions defined in structs,
+        // eg. if two structs have a function with the same name, will one overwrite the other?
         for function in functions.iter() {
             let declaration = match &self.nodes[*function].kind {
                 NodeKind::Function { declaration, .. } => declaration,
@@ -342,6 +329,40 @@ impl TypeChecker {
                 Type {
                     type_kind: *type_kind,
                     instance_kind: InstanceKind::Variable,
+                },
+            );
+        }
+
+        for struct_definition in structs.iter() {
+            let NodeKind::StructDefinition { name, type_kind, .. } = &self.nodes[*struct_definition].kind else {
+                type_error!(self, "invalid struct definition");
+            };
+            let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
+                type_error!(self, "invalid struct name");
+            };
+
+            self.environment.insert(
+                name_text,
+                Type {
+                    type_kind: *type_kind,
+                    instance_kind: InstanceKind::Name,
+                },
+            );
+        }
+
+        for enum_definition in enums.iter() {
+            let NodeKind::EnumDefinition { name, type_kind, .. } = &self.nodes[*enum_definition].kind else {
+                type_error!(self, "invalid enum definition");
+            };
+            let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
+                type_error!(self, "invalid enum name");
+            };
+
+            self.environment.insert(
+                name_text,
+                Type {
+                    type_kind: *type_kind,
+                    instance_kind: InstanceKind::Name,
                 },
             );
         }
