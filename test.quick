@@ -150,7 +150,7 @@ fun main() Int32 {
         b,
     );
 
-    val genericResult = genericFunction.<Int, Bool>(777, true);
+    val genericResult Int = genericFunction.<Int, Bool>(777, true);
     val genericResult2 = genericFunction.<Bool, Bool>(false, true);
     val genericResult3 = genericFunction.<Bool, Bool>(false, true);
 
@@ -206,6 +206,7 @@ fun genericFunction<A, B>(a A, b B) A {
     val arrayB = [b, b];
 
     genericFunction.<A, B>(a, b);
+    genericFunction.<B, A>(b, a);
     // val genericStruct = GenericStruct.<A, B> { a = 5, b = false };
 
     return arrayA[2];

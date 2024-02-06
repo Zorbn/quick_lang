@@ -379,6 +379,11 @@ impl Parser {
 
     fn token_start(&self) -> Position {
         let tokens = self.tokens.as_ref().unwrap();
+
+        if tokens.len() <= self.position {
+            return Position::new(0);
+        }
+
         tokens[self.position].start
     }
 
@@ -388,11 +393,21 @@ impl Parser {
         }
 
         let tokens = self.tokens.as_ref().unwrap();
+
+        if tokens.len() <= self.position {
+            return Position::new(0);
+        }
+
         tokens[self.position - 1].end
     }
 
     fn token_end(&self) -> Position {
         let tokens = self.tokens.as_ref().unwrap();
+
+        if tokens.len() <= self.position {
+            return Position::new(0);
+        }
+
         tokens[self.position].end
     }
 

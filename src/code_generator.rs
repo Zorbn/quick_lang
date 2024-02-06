@@ -520,6 +520,10 @@ impl CodeGenerator {
     }
 
     fn function(&mut self, declaration: usize, block: usize, index: usize, node_type: Option<Type>) {
+        let Some(node_type) = node_type else {
+            return;
+        };
+
         let NodeKind::FunctionDeclaration {
             name,
             params,
@@ -532,7 +536,7 @@ impl CodeGenerator {
 
         let TypeKind::Function {
             generic_type_kinds, ..
-        } = self.type_kinds[node_type.unwrap().type_kind].clone()
+        } = self.type_kinds[node_type.type_kind].clone()
         else {
             panic!("Invalid function type");
         };
@@ -563,7 +567,7 @@ impl CodeGenerator {
                     params.clone(),
                     Some(generic_usage),
                     return_type_name,
-                    node_type,
+                    Some(node_type),
                 );
                 self.function_declaration_needing_init = Some(declaration);
                 self.gen_node(block);
@@ -571,7 +575,7 @@ impl CodeGenerator {
                 self.body_emitters.top().body.newline();
             }
         } else if generic_type_kinds.is_empty() {
-            self.function_declaration(name, params, None, return_type_name, node_type);
+            self.function_declaration(name, params, None, return_type_name, Some(node_type));
             self.function_declaration_needing_init = Some(declaration);
             self.gen_node(block);
             self.body_emitters.top().body.newline();

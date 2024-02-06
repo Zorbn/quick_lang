@@ -198,7 +198,7 @@ impl TypeChecker {
                     self.function(declaration, block, Some(dealiased_usage))
                 }
                 NodeKind::StructDefinition { name, fields, generic_params, functions, type_kind } => {
-                    continue;
+                    self.struct_definition(name, fields, generic_params, functions, type_kind, Some(dealiased_usage))
                 }
                 _ => panic!("Invalid generic usage")
             };
@@ -225,7 +225,7 @@ impl TypeChecker {
                 generic_params,
                 functions,
                 type_kind,
-            } => self.struct_definition(name, fields, generic_params, functions, type_kind),
+            } => self.struct_definition(name, fields, generic_params, functions, type_kind, None),
             NodeKind::EnumDefinition {
                 name,
                 variant_names,
@@ -320,6 +320,7 @@ impl TypeChecker {
         structs: Arc<Vec<usize>>,
         enums: Arc<Vec<usize>>,
     ) -> Option<Type> {
+        // TODO: Do this for structs and enums too, so that they are in the environment regardless of order ("hoisting").
         for function in functions.iter() {
             let declaration = match &self.nodes[*function].kind {
                 NodeKind::Function { declaration, .. } => declaration,
@@ -367,7 +368,29 @@ impl TypeChecker {
         generic_params: Arc<Vec<usize>>,
         functions: Arc<Vec<usize>>,
         type_kind: usize,
+        generic_usage: Option<Arc<Vec<usize>>>,
     ) -> Option<Type> {
+        let TypeKind::Struct { generic_type_kinds, .. } = self.type_kinds[type_kind].clone() else {
+            type_error!(self, "invalid struct definition");
+        };
+
+        if !generic_type_kinds.is_empty() && generic_usage.is_none() {
+            return None;
+        }
+
+        // TODO: Duplication.
+        if let Some(generic_usage) = generic_usage {
+            for (generic_param_type_kind, generic_type_kind) in
+                generic_usage.iter().zip(generic_type_kinds.iter())
+            {
+                println!("TYPE CHECKER STRUCT Alias {} -> {} to {:?}", *generic_type_kind, *generic_param_type_kind, self.type_kinds[*generic_param_type_kind]);
+
+                self.type_kinds[*generic_type_kind] = TypeKind::Alias {
+                    inner_type_kind: *generic_param_type_kind,
+                };
+            }
+        }
+
         self.check_node(name);
 
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
@@ -447,11 +470,6 @@ impl TypeChecker {
                 generic_usage.iter().zip(generic_type_kinds.iter())
             {
                 println!("TYPE CHECKER FN Alias {} -> {} to {:?}", *generic_type_kind, *generic_param_type_kind, self.type_kinds[*generic_param_type_kind]);
-                // let generic_param_type_kind = if let TypeKind::Alias { inner_type_kind } = &self.type_kinds[*generic_param_type_kind] {
-                //     *inner_type_kind
-                // } else {
-                //     *generic_param_type_kind
-                // };
 
                 self.type_kinds[*generic_type_kind] = TypeKind::Alias {
                     inner_type_kind: *generic_param_type_kind,
