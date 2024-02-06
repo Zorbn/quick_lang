@@ -219,15 +219,6 @@ pub fn is_type_kind_array(type_kinds: &[TypeKind], type_kind: usize) -> bool {
     matches!(type_kind, TypeKind::Array { .. })
 }
 
-// TODO: When we can tell between literals and variables in the type checker this shouldn't be needed.
 pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: usize) -> bool {
-    let TypedNode {
-        node_kind: NodeKind::ArrayLiteral { .. },
-        ..
-    } = typed_nodes[expression]
-    else {
-        return false;
-    };
-
-    true
+    matches!(typed_nodes[expression].node_kind, NodeKind::ArrayLiteral { .. })
 }
