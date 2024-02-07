@@ -8,7 +8,7 @@ use crate::{
     emitter_stack::EmitterStack,
     parser::{NodeKind, Op, TypeKind},
     type_checker::{InstanceKind, Type, TypedNode},
-    types::{is_type_kind_array, is_typed_expression_array_literal},
+    types::{is_type_kind_array, is_typed_expression_array_literal, replace_generic_type_kinds},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -381,6 +381,47 @@ impl CodeGenerator {
         }
     }
 
+    fn emit_struct_definition(
+        &mut self,
+        name: usize,
+        fields: &Arc<Vec<usize>>,
+        functions: &Arc<Vec<usize>>,
+        generic_usage: Option<Arc<Vec<usize>>>,
+    ) {
+        let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
+            panic!("invalid name in generic struct");
+        };
+
+        self.current_namespace_names.push(NamespaceName {
+            name: name_text.clone(),
+            generic_param_type_kinds: generic_usage.clone(),
+        });
+
+        for function in functions.iter() {
+            self.gen_node(*function);
+        }
+
+        self.current_namespace_names.pop();
+
+        self.type_prototype_emitter.emit("struct ");
+        self.emit_name_node(name, EmitterKind::TypePrototype);
+
+        if let Some(generic_usage) = generic_usage {
+            self.emit_generic_param_suffix(generic_usage, EmitterKind::TypePrototype);
+        }
+
+        self.type_prototype_emitter.emitln(" {");
+        self.type_prototype_emitter.indent();
+
+        for field in fields.iter() {
+            self.gen_node(*field);
+        }
+
+        self.type_prototype_emitter.unindent();
+        self.type_prototype_emitter.emitln("};");
+        self.type_prototype_emitter.newline();
+    }
+
     fn struct_definition(
         &mut self,
         name: usize,
@@ -400,76 +441,16 @@ impl CodeGenerator {
             panic!("invalid function type");
         };
 
-        let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
-            panic!("invalid name in generic struct");
-        };
-
         if let Some(generic_usages) = self.generic_usages.get(&index) {
             let generic_usages: Vec<Arc<Vec<usize>>> = generic_usages.iter().cloned().collect();
 
             for generic_usage in generic_usages {
                 // Replace generic types with their concrete types for this usage.
-                // TODO: This should become a function.
-                for (generic_param_type_kind, generic_type_kind) in
-                    generic_usage.iter().zip(generic_type_kinds.iter())
-                {
-                    self.type_kinds[*generic_type_kind] = TypeKind::Alias {
-                        inner_type_kind: *generic_param_type_kind,
-                    };
-                }
-
-                // TODO: Duplication.
-                self.current_namespace_names.push(NamespaceName {
-                    name: name_text.clone(),
-                    generic_param_type_kinds: Some(generic_usage.clone()),
-                });
-
-                for function in functions.iter() {
-                    self.gen_node(*function);
-                }
-
-                self.current_namespace_names.pop();
-
-                self.type_prototype_emitter.emit("struct ");
-                self.emit_name_node(name, EmitterKind::TypePrototype);
-                self.emit_generic_param_suffix(generic_usage, EmitterKind::TypePrototype);
-
-                self.type_prototype_emitter.emitln(" {");
-                self.type_prototype_emitter.indent();
-
-                for field in fields.iter() {
-                    self.gen_node(*field);
-                }
-
-                self.type_prototype_emitter.unindent();
-                self.type_prototype_emitter.emitln("};");
-                self.type_prototype_emitter.newline();
+                replace_generic_type_kinds(&mut self.type_kinds, &generic_type_kinds, &generic_usage);
+                self.emit_struct_definition(name, &fields, &functions, Some(generic_usage));
             }
         } else if generic_type_kinds.is_empty() {
-            // TODO: Duplication.
-            self.current_namespace_names.push(NamespaceName {
-                name: name_text,
-                generic_param_type_kinds: None,
-            });
-
-            for function in functions.iter() {
-                self.gen_node(*function);
-            }
-
-            self.current_namespace_names.pop();
-
-            self.type_prototype_emitter.emit("struct ");
-            self.emit_name_node(name, EmitterKind::TypePrototype);
-            self.type_prototype_emitter.emitln(" {");
-            self.type_prototype_emitter.indent();
-
-            for field in fields.iter() {
-                self.gen_node(*field);
-            }
-
-            self.type_prototype_emitter.unindent();
-            self.type_prototype_emitter.emitln("};");
-            self.type_prototype_emitter.newline();
+            self.emit_struct_definition(name, &fields, &functions, None);
         }
     }
 

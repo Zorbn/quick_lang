@@ -13,7 +13,7 @@ use crate::{
         UINT_INDEX,
     },
     types::{
-        generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer
+        generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer, replace_generic_type_kinds
     },
 };
 
@@ -376,15 +376,8 @@ impl TypeChecker {
             return None;
         }
 
-        // TODO: Duplication.
         if let Some(generic_usage) = generic_usage {
-            for (generic_param_type_kind, generic_type_kind) in
-                generic_usage.iter().zip(generic_type_kinds.iter())
-            {
-                self.type_kinds[*generic_type_kind] = TypeKind::Alias {
-                    inner_type_kind: *generic_param_type_kind,
-                };
-            }
+            replace_generic_type_kinds(&mut self.type_kinds, &generic_type_kinds, &generic_usage);
         }
 
         self.check_node(name);
@@ -471,15 +464,8 @@ impl TypeChecker {
 
         self.has_function_opened_block = true;
 
-        // TODO: Duplication.
         if let Some(generic_usage) = generic_usage {
-            for (generic_param_type_kind, generic_type_kind) in
-                generic_usage.iter().zip(generic_type_kinds.iter())
-            {
-                self.type_kinds[*generic_type_kind] = TypeKind::Alias {
-                    inner_type_kind: *generic_param_type_kind,
-                };
-            }
+            replace_generic_type_kinds(&mut self.type_kinds, &generic_type_kinds, &generic_usage);
         }
 
         self.check_node(block);
@@ -1207,7 +1193,6 @@ impl TypeChecker {
     }
 
     fn resolve_partial_generics(&mut self, type_kind: usize) -> usize {
-        // TODO: Resolve nested partial generics inside other partial generics or functions.
         // TODO: Convert panics in this function into type errors using similar system as parser.
         match self.type_kinds[type_kind].clone() {
             TypeKind::Array { element_type_kind, element_count } => {
