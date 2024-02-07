@@ -53,6 +53,10 @@ struct GenericStruct<A, B> {
     fun DoThingWithNestedStruct(self *SimpleGeneric.<UInt16>) Void {
         print("doing thing");
     }
+
+    fun DoThingWithNestedFunction(self *fun(SimpleGeneric.<UInt16>) GenericStruct.<A, B>) Void {
+        print("doing thing");
+    }
 }
 
 struct SimpleGeneric<A> {

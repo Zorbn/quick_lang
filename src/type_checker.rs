@@ -13,8 +13,7 @@ use crate::{
         UINT_INDEX,
     },
     types::{
-        generic_function_to_concrete, generic_struct_to_concrete, get_type_kind_as_array,
-        get_type_kind_as_pointer,
+        generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer
     },
 };
 
@@ -1219,6 +1218,24 @@ impl TypeChecker {
                 let inner_type_kind = self.resolve_partial_generics(inner_type_kind);
                 get_type_kind_as_pointer(&mut self.type_kinds, &mut self.pointer_type_kinds, inner_type_kind)
             },
+            TypeKind::Function { param_type_kinds, generic_type_kinds, return_type_kind } => {
+                let mut resolved_param_type_kinds = Vec::new();
+                for param_type_kind in param_type_kinds.iter() {
+                    let resolved_type_kind = self.resolve_partial_generics(*param_type_kind);
+                    resolved_param_type_kinds.push(resolved_type_kind);
+                }
+                let resolved_param_type_kinds = Arc::new(resolved_param_type_kinds);
+
+                let resolved_return_type_kind = self.resolve_partial_generics(return_type_kind);
+
+                let function_layout = FunctionLayout {
+                    param_type_kinds: resolved_param_type_kinds,
+                    generic_type_kinds,
+                    return_type_kind: resolved_return_type_kind,
+                };
+
+                get_function_type_kind(&mut self.type_kinds, &mut self.function_type_kinds, function_layout)
+            }
             TypeKind::PartialGeneric {
                 inner_type_kind,
                 generic_param_type_kinds,
