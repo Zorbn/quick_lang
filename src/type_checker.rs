@@ -38,12 +38,7 @@ pub struct Type {
 
 macro_rules! type_error {
     ($self:ident, $message:expr) => {{
-        $self.had_error = true;
-        $self.nodes[$self.last_visited_index]
-            .start
-            .error("Type", $message, &$self.files);
-
-        return None;
+        return $self.type_error($message);
     }};
 }
 
@@ -108,12 +103,21 @@ impl TypeChecker {
         type_checker
     }
 
+    fn type_error(&mut self, message: &str) -> Option<Type> {
+        self.had_error = true;
+        self.nodes[self.last_visited_index]
+            .start
+            .error("Type", message, &self.files);
+
+        None
+    }
+
     pub fn check(&mut self, start_index: usize) {
         self.check_node(start_index);
         self.handle_generic_usages();
     }
 
-    pub fn handle_generic_usages(&mut self) {
+    fn handle_generic_usages(&mut self) {
         while let Some(pending_usage) = self.pending_generic_usages.pop() {
             let mut dealiased_usage = Vec::new();
             for mut type_kind in pending_usage.usage.iter().copied() {
@@ -1192,26 +1196,35 @@ impl TypeChecker {
         })
     }
 
-    fn resolve_partial_generics(&mut self, type_kind: usize) -> usize {
-        // TODO: Convert panics in this function into type errors using similar system as parser.
+    fn resolve_partial_generics(&mut self, type_kind: usize, resolved_type_kind: &mut usize) -> Option<Type> {
         match self.type_kinds[type_kind].clone() {
-            TypeKind::Array { element_type_kind, element_count } => {
-                let element_type_kind = self.resolve_partial_generics(element_type_kind);
-                get_type_kind_as_array(&mut self.type_kinds, &mut self.array_type_kinds, element_type_kind, element_count)
+            TypeKind::Array { mut element_type_kind, element_count } => {
+                if let Some(error_type) = self.resolve_partial_generics(element_type_kind, &mut element_type_kind) {
+                    return Some(error_type);
+                }
+                *resolved_type_kind = get_type_kind_as_array(&mut self.type_kinds, &mut self.array_type_kinds, element_type_kind, element_count);
             },
-            TypeKind::Pointer { inner_type_kind } => {
-                let inner_type_kind = self.resolve_partial_generics(inner_type_kind);
-                get_type_kind_as_pointer(&mut self.type_kinds, &mut self.pointer_type_kinds, inner_type_kind)
+            TypeKind::Pointer { mut inner_type_kind } => {
+                if let Some(error_type) = self.resolve_partial_generics(inner_type_kind, &mut inner_type_kind) {
+                    return Some(error_type);
+                }
+                *resolved_type_kind = get_type_kind_as_pointer(&mut self.type_kinds, &mut self.pointer_type_kinds, inner_type_kind);
             },
             TypeKind::Function { param_type_kinds, generic_type_kinds, return_type_kind } => {
                 let mut resolved_param_type_kinds = Vec::new();
                 for param_type_kind in param_type_kinds.iter() {
-                    let resolved_type_kind = self.resolve_partial_generics(*param_type_kind);
+                    let mut resolved_type_kind = 0;
+                    if let Some(error_type) = self.resolve_partial_generics(*param_type_kind, &mut resolved_type_kind) {
+                        return Some(error_type);
+                    }
                     resolved_param_type_kinds.push(resolved_type_kind);
                 }
                 let resolved_param_type_kinds = Arc::new(resolved_param_type_kinds);
 
-                let resolved_return_type_kind = self.resolve_partial_generics(return_type_kind);
+                let mut resolved_return_type_kind = 0;
+                if let Some(error_type) = self.resolve_partial_generics(return_type_kind, &mut resolved_return_type_kind) {
+                    return Some(error_type);
+                }
 
                 let function_layout = FunctionLayout {
                     param_type_kinds: resolved_param_type_kinds,
@@ -1219,23 +1232,26 @@ impl TypeChecker {
                     return_type_kind: resolved_return_type_kind,
                 };
 
-                get_function_type_kind(&mut self.type_kinds, &mut self.function_type_kinds, function_layout)
+                *resolved_type_kind = get_function_type_kind(&mut self.type_kinds, &mut self.function_type_kinds, function_layout);
             }
             TypeKind::PartialGeneric {
                 inner_type_kind,
                 generic_param_type_kinds,
             } => {
                 let TypeKind::Struct { name, .. } = self.type_kinds[inner_type_kind].clone() else {
-                    panic!("cannot apply generic specifier to non-struct type name");
+                    return self.type_error("cannot apply generic specifier to non-struct type name");
                 };
 
                 let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-                    panic!("invalid name in generic struct");
+                    return self.type_error("invalid name in generic struct");
                 };
 
                 let mut resolved_generic_param_type_kinds = Vec::new();
                 for generic_param_type_kind in generic_param_type_kinds.iter() {
-                    let resolved_type_kind = self.resolve_partial_generics(*generic_param_type_kind);
+                    let mut resolved_type_kind = 0;
+                    if let Some(error_type) = self.resolve_partial_generics(*generic_param_type_kind, &mut resolved_type_kind) {
+                        return Some(error_type);
+                    }
                     resolved_generic_param_type_kinds.push(resolved_type_kind);
                 }
                 let resolved_generic_param_type_kinds = Arc::new(resolved_generic_param_type_kinds);
@@ -1263,14 +1279,18 @@ impl TypeChecker {
                     usage: resolved_generic_param_type_kinds.clone(),
                 });
 
-                concrete_type_kind
+                *resolved_type_kind = concrete_type_kind;
             }
-            _ => type_kind,
-        }
+            _ => *resolved_type_kind = type_kind,
+        };
+
+        None
     }
 
-    fn type_name(&mut self, type_kind: usize) -> Option<Type> {
-        let type_kind = self.resolve_partial_generics(type_kind);
+    fn type_name(&mut self, mut type_kind: usize) -> Option<Type> {
+        if let Some(error_type) = self.resolve_partial_generics(type_kind, &mut type_kind) {
+            return Some(error_type);
+        }
 
         Some(Type {
             type_kind,
