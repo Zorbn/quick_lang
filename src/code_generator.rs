@@ -389,9 +389,13 @@ impl CodeGenerator {
         index: usize,
         node_type: Option<Type>,
     ) {
+        let Some(node_type) = node_type else {
+            return;
+        };
+
         let TypeKind::Struct {
             generic_type_kinds, ..
-        } = self.type_kinds[node_type.unwrap().type_kind].clone()
+        } = self.type_kinds[node_type.type_kind].clone()
         else {
             panic!("invalid function type");
         };

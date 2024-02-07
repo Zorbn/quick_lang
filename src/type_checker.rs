@@ -1231,18 +1231,25 @@ impl TypeChecker {
                     panic!("invalid name in generic struct");
                 };
 
+                let mut resolved_generic_param_type_kinds = Vec::new();
+                for generic_param_type_kind in generic_param_type_kinds.iter() {
+                    let resolved_type_kind = self.resolve_partial_generics(*generic_param_type_kind);
+                    resolved_generic_param_type_kinds.push(resolved_type_kind);
+                }
+                let resolved_generic_param_type_kinds = Arc::new(resolved_generic_param_type_kinds);
+
                 let struct_layout = StructLayout {
                     name: name_text.clone(),
-                    generic_param_type_kinds: generic_param_type_kinds.clone(),
+                    generic_param_type_kinds: resolved_generic_param_type_kinds.clone(),
                 };
 
-                let concrete_index = generic_struct_to_concrete(
+                let concrete_type_kind = generic_struct_to_concrete(
                     struct_layout,
                     &mut self.type_kinds,
                     inner_type_kind,
                     &mut self.struct_type_kinds,
                     &mut self.function_type_kinds,
-                    &generic_param_type_kinds,
+                    &resolved_generic_param_type_kinds,
                 );
 
                 let Some(index) = self.definition_indices.get(&vec![name_text]) else {
@@ -1251,10 +1258,10 @@ impl TypeChecker {
 
                 self.pending_generic_usages.push(PendingGenericUsage {
                     index: *index,
-                    usage: generic_param_type_kinds.clone(),
+                    usage: resolved_generic_param_type_kinds.clone(),
                 });
 
-                concrete_index
+                concrete_type_kind
             }
             _ => type_kind,
         }

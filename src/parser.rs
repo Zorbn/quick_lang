@@ -538,6 +538,7 @@ impl Parser {
             parse_error!(self, "invalid struct name", start, self.node_end(name));
         };
 
+        self.named_type_kinds.push();
         self.current_namespace_names.push(name_text.clone());
 
         let mut generic_params = Vec::new();
@@ -621,6 +622,7 @@ impl Parser {
         self.position += 1;
 
         self.current_namespace_names.pop();
+        self.named_type_kinds.pop();
 
         let generic_param_type_kinds = Arc::new(Vec::new());
 

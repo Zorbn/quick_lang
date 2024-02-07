@@ -45,6 +45,18 @@ struct GenericStruct<A, B> {
     fun DoThingWithStringStruct(self *GenericStruct.<String, A>) Void {
         print("doing thing");
     }
+
+    // fun DoThingWithNestedStruct(self *GenericStruct.<SimpleGeneric.<UInt16>, A>) Void {
+    //     print("doing thing");
+    // }
+
+    fun DoThingWithNestedStruct(self *SimpleGeneric.<UInt16>) Void {
+        print("doing thing");
+    }
+}
+
+struct SimpleGeneric<A> {
+    a A;
 }
 
 fun genericFunction2<C, D>(a C, b D) C {
