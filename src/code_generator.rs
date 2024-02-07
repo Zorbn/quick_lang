@@ -1325,7 +1325,7 @@ impl CodeGenerator {
         let needs_trailing_space = is_prefix
             && !matches!(
                 type_kind,
-                TypeKind::Array { .. } | TypeKind::Pointer { .. } | TypeKind::Function { .. }
+                TypeKind::Array { .. } | TypeKind::Pointer { .. } | TypeKind::Function { .. } | TypeKind::Alias { .. }
             );
 
         match type_kind.clone() {
