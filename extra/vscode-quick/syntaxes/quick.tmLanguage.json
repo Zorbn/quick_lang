@@ -90,6 +90,13 @@
 			"captures": {
 				"1": {
 					"name": "entity.name.function.quick"
+				},
+				"2": {
+					"patterns": [
+						{
+							"include": "#type"
+						}
+					]
 				}
 			}
 		},

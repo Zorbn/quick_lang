@@ -13,8 +13,8 @@ pub fn add_type(type_kinds: &mut Vec<TypeKind>, type_kind: TypeKind) -> usize {
 
 pub fn generic_type_kind_to_concrete(
     type_kind: usize,
-    generic_type_kinds: &Arc<Vec<usize>>,
-    generic_param_type_kinds: &Arc<Vec<usize>>,
+    generic_type_kinds: &[usize],
+    generic_param_type_kinds: &[usize],
 ) -> usize {
     for (i, generic_type_kind) in generic_type_kinds.iter().enumerate() {
         if type_kind != *generic_type_kind {
@@ -28,9 +28,9 @@ pub fn generic_type_kind_to_concrete(
 }
 
 pub fn generic_params_to_concrete(
-    param_type_kinds: &Arc<Vec<usize>>,
-    generic_type_kinds: &Arc<Vec<usize>>,
-    generic_param_type_kinds: &Arc<Vec<usize>>,
+    param_type_kinds: &[usize],
+    generic_type_kinds: &[usize],
+    generic_param_type_kinds: &[usize],
 ) -> Vec<usize> {
     let mut concrete_param_type_kinds = Vec::new();
 
@@ -50,7 +50,7 @@ pub fn generic_function_to_concrete(
     type_kinds: &mut Vec<TypeKind>,
     function_type_kind: usize,
     function_type_kinds: &mut HashMap<FunctionLayout, usize>,
-    type_names: &Arc<Vec<usize>>,
+    type_names: &[usize],
 ) -> usize {
     let TypeKind::Function {
         param_type_kinds,
@@ -223,7 +223,7 @@ pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: 
     matches!(typed_nodes[expression].node_kind, NodeKind::ArrayLiteral { .. })
 }
 
-pub fn replace_generic_type_kinds(type_kinds: &mut Vec<TypeKind>, generic_type_kinds: &Arc<Vec<usize>>, generic_param_type_kinds: &Arc<Vec<usize>>) {
+pub fn replace_generic_type_kinds(type_kinds: &mut [TypeKind], generic_type_kinds: &[usize], generic_param_type_kinds: &[usize]) {
     for (generic_param_type_kind, generic_type_kind) in
         generic_param_type_kinds.iter().zip(generic_type_kinds.iter())
     {
