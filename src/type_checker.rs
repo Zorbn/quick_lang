@@ -1086,18 +1086,10 @@ impl TypeChecker {
                 ),
             };
 
-        // if !self.generic_usages.contains_key(index) {
-        // self.generic_usages.insert(*index, HashSet::new());
-        // }
-
-        // let usages = self.generic_usages.get_mut(index).unwrap();
-
-        // if usages.insert(generic_param_type_kinds.clone()) {
         self.pending_generic_usages.push(PendingGenericUsage {
             index: *index,
             usage: generic_param_type_kinds.clone(),
         });
-        // }
 
         Some(Type {
             type_kind: concrete_type_kind,
