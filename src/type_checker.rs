@@ -1216,7 +1216,7 @@ impl TypeChecker {
     }
 
     fn resolve_partial_generics(&mut self, type_kind: usize) -> usize {
-        // TODO: Resolve nested partial generics inside other partial generics of functions.
+        // TODO: Resolve nested partial generics inside other partial generics or functions.
         // TODO: Convert panics in this function into type errors using similar system as parser.
         match self.type_kinds[type_kind].clone() {
             TypeKind::Array { element_type_kind, element_count } => {

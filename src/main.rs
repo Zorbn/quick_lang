@@ -26,15 +26,14 @@ mod type_checker;
 mod types;
 
 /*
- * CURRENTLY BROKEN:
- * Can't call functions from files that are processed later than the current file.
- *
  * BIG TODOS:
  * Complete type checking
  *     * distinguish between variable (var) and constant (val, fun) bindings.
  *     * function calls.
  *     * struct literal fields.
  *     * make sure all non-void functions return, and that all functions return the correct value.
+ *     * prevent multiple functions, enums, structs with the same name.
+ *     * prevent name collisions in struct members.
  * Incremental and parallel compilation.
  * Default parameters.
  * Variadic arguments.
@@ -45,11 +44,10 @@ mod types;
  * Bitwise operations.
  * Tagged unions? Still need to figure out what those should look like.
  * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
- * Prevent multiple functions, enums, structs with the same name.
- * Prevent name collisions in struct members.
  * Don't use keywords for primitive types, use named types instead.
  * Generic type inference if possible.
  * Try requiring for/while/if/etc to be enclosed in parens, and change them to have a statement instead of a block afterwards. Just to see if it's better.
+ * Don't print duplicate type errors for generics, probably best to stop checking them if one variant had an error, or maybe it would be easier to stop handling generic usages after an error.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.

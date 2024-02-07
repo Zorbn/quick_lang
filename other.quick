@@ -43,6 +43,7 @@ struct GenericStruct<A, B> {
     }
 
     fun DoThingWithStringStruct(self *GenericStruct.<String, A>) Void {
+        print("doing thing");
     }
 }
 
