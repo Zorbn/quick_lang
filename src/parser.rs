@@ -88,6 +88,7 @@ pub enum TypeKind {
         field_kinds: Arc<Vec<Field>>,
         generic_type_kinds: Arc<Vec<usize>>,
         generic_param_type_kinds: Arc<Vec<usize>>,
+        is_union: bool,
     },
     Partial,
     PartialGeneric {
@@ -501,7 +502,7 @@ impl Parser {
                     index = self.extern_function();
                     functions.push(index);
                 }
-                TokenKind::Struct => {
+                TokenKind::Struct | TokenKind::Union => {
                     index = self.struct_definition();
                     structs.push(index);
                 }
@@ -529,7 +530,11 @@ impl Parser {
     fn struct_definition(&mut self) -> usize {
         let start = self.token_start();
 
-        assert_token!(self, TokenKind::Struct, start, self.token_end());
+        let is_union = match *self.token_kind() {
+            TokenKind::Struct => false,
+            TokenKind::Union => true,
+            _ => parse_error!(self, "unexpected token at the start of struct definition", start, self.token_end())
+        };
         self.position += 1;
 
         let name = self.name();
@@ -633,6 +638,7 @@ impl Parser {
                 field_kinds: Arc::new(field_kinds),
                 generic_type_kinds: Arc::new(generic_type_kinds),
                 generic_param_type_kinds: generic_param_type_kinds.clone(),
+                is_union,
             },
             false,
         );

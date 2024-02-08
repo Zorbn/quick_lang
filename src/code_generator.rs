@@ -387,7 +387,12 @@ impl CodeGenerator {
         fields: &Arc<Vec<usize>>,
         functions: &Arc<Vec<usize>>,
         generic_usage: Option<Arc<Vec<usize>>>,
+        struct_type: Type,
     ) {
+        let TypeKind::Struct { is_union, .. } = self.type_kinds[struct_type.type_kind].clone() else {
+            panic!("invalid name in generic struct");
+        };
+
         let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
             panic!("invalid name in generic struct");
         };
@@ -403,7 +408,11 @@ impl CodeGenerator {
 
         self.current_namespace_names.pop();
 
-        self.type_prototype_emitter.emit("struct ");
+        if is_union {
+            self.type_prototype_emitter.emit("union ");
+        } else {
+            self.type_prototype_emitter.emit("struct ");
+        }
         self.emit_name_node(name, EmitterKind::TypePrototype);
 
         if let Some(generic_usage) = generic_usage {
@@ -447,10 +456,10 @@ impl CodeGenerator {
             for generic_usage in generic_usages {
                 // Replace generic types with their concrete types for this usage.
                 replace_generic_type_kinds(&mut self.type_kinds, &generic_type_kinds, &generic_usage);
-                self.emit_struct_definition(name, &fields, &functions, Some(generic_usage));
+                self.emit_struct_definition(name, &fields, &functions, Some(generic_usage), node_type);
             }
         } else if generic_type_kinds.is_empty() {
-            self.emit_struct_definition(name, &fields, &functions, None);
+            self.emit_struct_definition(name, &fields, &functions, None, node_type);
         }
     }
 
@@ -1194,7 +1203,10 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn field_literal(&mut self, _name: usize, expression: usize, _node_type: Option<Type>) {
+    fn field_literal(&mut self, name: usize, expression: usize, _node_type: Option<Type>) {
+        self.body_emitters.top().body.emit(".");
+        self.gen_node(name);
+        self.body_emitters.top().body.emit(" = ");
         self.gen_node(expression);
     }
 
@@ -1333,9 +1345,14 @@ impl CodeGenerator {
             TypeKind::Struct {
                 name,
                 generic_param_type_kinds,
+                is_union,
                 ..
             } => {
-                self.emitter(emitter_kind).emit("struct ");
+                if is_union {
+                    self.emitter(emitter_kind).emit("union ");
+                } else {
+                    self.emitter(emitter_kind).emit("struct ");
+                }
                 let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
                     panic!("invalid struct name");
                 };

@@ -48,6 +48,7 @@ mod types;
  * Generic type inference if possible.
  * Try requiring for/while/if/etc to be enclosed in parens, and change them to have a statement instead of a block afterwards. Just to see if it's better.
  * Don't print duplicate type errors for generics, probably best to stop checking them if one variant had an error, or maybe it would be easier to stop handling generic usages after an error.
+ * Enum methods.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.

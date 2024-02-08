@@ -9,8 +9,56 @@ enum Name {
     Derek,
 }
 
+union SimpleUnion {
+    a Int;
+    b Bool;
+    c Int;
+    d String;
+}
+
+union GenericUnion<A, B> {
+    a A;
+    b B;
+}
+
+/*
+struct Skeleton...
+struct Zombie...
+
+union Entity {
+    skeleton Skeleton;
+    zombie Zombie;
+}
+
+C:
+
+struct Entity {
+    enum EntityKind tag;
+    union {
+        struct Skeleton Skeleton;
+        struct Zombie Zombie;
+    } variant;
+}
+
+When used in most expressions:
+if entity == Entity.Skeleton -> if (entity.tag == Entity.Skeleton)
+switch entity case Entity.Skeleton {} -> switch (entity.tag) { case Entity.Skeleton: break; }
+
+When used in assignment (check if left type is union):
+entity = Skeleton {} -> (entity.tag = __EntitySkeleton, entity.variant = {})
+entityA.Skeleton = entityB.Skeleton = Skeleton {} -> (entityA.tag = __EntitySkeleton, entityA.variant.Skeleton = (entityB.tag = __EntitySkeleton, entityB.variant.Skeleton = {}))
+
+When field is accessed:
+entity.Skeleton.health += 10 -> (*(assert(entity.tag == __EntitySkeleton), &entity.variant.Skeleton)).health += 10;
+
+*/
+
 fun main() Int32 {
     val someonesName = Name.Carson;
+
+    var genericUnion = GenericUnion.<Int32, Int64> { b = 0 };
+    genericUnion.a = 5 as Int32;
+    genericUnion.b = 8 as Int64;
 
     var function *fun(Int, Int) Int = &add;
     function.*(1, 2);

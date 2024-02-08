@@ -87,6 +87,7 @@ pub fn generic_struct_to_concrete(
         name,
         field_kinds,
         generic_type_kinds,
+        is_union,
         ..
     } = type_kinds[struct_type_kind].clone()
     else {
@@ -136,6 +137,7 @@ pub fn generic_struct_to_concrete(
             field_kinds: Arc::new(concrete_field_kinds),
             generic_type_kinds: Arc::new(Vec::new()),
             generic_param_type_kinds: generic_param_type_kinds.clone(),
+            is_union,
         },
     );
 
