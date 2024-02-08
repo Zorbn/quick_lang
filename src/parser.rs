@@ -90,6 +90,10 @@ pub enum TypeKind {
         generic_param_type_kinds: Arc<Vec<usize>>,
         is_union: bool,
     },
+    // TODO: Use this as the type for UnionName.field and unionInstance so that you can do if unionInstance == UnionName.field to find the right variant.
+    UnionTag {
+        value: usize,
+    },
     Partial,
     PartialGeneric {
         inner_type_kind: usize,

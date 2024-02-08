@@ -132,6 +132,7 @@ impl CodeGenerator {
             .header_emitter
             .emitln("#include <inttypes.h>");
         code_generator.header_emitter.emitln("#include <stdbool.h>");
+        code_generator.header_emitter.emitln("#include <assert.h>");
         code_generator.header_emitter.newline();
         code_generator.body_emitters.push(1);
 
@@ -390,11 +391,11 @@ impl CodeGenerator {
         struct_type: Type,
     ) {
         let TypeKind::Struct { is_union, .. } = self.type_kinds[struct_type.type_kind].clone() else {
-            panic!("invalid name in generic struct");
+            panic!("invalid struct");
         };
 
         let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
-            panic!("invalid name in generic struct");
+            panic!("invalid name in struct");
         };
 
         self.current_namespace_names.push(NamespaceName {
@@ -406,20 +407,55 @@ impl CodeGenerator {
             self.gen_node(*function);
         }
 
+        if is_union {
+            self.emit_type_kind_left(struct_type.type_kind, EmitterKind::FunctionPrototype, true, false);
+            self.emit_generic_param_suffix(generic_usage.as_ref(), EmitterKind::FunctionPrototype);
+            self.emit_type_kind_right(struct_type.type_kind, EmitterKind::FunctionPrototype, true);
+            self.function_prototype_emitter.emit("* ");
+            self.emit_namespace_prefix(EmitterKind::FunctionPrototype);
+            self.function_prototype_emitter.emit("__Check(");
+            self.emit_type_kind_left(struct_type.type_kind, EmitterKind::FunctionPrototype, false, false);
+            self.emit_generic_param_suffix(generic_usage.as_ref(), EmitterKind::FunctionPrototype);
+            self.function_prototype_emitter.emit(" *self");
+            self.emit_type_kind_right(struct_type.type_kind, EmitterKind::FunctionPrototype, false);
+            self.function_prototype_emitter.emitln(", intptr_t tag);");
+            self.function_prototype_emitter.newline();
+
+            self.emit_type_kind_left(struct_type.type_kind, EmitterKind::Body, true, false);
+            self.emit_generic_param_suffix(generic_usage.as_ref(), EmitterKind::Body);
+            self.emit_type_kind_right(struct_type.type_kind, EmitterKind::Body, true);
+            self.body_emitters.top().body.emit("* ");
+            self.emit_namespace_prefix(EmitterKind::Body);
+            self.body_emitters.top().body.emit("__Check(");
+            self.emit_type_kind_left(struct_type.type_kind, EmitterKind::Body, false, false);
+            self.emit_generic_param_suffix(generic_usage.as_ref(), EmitterKind::Body);
+            self.body_emitters.top().body.emit(" *self");
+            self.emit_type_kind_right(struct_type.type_kind, EmitterKind::Body, false);
+            self.body_emitters.top().body.emitln(", intptr_t tag) {");
+            self.body_emitters.top().body.indent();
+            self.body_emitters.top().body.emitln("assert(self->tag == tag);");
+            self.body_emitters.top().body.emitln("return self;");
+            self.body_emitters.top().body.unindent();
+            self.body_emitters.top().body.emitln("}");
+            self.body_emitters.top().body.newline();
+        }
+
         self.current_namespace_names.pop();
 
-        if is_union {
-            self.type_prototype_emitter.emit("union ");
-        } else {
-            self.type_prototype_emitter.emit("struct ");
-        }
+        self.type_prototype_emitter.emit("struct ");
         self.emit_name_node(name, EmitterKind::TypePrototype);
+        self.emit_generic_param_suffix(generic_usage.as_ref(), EmitterKind::TypePrototype);
 
-        if let Some(generic_usage) = generic_usage {
-            self.emit_generic_param_suffix(generic_usage, EmitterKind::TypePrototype);
+        self.type_prototype_emitter.emit(" ");
+
+        if is_union {
+            self.type_prototype_emitter.emitln("{");
+            self.type_prototype_emitter.indent();
+            self.type_prototype_emitter.emitln("intptr_t tag;");
+            self.type_prototype_emitter.emit("union ");
         }
 
-        self.type_prototype_emitter.emitln(" {");
+        self.type_prototype_emitter.emitln("{");
         self.type_prototype_emitter.indent();
 
         for field in fields.iter() {
@@ -427,7 +463,15 @@ impl CodeGenerator {
         }
 
         self.type_prototype_emitter.unindent();
-        self.type_prototype_emitter.emitln("};");
+        self.type_prototype_emitter.emit("}");
+
+        if is_union {
+            self.type_prototype_emitter.emitln(" variant;");
+            self.type_prototype_emitter.unindent();
+            self.type_prototype_emitter.emit("}");
+        }
+
+        self.type_prototype_emitter.emitln(";");
         self.type_prototype_emitter.newline();
     }
 
@@ -656,7 +700,7 @@ impl CodeGenerator {
             };
             let copy_name = format!("__{}", &name_text);
 
-            self.emit_type_name_left(type_name, EmitterKind::Body, false);
+            self.emit_type_name_left(type_name, EmitterKind::Body, false, true);
             self.body_emitters.top().body.emit(&copy_name);
             self.emit_type_name_right(type_name, EmitterKind::Body, false);
             self.body_emitters.top().body.emitln(";");
@@ -1073,6 +1117,67 @@ impl CodeGenerator {
             return;
         }
 
+        let (dereferenced_left_type_kind, is_left_pointer) = if let TypeKind::Pointer { inner_type_kind } = self.type_kinds[left_type.type_kind] {
+            (inner_type_kind, true)
+        } else {
+            (left_type.type_kind, false)
+        };
+
+        if let TypeKind::Struct { name: struct_name, field_kinds, generic_param_type_kinds, is_union, .. } = &self.type_kinds[dereferenced_left_type_kind] {
+            if *is_union {
+                let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone() else {
+                    panic!("invalid field name in field access");
+                };
+
+                let mut tag = None;
+                for (i, field) in field_kinds.iter().enumerate() {
+                    let NodeKind::Name { text: field_name_text } = &self.typed_nodes[field.name].node_kind else {
+                        panic!("invalid field name on accessed struct");
+                    };
+
+                    if *field_name_text == name_text {
+                        tag = Some(i);
+                    }
+                }
+
+                let Some(tag) = tag else {
+                    panic!("tag not found in field access");
+                };
+
+                // TODO: In assignments if the left side is a field access and the left side of the field access has a union type then there will need to be a special case to call union set instead.
+
+                let NodeKind::Name {
+                    text: struct_name_text,
+                } = self.typed_nodes[*struct_name].node_kind.clone()
+                else {
+                    panic!("invalid name in struct field access");
+                };
+
+                self.current_namespace_names.push(NamespaceName {
+                    name: struct_name_text,
+                    generic_param_type_kinds: Some(generic_param_type_kinds.clone()),
+                });
+                self.emit_namespace_prefix(EmitterKind::Body);
+                self.current_namespace_names.pop();
+
+                self.body_emitters.top().body.emit("__Check(");
+
+                if !is_left_pointer {
+                    self.body_emitters.top().body.emit("&");
+                }
+
+                self.gen_node(left);
+
+                self.body_emitters.top().body.emit(", ");
+                self.body_emitters.top().body.emit(&tag.to_string());
+
+                self.body_emitters.top().body.emit(")->variant.");
+                self.gen_node(name);
+
+                return;
+            }
+        }
+
         match self.type_kinds[left_type.type_kind] {
             TypeKind::Pointer { .. } => {
                 self.gen_node(left);
@@ -1096,7 +1201,7 @@ impl CodeGenerator {
 
     fn cast(&mut self, left: usize, type_name: usize, _node_type: Option<Type>) {
         self.body_emitters.top().body.emit("((");
-        self.emit_type_name_left(type_name, EmitterKind::Body, false);
+        self.emit_type_name_left(type_name, EmitterKind::Body, false, false);
         self.emit_type_name_right(type_name, EmitterKind::Body, false);
         self.body_emitters.top().body.emit(")");
         self.gen_node(left);
@@ -1110,7 +1215,7 @@ impl CodeGenerator {
         _node_type: Option<Type>,
     ) {
         self.gen_node(left);
-        self.emit_generic_param_suffix(generic_param_type_kinds, EmitterKind::Body);
+        self.emit_generic_param_suffix(Some(&generic_param_type_kinds), EmitterKind::Body);
     }
 
     fn name(&mut self, text: Arc<str>, _node_type: Option<Type>) {
@@ -1212,7 +1317,7 @@ impl CodeGenerator {
 
     fn type_size(&mut self, type_name: usize, _node_type: Option<Type>) {
         self.body_emitters.top().body.emit("sizeof(");
-        self.emit_type_name_left(type_name, EmitterKind::Body, false);
+        self.emit_type_name_left(type_name, EmitterKind::Body, false, false);
         self.emit_type_name_right(type_name, EmitterKind::Body, false);
         self.body_emitters.top().body.emit(")");
     }
@@ -1284,6 +1389,7 @@ impl CodeGenerator {
         type_name: usize,
         emitter_kind: EmitterKind,
         do_arrays_as_pointers: bool,
+        is_prefix: bool,
     ) {
         let TypedNode {
             node_type: Some(Type { type_kind, .. }),
@@ -1292,7 +1398,7 @@ impl CodeGenerator {
         else {
             panic!("tried to emit node that wasn't a type name");
         };
-        self.emit_type_kind_left(type_kind, emitter_kind, do_arrays_as_pointers, true);
+        self.emit_type_kind_left(type_kind, emitter_kind, do_arrays_as_pointers, is_prefix);
     }
 
     fn emit_type_name_right(
@@ -1345,20 +1451,16 @@ impl CodeGenerator {
             TypeKind::Struct {
                 name,
                 generic_param_type_kinds,
-                is_union,
                 ..
             } => {
-                if is_union {
-                    self.emitter(emitter_kind).emit("union ");
-                } else {
-                    self.emitter(emitter_kind).emit("struct ");
-                }
+                self.emitter(emitter_kind).emit("struct ");
                 let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
                     panic!("invalid struct name");
                 };
                 self.emit_name(text, emitter_kind);
-                self.emit_generic_param_suffix(generic_param_type_kinds, emitter_kind);
+                self.emit_generic_param_suffix(Some(&generic_param_type_kinds), emitter_kind);
             }
+            TypeKind::UnionTag { .. } => todo!(),
             TypeKind::Enum { name, .. } => {
                 self.emitter(emitter_kind).emit("enum ");
                 let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
@@ -1493,7 +1595,7 @@ impl CodeGenerator {
         return_type_name: usize,
         type_kind: usize,
     ) {
-        self.emit_type_name_left(return_type_name, kind, true);
+        self.emit_type_name_left(return_type_name, kind, true, true);
         self.emit_function_name(name, generic_usage, kind);
 
         let mut param_count = 0;
@@ -1544,13 +1646,13 @@ impl CodeGenerator {
     }
 
     fn emit_param(&mut self, name: usize, type_name: usize, kind: EmitterKind) {
-        self.emit_type_name_left(type_name, kind, false);
+        self.emit_type_name_left(type_name, kind, false, true);
         self.emit_name_node(name, kind);
         self.emit_type_name_right(type_name, kind, false);
     }
 
     fn emit_param_string(&mut self, name: &str, type_name: usize, kind: EmitterKind) {
-        self.emit_type_name_left(type_name, kind, false);
+        self.emit_type_name_left(type_name, kind, false, true);
         self.emitter(kind).emit(name);
         self.emit_type_name_right(type_name, kind, false);
     }
@@ -1574,9 +1676,13 @@ impl CodeGenerator {
     // Used for name mangling, so that multiple versions of a generic function can be generated without colliding.
     fn emit_generic_param_suffix(
         &mut self,
-        generic_param_type_kinds: Arc<Vec<usize>>,
+        generic_param_type_kinds: Option<&Arc<Vec<usize>>>,
         kind: EmitterKind,
     ) {
+        let Some(generic_param_type_kinds) = generic_param_type_kinds else {
+            return;
+        };
+
         if generic_param_type_kinds.is_empty() {
             return;
         }
@@ -1612,10 +1718,7 @@ impl CodeGenerator {
         for i in 0..self.current_namespace_names.len() {
             let namespace_name = self.current_namespace_names[i].clone();
             self.emitter(kind).emit(&namespace_name.name);
-
-            if let Some(generic_param_type_kinds) = namespace_name.generic_param_type_kinds {
-                self.emit_generic_param_suffix(generic_param_type_kinds, kind);
-            }
+            self.emit_generic_param_suffix(namespace_name.generic_param_type_kinds.as_ref(), kind);
         }
     }
 
@@ -1627,9 +1730,7 @@ impl CodeGenerator {
     ) {
         self.emit_namespace_prefix(kind);
         self.emit_name_node(name, kind);
-        if let Some(generic_usage) = generic_usage {
-            self.emit_generic_param_suffix(generic_usage, kind);
-        }
+        self.emit_generic_param_suffix(generic_usage.as_ref(), kind);
     }
 
     fn emitter(&mut self, kind: EmitterKind) -> &mut Emitter {
