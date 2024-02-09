@@ -2,26 +2,30 @@ extern fun puts(str String) UInt
 extern fun malloc(size UInt) *Void
 extern fun free(ptr *Void) Void
 
-enum Name {
+enum Name
+{
     Albert,
     Benjamin,
     Carson,
     Derek,
 }
 
-union SimpleUnion {
+union SimpleUnion
+{
     a Int;
     b Bool;
     c Int;
     d String;
 }
 
-union GenericUnion<A, B> {
+union GenericUnion<A, B>
+{
     a A;
     b B;
 }
 
-fun main() Int32 {
+fun main() Int32
+{
     val someonesName = Name.Carson;
 
     var genericUnion = GenericUnion.<Int32, Int64> { b = 0 };
@@ -34,7 +38,8 @@ fun main() Int32 {
     var function *fun(Int, Int) Int = &add;
     function.*(1, 2);
 
-    defer {
+    defer
+    {
         puts("defer in main");
     }
 
@@ -80,11 +85,13 @@ fun main() Int32 {
     puts(multiA[1][2]);
 
     var xy [2]Point = [
-        Point {
+        Point
+        {
             x = 5,
             y = 7,
         },
-        Point {
+        Point
+        {
             x = 5,
             y = 7,
         },
@@ -110,28 +117,37 @@ fun main() Int32 {
         }
     }
 
-    if boolean {
+    if (boolean)
+    {
         puts("boolean is true");
     }
 
-    if boolean && boolean {
+    if (boolean && boolean)
+    {
         puts("boolean is true");
-    } else if boolean {
+    }
+    else if (boolean)
+    {
 
-    } else {
+    }
+    else
+    {
 
     }
 
-    while x == 5 && y == 7 {
+    while (x == 5 && y == 7)
+    {
         x = 3;
     }
 
-    for i of -10 < 10 {
+    for (i of -10 < 10)
+    {
         defer puts("defer in loop1");
         defer puts("defer in loop2");
     }
 
-    for i of zero() <= 10 {
+    for (i of zero() <= 10)
+    {
         defer puts("defer in loop");
 
         {
@@ -143,26 +159,39 @@ fun main() Int32 {
         return 0;
     }
 
-    for i of 10 >= 0 by -1 {
+    for (i of 10 >= 0 by -1)
+    {
 
     }
 
-    for i of 10 >= 0 by -1 {
+    for (i of 10 >= 0 by -1)
+    {
 
     }
 
-    for default of 10.0 >= 0.0 by -1.0 {
-
-    }
+    for (default of 10.0 >= 0.0 by -1.0);
 
     val si = 1;
-    switch si case 1 {
+    switch (si)
+    case (1)
+    {
         puts("1");
-    } case 2 {
+    }
+    case (2)
+    {
         puts("2");
-    } else {
+    }
+    case (3) puts("3");
+    else
+    {
         puts("other");
     }
+
+    switch (si)
+    case (1) puts("1");
+    case (2) puts("2");
+    case (3) puts("3");
+    else puts("other");
 
     hello(
         a,
@@ -182,45 +211,56 @@ fun main() Int32 {
     return 0;
 }
 
-fun add(a Int, b Int) Int {
+fun add(a Int, b Int) Int
+{
     return a + b;
 }
 
-fun zero() Int {
+fun zero() Int
+{
     return 0;
 }
 
-fun takesEnum(name Name) Void {
-    if name == Name.Albert {
+fun takesEnum(name Name) Void
+{
+    if (name == Name.Albert)
+    {
         puts("albert");
     }
 }
 
-fun takesStruct(point Point) Void {
+fun takesStruct(point Point) Void
+{
 }
 
-fun print(msg String) Void {
+fun print(msg String) Void
+{
     puts("Hello");
 }
 
-fun hello(num Int, othernum Int) Int {
+fun hello(num Int, othernum Int) Int
+{
     val sum Int = num + othernum;
     return sum;
 }
 
-fun makeArray(a Int, b Int, c Int) [3]Int {
+fun makeArray(a Int, b Int, c Int) [3]Int
+{
     return [a, b, c];
 }
 
-fun takeArray(a [3]Int) [3]Int {
+fun takeArray(a [3]Int) [3]Int
+{
     return a;
 }
 
-fun returnFunPtr() *fun(Int, Int) Int {
+fun returnFunPtr() *fun(Int, Int) Int
+{
     return &add;
 }
 
-fun genericFunction<A, B>(a A, b B) A {
+fun genericFunction<A, B>(a A, b B) A
+{
     val arrayA = [a, a, a];
     val arrayB = [b, b];
 

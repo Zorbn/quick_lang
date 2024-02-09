@@ -42,11 +42,9 @@ mod types;
  * SMALL TODOS:
  * for elem in array {}
  * Bitwise operations.
- * Tagged unions? Still need to figure out what those should look like.
  * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
  * Don't use keywords for primitive types, use named types instead.
  * Generic type inference if possible.
- * Try requiring for/while/if/etc to be enclosed in parens, and change them to have a statement instead of a block afterwards. Just to see if it's better.
  * Don't print duplicate type errors for generics, probably best to stop checking them if one variant had an error, or maybe it would be easier to stop handling generic usages after an error.
  * Enum methods.
  *

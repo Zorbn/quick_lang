@@ -211,27 +211,27 @@ impl TypeChecker {
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
             NodeKind::IfStatement {
                 expression,
-                block,
+                statement,
                 next,
-            } => self.if_statement(expression, block, next),
+            } => self.if_statement(expression, statement, next),
             NodeKind::SwitchStatement {
                 expression,
-                case_block,
-            } => self.switch_statement(expression, case_block),
-            NodeKind::CaseBlock {
+                case_statement,
+            } => self.switch_statement(expression, case_statement),
+            NodeKind::CaseStatement {
                 expression,
-                block,
+                statement,
                 next,
-            } => self.case_block(expression, block, next),
-            NodeKind::WhileLoop { expression, block } => self.while_loop(expression, block),
+            } => self.case_statement(expression, statement, next),
+            NodeKind::WhileLoop { expression, statement } => self.while_loop(expression, statement),
             NodeKind::ForLoop {
                 iterator,
                 op,
                 from,
                 to,
                 by,
-                block,
-            } => self.for_loop(iterator, op, from, to, by, block),
+                statement,
+            } => self.for_loop(iterator, op, from, to, by, statement),
             NodeKind::Binary { left, op, right } => self.binary(left, op, right),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right),
             NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op),
@@ -551,8 +551,8 @@ impl TypeChecker {
         None
     }
 
-    fn statement(&mut self, inner: usize) -> Option<Type> {
-        self.check_node(inner);
+    fn statement(&mut self, inner: Option<usize>) -> Option<Type> {
+        self.check_node(inner?);
 
         None
     }
@@ -614,11 +614,11 @@ impl TypeChecker {
     fn if_statement(
         &mut self,
         expression: usize,
-        block: usize,
+        statement: usize,
         next: Option<usize>,
     ) -> Option<Type> {
         self.check_node(expression);
-        self.check_node(block);
+        self.check_node(statement);
 
         if let Some(next) = next {
             self.check_node(next);
@@ -627,16 +627,16 @@ impl TypeChecker {
         None
     }
 
-    fn switch_statement(&mut self, expression: usize, case_block: usize) -> Option<Type> {
+    fn switch_statement(&mut self, expression: usize, case_statement: usize) -> Option<Type> {
         self.check_node(expression);
-        self.check_node(case_block);
+        self.check_node(case_statement);
 
         None
     }
 
-    fn case_block(&mut self, expression: usize, block: usize, next: Option<usize>) -> Option<Type> {
+    fn case_statement(&mut self, expression: usize, statement: usize, next: Option<usize>) -> Option<Type> {
         self.check_node(expression);
-        self.check_node(block);
+        self.check_node(statement);
 
         if let Some(next) = next {
             self.check_node(next);
@@ -645,9 +645,11 @@ impl TypeChecker {
         None
     }
 
-    fn while_loop(&mut self, expression: usize, block: usize) -> Option<Type> {
+    fn while_loop(&mut self, expression: usize, statement: usize) -> Option<Type> {
         self.check_node(expression);
-        self.check_node(block)
+        self.check_node(statement);
+
+        None
     }
 
     fn for_loop(
@@ -657,7 +659,7 @@ impl TypeChecker {
         from: usize,
         to: usize,
         by: Option<usize>,
-        block: usize,
+        statement: usize,
     ) -> Option<Type> {
         self.check_node(iterator);
         self.check_node(from);
@@ -665,7 +667,9 @@ impl TypeChecker {
         if let Some(by) = by {
             self.check_node(by);
         }
-        self.check_node(block)
+        self.check_node(statement);
+
+        None
     }
 
     fn binary(&mut self, left: usize, op: Op, right: usize) -> Option<Type> {

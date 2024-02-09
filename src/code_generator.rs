@@ -232,32 +232,36 @@ impl CodeGenerator {
                 node_kind:
                     NodeKind::IfStatement {
                         expression,
-                        block,
+                        statement,
                         next,
                     },
                 node_type,
-            } => self.if_statement(expression, block, next, node_type),
+            } => self.if_statement(expression, statement, next, node_type),
             TypedNode {
                 node_kind:
                     NodeKind::SwitchStatement {
                         expression,
-                        case_block,
+                        case_statement,
                     },
                 node_type,
-            } => self.switch_statement(expression, case_block, node_type),
+            } => self.switch_statement(expression, case_statement, node_type),
             TypedNode {
                 node_kind:
-                    NodeKind::CaseBlock {
+                    NodeKind::CaseStatement {
                         expression,
-                        block,
+                        statement,
                         next,
                     },
                 node_type,
-            } => self.case_block(expression, block, next, node_type),
+            } => self.case_statement(expression, statement, next, node_type),
             TypedNode {
-                node_kind: NodeKind::WhileLoop { expression, block },
+                node_kind:
+                    NodeKind::WhileLoop {
+                        expression,
+                        statement,
+                    },
                 node_type,
-            } => self.while_loop(expression, block, node_type),
+            } => self.while_loop(expression, statement, node_type),
             TypedNode {
                 node_kind:
                     NodeKind::ForLoop {
@@ -266,10 +270,10 @@ impl CodeGenerator {
                         from,
                         to,
                         by,
-                        block,
+                        statement,
                     },
                 node_type,
-            } => self.for_loop(iterator, op, from, to, by, block, node_type),
+            } => self.for_loop(iterator, op, from, to, by, statement, node_type),
             TypedNode {
                 node_kind: NodeKind::Binary { left, op, right },
                 node_type,
@@ -805,30 +809,41 @@ impl CodeGenerator {
             self.gen_node(*statement);
         }
 
-        let was_last_statement_return = if let Some(last_statement) = statements.last() {
+        let mut was_last_statement_return = false;
+        for statement in statements.iter().rev() {
             let TypedNode {
                 node_kind: NodeKind::Statement { inner },
                 ..
-            } = self.typed_nodes[*last_statement]
+            } = self.typed_nodes[*statement]
             else {
                 panic!("last statement is not a statement");
             };
-            matches!(
+
+            let Some(inner) = inner else {
+                continue;
+            };
+
+            was_last_statement_return = matches!(
                 self.typed_nodes[inner],
                 TypedNode {
                     node_kind: NodeKind::ReturnStatement { .. },
                     ..
                 }
-            )
-        } else {
-            false
-        };
+            );
+
+            break;
+        }
 
         self.body_emitters.pop(!was_last_statement_return);
         self.body_emitters.top().body.emit("}");
     }
 
-    fn statement(&mut self, inner: usize, _node_type: Option<Type>) {
+    fn statement(&mut self, inner: Option<usize>, _node_type: Option<Type>) {
+        let Some(inner) = inner else {
+            self.body_emitters.top().body.emitln(";");
+            return;
+        };
+
         let needs_semicolon = !matches!(
             self.typed_nodes[inner],
             TypedNode {
@@ -951,65 +966,82 @@ impl CodeGenerator {
     fn if_statement(
         &mut self,
         expression: usize,
-        block: usize,
+        statement: usize,
         next: Option<usize>,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("if (");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
-        self.gen_node(block);
+        self.gen_node(statement);
 
         if let Some(next) = next {
-            self.body_emitters.top().body.emit(" else ");
+            self.body_emitters.top().body.emit("else ");
             self.gen_node(next);
-
-            if matches!(self.typed_nodes[next].node_kind, NodeKind::Block { .. }) {
-                self.body_emitters.top().body.newline();
-            }
-        } else {
-            self.body_emitters.top().body.newline();
         }
     }
 
-    fn switch_statement(&mut self, expression: usize, case_block: usize, _node_type: Option<Type>) {
+    fn switch_statement(
+        &mut self,
+        expression: usize,
+        case_statement: usize,
+        _node_type: Option<Type>,
+    ) {
         self.body_emitters.top().body.emit("switch (");
         self.gen_node(expression);
         self.body_emitters.top().body.emitln(") {");
-        self.gen_node(case_block);
+        self.gen_node(case_statement);
         self.body_emitters.top().body.emitln("}");
     }
 
-    fn case_block(
+    fn case_statement(
         &mut self,
         expression: usize,
-        block: usize,
+        statement: usize,
         next: Option<usize>,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("case ");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(": ");
-        self.gen_node(block);
-        self.body_emitters.top().body.emitln(" break;");
+
+        let NodeKind::Statement { inner } = self.typed_nodes[statement].node_kind else {
+            panic!("invalid statement in case statement");
+        };
+
+        let needs_scope = inner.is_none() || !matches!(self.typed_nodes[inner.unwrap()].node_kind, NodeKind::Block { .. });
+
+        if needs_scope {
+            self.body_emitters.top().body.emitln("{");
+            self.body_emitters.top().body.indent();
+        }
+
+        self.gen_node(statement);
+
+        if needs_scope {
+            self.body_emitters.top().body.unindent();
+            self.body_emitters.top().body.emitln("}");
+        }
+
+        self.body_emitters.top().body.emitln("break;");
 
         if let Some(next) = next {
-            if matches!(self.typed_nodes[next].node_kind, NodeKind::Block { .. }) {
+            // TODO: Insert scope when needed.
+            if !matches!(self.typed_nodes[next].node_kind, NodeKind::CaseStatement { .. }) {
                 self.body_emitters.top().body.emit("default: ");
                 self.gen_node(next);
-                self.body_emitters.top().body.emitln(" break;");
+                self.body_emitters.top().body.emitln("break;");
             } else {
                 self.gen_node(next);
             }
         }
     }
 
-    fn while_loop(&mut self, expression: usize, block: usize, _node_type: Option<Type>) {
+    fn while_loop(&mut self, expression: usize, statement: usize, _node_type: Option<Type>) {
         self.body_emitters.top().body.emit("while (");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
-        self.gen_node(block);
-        self.body_emitters.top().body.newline();
+        self.gen_node(statement);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1020,7 +1052,7 @@ impl CodeGenerator {
         from: usize,
         to: usize,
         by: Option<usize>,
-        block: usize,
+        statement: usize,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("for (intptr_t ");
@@ -1043,8 +1075,7 @@ impl CodeGenerator {
         }
         self.body_emitters.top().body.emit(") ");
 
-        self.gen_node(block);
-        self.body_emitters.top().body.newline();
+        self.gen_node(statement);
     }
 
     fn binary(&mut self, left: usize, op: Op, right: usize, node_type: Option<Type>) {

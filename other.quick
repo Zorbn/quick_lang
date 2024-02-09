@@ -1,69 +1,85 @@
-struct Point {
+struct Point
+{
     x Int;
     y Int;
 
-    fun Add(self *Point, other *Point) Void {
+    fun Add(self *Point, other *Point) Void
+    {
         self.x += other.x;
         self.y += other.y;
     }
 
-    fun Multiply(self *Point, other *Point) Void {
+    fun Multiply(self *Point, other *Point) Void
+    {
         self.x *= other.x;
         self.y *= other.y;
     }
 
-    fun Static(a Int) Void {
+    fun Static(a Int) Void
+    {
 
     }
 
-    fun GenericThing<T>(self *Point, a T) Void {
+    fun GenericThing<T>(self *Point, a T) Void
+    {
     }
 }
 
-struct GenericStruct<A, B> {
+struct GenericStruct<A, B>
+{
     a A;
     b B;
 
-    fun SetA(self *GenericStruct.<A, B>, a A) Void {
+    fun SetA(self *GenericStruct.<A, B>, a A) Void
+    {
         val genericStruct = GenericStruct.<A, B> { a = self.a, b = self.b };
         // genericFunction2.<A, B>("hello", "world");
         self.a = a;
     }
 
-    fun SetB(self *GenericStruct.<A, B>, b B) Void {
+    fun SetB(self *GenericStruct.<A, B>, b B) Void
+    {
         self.b = b;
     }
 
-    fun GetA(self *GenericStruct.<A, B>) A {
+    fun GetA(self *GenericStruct.<A, B>) A
+    {
         return self.a;
     }
 
-    fun GetB(self *GenericStruct.<A, B>) B {
+    fun GetB(self *GenericStruct.<A, B>) B
+    {
         return self.b;
     }
 
-    fun DoThingWithStringStruct(self *GenericStruct.<String, A>) Void {
+    fun DoThingWithStringStruct(self *GenericStruct.<String, A>) Void
+    {
         print("doing thing");
     }
 
-    // fun DoThingWithNestedStruct(self *GenericStruct.<SimpleGeneric.<UInt16>, A>) Void {
+    // fun DoThingWithNestedStruct(self *GenericStruct.<SimpleGeneric.<UInt16>, A>) Void
+    // {
     //     print("doing thing");
     // }
 
-    fun DoThingWithNestedStruct(self *SimpleGeneric.<UInt16>) Void {
+    fun DoThingWithNestedStruct(self *SimpleGeneric.<UInt16>) Void
+    {
         print("doing thing");
     }
 
-    fun DoThingWithNestedFunction(self *fun(SimpleGeneric.<UInt16>) GenericStruct.<A, B>) Void {
+    fun DoThingWithNestedFunction(self *fun(SimpleGeneric.<UInt16>) GenericStruct.<A, B>) Void
+    {
         print("doing thing");
     }
 }
 
-struct SimpleGeneric<A> {
+struct SimpleGeneric<A>
+{
     a A;
 }
 
-fun genericFunction2<C, D>(a C, b D) C {
+fun genericFunction2<C, D>(a C, b D) C
+{
     val arrayA = [a, a, a];
     val arrayB = [b, b];
 

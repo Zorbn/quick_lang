@@ -158,7 +158,7 @@ pub enum NodeKind {
         statements: Arc<Vec<usize>>,
     },
     Statement {
-        inner: usize,
+        inner: Option<usize>,
     },
     VariableDeclaration {
         is_mutable: bool,
@@ -174,21 +174,21 @@ pub enum NodeKind {
     },
     IfStatement {
         expression: usize,
-        block: usize,
+        statement: usize,
         next: Option<usize>,
     },
     SwitchStatement {
         expression: usize,
-        case_block: usize,
+        case_statement: usize,
     },
-    CaseBlock {
+    CaseStatement {
         expression: usize,
-        block: usize,
+        statement: usize,
         next: Option<usize>,
     },
     WhileLoop {
         expression: usize,
-        block: usize,
+        statement: usize,
     },
     ForLoop {
         iterator: usize,
@@ -196,7 +196,7 @@ pub enum NodeKind {
         from: usize,
         to: usize,
         by: Option<usize>,
-        block: usize,
+        statement: usize,
     },
     Binary {
         left: usize,
@@ -537,7 +537,12 @@ impl Parser {
         let is_union = match *self.token_kind() {
             TokenKind::Struct => false,
             TokenKind::Union => true,
-            _ => parse_error!(self, "unexpected token at the start of struct definition", start, self.token_end())
+            _ => parse_error!(
+                self,
+                "unexpected token at the start of struct definition",
+                start,
+                self.token_end()
+            ),
         };
         self.position += 1;
 
@@ -990,17 +995,22 @@ impl Parser {
         );
 
         let inner = match self.token_kind() {
-            TokenKind::Var | TokenKind::Val => self.variable_declaration(),
-            TokenKind::Return => self.return_statement(),
-            TokenKind::Defer => self.defer_statement(),
-            TokenKind::If => self.if_statement(),
-            TokenKind::Switch => self.switch_statement(),
-            TokenKind::While => self.while_loop(),
-            TokenKind::For => self.for_loop(),
-            TokenKind::LBrace => self.block(),
-            _ => self.expression(true),
+            TokenKind::Semicolon => None,
+            TokenKind::Var | TokenKind::Val => Some(self.variable_declaration()),
+            TokenKind::Return => Some(self.return_statement()),
+            TokenKind::Defer => Some(self.defer_statement()),
+            TokenKind::If => Some(self.if_statement()),
+            TokenKind::Switch => Some(self.switch_statement()),
+            TokenKind::While => Some(self.while_loop()),
+            TokenKind::For => Some(self.for_loop()),
+            TokenKind::LBrace => Some(self.block()),
+            _ => Some(self.expression()),
         };
-        let mut end = self.node_end(inner);
+        let mut end = if let Some(inner) = inner {
+            self.node_end(inner)
+        } else {
+            start
+        };
 
         if needs_semicolon {
             end = self.token_end();
@@ -1040,7 +1050,7 @@ impl Parser {
         assert_token!(self, TokenKind::Equal, start, self.token_end());
         self.position += 1;
 
-        let expression = self.expression(true);
+        let expression = self.expression();
         let end = self.node_end(expression);
 
         self.add_node(Node {
@@ -1063,7 +1073,7 @@ impl Parser {
 
         let mut expression = None;
         if *self.token_kind() != TokenKind::Semicolon {
-            let index = self.expression(true);
+            let index = self.expression();
             end = self.node_end(index);
             expression = Some(index);
         }
@@ -1095,9 +1105,16 @@ impl Parser {
         assert_token!(self, TokenKind::If, start, self.token_end());
         self.position += 1;
 
-        let expression = self.expression(false);
-        let block = self.block();
-        let mut end = self.node_end(block);
+        assert_token!(self, TokenKind::LParen, start, self.token_end());
+        self.position += 1;
+
+        let expression = self.expression();
+
+        assert_token!(self, TokenKind::RParen, start, self.token_end());
+        self.position += 1;
+
+        let statement = self.statement();
+        let mut end = self.node_end(statement);
 
         let next = if *self.token_kind() == TokenKind::Else {
             self.position += 1;
@@ -1105,7 +1122,7 @@ impl Parser {
             let next = if *self.token_kind() == TokenKind::If {
                 self.if_statement()
             } else {
-                self.block()
+                self.statement()
             };
 
             end = self.node_end(next);
@@ -1118,7 +1135,7 @@ impl Parser {
         self.add_node(Node {
             kind: NodeKind::IfStatement {
                 expression,
-                block,
+                statement,
                 next,
             },
             start,
@@ -1131,38 +1148,52 @@ impl Parser {
         assert_token!(self, TokenKind::Switch, start, self.token_end());
         self.position += 1;
 
-        let expression = self.expression(false);
-        let case_block = self.case_block();
-        let end = self.node_end(case_block);
+        assert_token!(self, TokenKind::LParen, start, self.token_end());
+        self.position += 1;
+
+        let expression = self.expression();
+
+        assert_token!(self, TokenKind::RParen, start, self.token_end());
+        self.position += 1;
+
+        let case_statement = self.case_statement();
+        let end = self.node_end(case_statement);
 
         self.add_node(Node {
             kind: NodeKind::SwitchStatement {
                 expression,
-                case_block,
+                case_statement,
             },
             start,
             end,
         })
     }
 
-    fn case_block(&mut self) -> usize {
+    fn case_statement(&mut self) -> usize {
         let start = self.token_start();
         assert_token!(self, TokenKind::Case, start, self.token_end());
         self.position += 1;
 
-        let expression = self.expression(false);
-        let block = self.block();
-        let mut end = self.node_end(block);
+        assert_token!(self, TokenKind::LParen, start, self.token_end());
+        self.position += 1;
+
+        let expression = self.expression();
+
+        assert_token!(self, TokenKind::RParen, start, self.token_end());
+        self.position += 1;
+
+        let statement = self.statement();
+        let mut end = self.node_end(statement);
 
         let next = if *self.token_kind() == TokenKind::Case {
-            let next = self.case_block();
+            let next = self.case_statement();
             end = self.node_end(next);
 
             Some(next)
         } else if *self.token_kind() == TokenKind::Else {
             self.position += 1;
 
-            let next = self.block();
+            let next = self.statement();
             end = self.node_end(next);
 
             Some(next)
@@ -1171,9 +1202,9 @@ impl Parser {
         };
 
         self.add_node(Node {
-            kind: NodeKind::CaseBlock {
+            kind: NodeKind::CaseStatement {
                 expression,
-                block,
+                statement,
                 next,
             },
             start,
@@ -1186,12 +1217,22 @@ impl Parser {
         assert_token!(self, TokenKind::While, start, self.token_end());
         self.position += 1;
 
-        let expression = self.expression(false);
-        let block = self.block();
-        let end = self.node_end(block);
+        assert_token!(self, TokenKind::LParen, start, self.token_end());
+        self.position += 1;
+
+        let expression = self.expression();
+
+        assert_token!(self, TokenKind::RParen, start, self.token_end());
+        self.position += 1;
+
+        let statement = self.statement();
+        let end = self.node_end(statement);
 
         self.add_node(Node {
-            kind: NodeKind::WhileLoop { expression, block },
+            kind: NodeKind::WhileLoop {
+                expression,
+                statement,
+            },
             start,
             end,
         })
@@ -1202,12 +1243,15 @@ impl Parser {
         assert_token!(self, TokenKind::For, start, self.token_end());
         self.position += 1;
 
+        assert_token!(self, TokenKind::LParen, start, self.token_end());
+        self.position += 1;
+
         let iterator = self.name();
 
         assert_token!(self, TokenKind::Of, start, self.token_end());
         self.position += 1;
 
-        let from = self.term(false);
+        let from = self.term();
 
         let op = match *self.token_kind() {
             TokenKind::Less => Op::Less,
@@ -1223,18 +1267,21 @@ impl Parser {
         };
         self.position += 1;
 
-        let to = self.term(false);
+        let to = self.term();
 
         let mut by = None;
 
         if *self.token_kind() == TokenKind::By {
             self.position += 1;
 
-            by = Some(self.term(false));
+            by = Some(self.term());
         }
 
-        let block = self.block();
-        let end = self.node_end(block);
+        assert_token!(self, TokenKind::RParen, start, self.token_end());
+        self.position += 1;
+
+        let statement = self.statement();
+        let end = self.node_end(statement);
 
         self.add_node(Node {
             kind: NodeKind::ForLoop {
@@ -1243,7 +1290,7 @@ impl Parser {
                 from,
                 to,
                 by,
-                block,
+                statement,
             },
             start,
             end,
@@ -1267,13 +1314,13 @@ impl Parser {
      * Compound: &&, ||
      * Assignment: =, +=, -=, /=, *=
      */
-    fn expression(&mut self, allow_struct_literal: bool) -> usize {
-        self.assignment(allow_struct_literal)
+    fn expression(&mut self) -> usize {
+        self.assignment()
     }
 
-    fn assignment(&mut self, allow_struct_literal: bool) -> usize {
+    fn assignment(&mut self) -> usize {
         let start = self.token_start();
-        let mut left = self.compound(allow_struct_literal);
+        let mut left = self.compound();
 
         loop {
             let op = match *self.token_kind() {
@@ -1286,7 +1333,7 @@ impl Parser {
             };
 
             self.position += 1;
-            let right = self.assignment(allow_struct_literal);
+            let right = self.assignment();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1298,9 +1345,9 @@ impl Parser {
         left
     }
 
-    fn compound(&mut self, allow_struct_literal: bool) -> usize {
+    fn compound(&mut self) -> usize {
         let start = self.token_start();
-        let mut left = self.equality(allow_struct_literal);
+        let mut left = self.equality();
 
         loop {
             let op = match *self.token_kind() {
@@ -1310,7 +1357,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.compound(allow_struct_literal);
+            let right = self.compound();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1322,9 +1369,9 @@ impl Parser {
         left
     }
 
-    fn equality(&mut self, allow_struct_literal: bool) -> usize {
+    fn equality(&mut self) -> usize {
         let start = self.token_start();
-        let mut left = self.inequality(allow_struct_literal);
+        let mut left = self.inequality();
 
         loop {
             let op = match *self.token_kind() {
@@ -1334,7 +1381,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.equality(allow_struct_literal);
+            let right = self.equality();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1346,9 +1393,9 @@ impl Parser {
         left
     }
 
-    fn inequality(&mut self, allow_struct_literal: bool) -> usize {
+    fn inequality(&mut self) -> usize {
         let start = self.token_start();
-        let mut left = self.term(allow_struct_literal);
+        let mut left = self.term();
 
         loop {
             let op = match *self.token_kind() {
@@ -1360,7 +1407,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.inequality(allow_struct_literal);
+            let right = self.inequality();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1372,9 +1419,9 @@ impl Parser {
         left
     }
 
-    fn term(&mut self, allow_struct_literal: bool) -> usize {
+    fn term(&mut self) -> usize {
         let start = self.token_start();
-        let mut left = self.factor(allow_struct_literal);
+        let mut left = self.factor();
 
         loop {
             let op = match *self.token_kind() {
@@ -1384,7 +1431,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.term(allow_struct_literal);
+            let right = self.term();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1396,9 +1443,9 @@ impl Parser {
         left
     }
 
-    fn factor(&mut self, allow_struct_literal: bool) -> usize {
+    fn factor(&mut self) -> usize {
         let start = self.token_start();
-        let mut left = self.unary_prefix(allow_struct_literal);
+        let mut left = self.unary_prefix();
 
         loop {
             let op = match *self.token_kind() {
@@ -1408,7 +1455,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.factor(allow_struct_literal);
+            let right = self.factor();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1420,18 +1467,18 @@ impl Parser {
         left
     }
 
-    fn unary_prefix(&mut self, allow_struct_literal: bool) -> usize {
+    fn unary_prefix(&mut self) -> usize {
         let start = self.token_start();
         let op = match *self.token_kind() {
             TokenKind::Not => Op::Not,
             TokenKind::Plus => Op::Plus,
             TokenKind::Minus => Op::Minus,
             TokenKind::Ampersand => Op::Reference,
-            _ => return self.unary_suffix(allow_struct_literal),
+            _ => return self.unary_suffix(),
         };
         self.position += 1;
 
-        let right = self.unary_prefix(allow_struct_literal);
+        let right = self.unary_prefix();
         let end = self.node_end(right);
         self.add_node(Node {
             kind: NodeKind::UnaryPrefix { op, right },
@@ -1480,7 +1527,7 @@ impl Parser {
         None
     }
 
-    fn unary_suffix(&mut self, allow_struct_literal: bool) -> usize {
+    fn unary_suffix(&mut self) -> usize {
         let start = self.token_start();
         let mut left = self.primary();
 
@@ -1492,7 +1539,7 @@ impl Parser {
                     let mut args = Vec::new();
 
                     while *self.token_kind() != TokenKind::RParen {
-                        args.push(self.expression(allow_struct_literal));
+                        args.push(self.expression());
 
                         if *self.token_kind() != TokenKind::Comma {
                             break;
@@ -1535,7 +1582,7 @@ impl Parser {
                         end,
                     })
                 }
-                TokenKind::LBrace if allow_struct_literal => {
+                TokenKind::LBrace => {
                     left = self.struct_literal(left, start);
                 }
                 TokenKind::Period => {
@@ -1553,7 +1600,7 @@ impl Parser {
                 TokenKind::LBracket => {
                     self.position += 1;
 
-                    let expression = self.expression(allow_struct_literal);
+                    let expression = self.expression();
 
                     let end = self.token_end();
                     assert_token!(self, TokenKind::RBracket, start, end);
@@ -1655,7 +1702,7 @@ impl Parser {
         assert_token!(self, TokenKind::LParen, start, self.token_end());
         self.position += 1;
 
-        let expression = self.expression(true);
+        let expression = self.expression();
 
         let end = self.token_end();
         assert_token!(self, TokenKind::RParen, start, end);
@@ -1780,7 +1827,7 @@ impl Parser {
         let mut elements = Vec::new();
 
         while *self.token_kind() != TokenKind::RBracket {
-            elements.push(self.expression(true));
+            elements.push(self.expression());
 
             if *self.token_kind() != TokenKind::Comma {
                 break;
@@ -1822,7 +1869,7 @@ impl Parser {
         assert_token!(self, TokenKind::Equal, start, self.token_end());
         self.position += 1;
 
-        let expression = self.expression(true);
+        let expression = self.expression();
         let end = self.node_end(expression);
 
         self.add_node(Node {
