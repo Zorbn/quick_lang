@@ -5,7 +5,7 @@ use std::{
     io::{self, stdout, Write},
     path::Path,
     process::{Command, ExitCode},
-    sync::Arc,
+    sync::Arc, time::Instant,
 };
 
 use file_data::FileData;
@@ -80,6 +80,8 @@ fn main() -> ExitCode {
     if files.is_empty() {
         return ExitCode::SUCCESS;
     }
+
+    let frontend_start = Instant::now();
 
     let mut file_lexers = Vec::with_capacity(files.len());
     let mut had_lexing_error = false;
@@ -157,6 +159,8 @@ fn main() -> ExitCode {
         .write(&mut output_file);
     code_generator.body_emitters.write(&mut output_file);
 
+    println!("Frontend finished in: {:.2?}ms", frontend_start.elapsed().as_millis());
+
     let mut command_builder = Command::new("clang");
 
     let mut c_args_start = None;
@@ -171,6 +175,8 @@ fn main() -> ExitCode {
         command_builder.args(&args[c_args_start..]);
     }
 
+    let backend_start = Instant::now();
+
     match command_builder
         .args(["bin/out.c", "-o", "bin/out.exe"])
         .output()
@@ -184,6 +190,8 @@ fn main() -> ExitCode {
             }
         }
     }
+
+    println!("Backend finished in: {:.2?}ms", backend_start.elapsed().as_millis());
 
     ExitCode::SUCCESS
 }

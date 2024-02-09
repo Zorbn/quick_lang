@@ -1006,10 +1006,9 @@ impl CodeGenerator {
         self.body_emitters.top().body.emitln("break;");
 
         if let Some(next) = next {
-            // TODO: Insert scope when needed.
             if !matches!(self.typed_nodes[next].node_kind, NodeKind::CaseStatement { .. }) {
                 self.body_emitters.top().body.emit("default: ");
-                self.gen_node(next);
+                self.emit_scoped_statement(next);
                 self.body_emitters.top().body.emitln("break;");
             } else {
                 self.gen_node(next);
