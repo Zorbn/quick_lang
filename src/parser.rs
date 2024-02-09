@@ -76,6 +76,7 @@ pub enum TypeKind {
     UInt64,
     Float32,
     Float64,
+    Tag,
     Pointer {
         inner_type_kind: usize,
     },
@@ -89,10 +90,6 @@ pub enum TypeKind {
         generic_type_kinds: Arc<Vec<usize>>,
         generic_param_type_kinds: Arc<Vec<usize>>,
         is_union: bool,
-    },
-    // TODO: Use this as the type for UnionName.field and unionInstance so that you can do if unionInstance == UnionName.field to find the right variant.
-    UnionTag {
-        value: usize,
     },
     Partial,
     PartialGeneric {
@@ -297,6 +294,7 @@ pub const INT64_INDEX: usize = 12;
 pub const UINT64_INDEX: usize = 13;
 pub const FLOAT32_INDEX: usize = 14;
 pub const FLOAT64_INDEX: usize = 15;
+pub const TAG_INDEX: usize = 16;
 
 macro_rules! assert_token {
     ($self:ident, $token:expr, $start:expr, $end:expr) => {
@@ -366,6 +364,7 @@ impl Parser {
         parser.add_type(TypeKind::UInt64);
         parser.add_type(TypeKind::Float32);
         parser.add_type(TypeKind::Float64);
+        parser.add_type(TypeKind::Tag);
 
         parser
     }
@@ -2014,6 +2013,7 @@ impl Parser {
             TokenKind::UInt64 => UINT64_INDEX,
             TokenKind::Float32 => FLOAT32_INDEX,
             TokenKind::Float64 => FLOAT64_INDEX,
+            TokenKind::Tag => TAG_INDEX,
             _ => return Some(self.parse_error("expected type name", start, self.token_end())),
         };
         self.position += 1;

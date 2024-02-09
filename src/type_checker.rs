@@ -7,10 +7,7 @@ use crate::{
     environment::Environment,
     file_data::FileData,
     parser::{
-        ArrayLayout, Field, FunctionLayout, Node, NodeKind, Op, StructLayout, TypeKind, BOOL_INDEX,
-        CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX,
-        INT8_INDEX, INT_INDEX, STRING_INDEX, UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX,
-        UINT_INDEX,
+        ArrayLayout, Field, FunctionLayout, Node, NodeKind, Op, StructLayout, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, TAG_INDEX, UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX
     },
     types::{
         generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer, replace_generic_type_kinds
@@ -863,8 +860,12 @@ impl TypeChecker {
             type_error!(self, "invalid field name");
         };
 
+        let mut is_tag_access = false;
         let struct_type_kind = match &self.type_kinds[parent_type.type_kind] {
-            TypeKind::Struct { .. } => parent_type.type_kind,
+            TypeKind::Struct { is_union, .. } => {
+                is_tag_access = parent_type.instance_kind == InstanceKind::Name && *is_union;
+                parent_type.type_kind
+            },
             TypeKind::Pointer { inner_type_kind } => *inner_type_kind,
             TypeKind::Enum { variant_names, .. } => {
                 for variant_name in variant_names.iter() {
@@ -909,6 +910,13 @@ impl TypeChecker {
 
             if *field_name_text != *name_text {
                 continue;
+            }
+
+            if is_tag_access {
+                return Some(Type {
+                    type_kind: TAG_INDEX,
+                    instance_kind: InstanceKind::Literal,
+                });
             }
 
             if let TypeKind::Function {

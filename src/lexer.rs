@@ -73,6 +73,7 @@ pub enum TokenKind {
     UInt64,
     Float32,
     Float64,
+    Tag,
     True,
     False,
     IntLiteral { text: Arc<str> },
@@ -154,6 +155,7 @@ impl Display for TokenKind {
             TokenKind::UInt64 => "UInt64",
             TokenKind::Float32 => "Float32",
             TokenKind::Float64 => "Float64",
+            TokenKind::Tag => "Tag",
             TokenKind::True => "true",
             TokenKind::False => "false",
             TokenKind::IntLiteral { text } => text,
@@ -215,6 +217,7 @@ fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
         keywords.insert(Arc::from("Int"), TokenKind::Int);
         keywords.insert(Arc::from("Float32"), TokenKind::Float32);
         keywords.insert(Arc::from("Float64"), TokenKind::Float64);
+        keywords.insert(Arc::from("Tag"), TokenKind::Tag);
         keywords.insert(Arc::from("true"), TokenKind::True);
         keywords.insert(Arc::from("false"), TokenKind::False);
         keywords
