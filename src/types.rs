@@ -234,3 +234,21 @@ pub fn replace_generic_type_kinds(type_kinds: &mut [TypeKind], generic_type_kind
         };
     }
 }
+
+pub fn get_field_index_by_name(name_text: &Arc<str>, typed_nodes: &[TypedNode], field_kinds: &Arc<Vec<Field>>) -> Option<usize> {
+    let mut tag = None;
+    for (i, field) in field_kinds.iter().enumerate() {
+        let NodeKind::Name {
+            text: field_name_text,
+        } = &typed_nodes[field.name].node_kind
+        else {
+            panic!("invalid field name on accessed struct");
+        };
+
+        if *field_name_text == *name_text {
+            tag = Some(i);
+        }
+    }
+    
+    tag
+}

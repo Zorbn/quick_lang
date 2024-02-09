@@ -59,6 +59,7 @@ fun main() Int32 {
     var genericUnion = GenericUnion.<Int32, Int64> { b = 0 };
     genericUnion.a = 5 as Int32;
     genericUnion.b = 8 as Int64;
+    val testUnionAccess = genericUnion.b;
 
     var function *fun(Int, Int) Int = &add;
     function.*(1, 2);
