@@ -465,7 +465,7 @@ impl CodeGenerator {
             self.emit_type_kind_right(struct_type.type_kind, EmitterKind::FunctionPrototype, true);
             self.function_prototype_emitter.emit("* ");
             self.emit_namespace_prefix(EmitterKind::FunctionPrototype);
-            self.function_prototype_emitter.emit("__SetTag(");
+            self.function_prototype_emitter.emit("__WithTag(");
             self.emit_type_kind_left(
                 struct_type.type_kind,
                 EmitterKind::FunctionPrototype,
@@ -483,7 +483,7 @@ impl CodeGenerator {
             self.emit_type_kind_right(struct_type.type_kind, EmitterKind::Body, true);
             self.body_emitters.top().body.emit("* ");
             self.emit_namespace_prefix(EmitterKind::Body);
-            self.body_emitters.top().body.emit("__SetTag(");
+            self.body_emitters.top().body.emit("__WithTag(");
             self.emit_type_kind_left(struct_type.type_kind, EmitterKind::Body, false, false);
             self.emit_generic_param_suffix(generic_usage.as_ref(), EmitterKind::Body);
             self.body_emitters.top().body.emit(" *self");
@@ -1098,7 +1098,7 @@ impl CodeGenerator {
                         self.emit_namespace_prefix(EmitterKind::Body);
                         self.current_namespace_names.pop();
 
-                        self.body_emitters.top().body.emit("__SetTag(");
+                        self.body_emitters.top().body.emit("__WithTag(");
 
                         if !is_left_pointer {
                             self.body_emitters.top().body.emit("&");
