@@ -1420,11 +1420,43 @@ impl CodeGenerator {
 
     fn struct_literal(&mut self, _left: usize, fields: Arc<Vec<usize>>, node_type: Option<Type>) {
         let type_kind = node_type.unwrap().type_kind;
-
+        
         self.body_emitters.top().body.emit("(");
         self.emit_type_kind_left(type_kind, EmitterKind::Body, false, false);
         self.emit_type_kind_right(type_kind, EmitterKind::Body, false);
         self.body_emitters.top().body.emit(") ");
+
+        let TypeKind::Struct { field_kinds, is_union, .. } = &self.type_kinds[type_kind] else {
+            panic!("struct literal does not have a struct type");
+        };
+        let is_union = *is_union;
+        
+        if is_union {
+            self.body_emitters.top().body.emitln("{");
+            self.body_emitters.top().body.indent();
+            
+            if fields.len() != 1 {
+                panic!("expected union literal to contain a single field");
+            }
+            
+            let NodeKind::FieldLiteral { name, .. } = &self.typed_nodes[fields[0]].node_kind else {
+                panic!("invalid field in union literal");
+            };
+
+            let NodeKind::Name { text: name_text } = &self.typed_nodes[*name].node_kind else {
+                panic!("invalid field name text in union literal");
+            };
+            
+            let Some(tag) = get_field_index_by_name(name_text, &self.typed_nodes, field_kinds) else {
+                panic!("tag not found in union literal");
+            };
+
+            self.body_emitters.top().body.emit(".tag = ");
+            self.body_emitters.top().body.emit(&tag.to_string());
+            self.body_emitters.top().body.emitln(",");
+            
+            self.body_emitters.top().body.emit(".variant = ");
+        }
 
         self.body_emitters.top().body.emitln("{");
         self.body_emitters.top().body.indent();
@@ -1436,6 +1468,12 @@ impl CodeGenerator {
 
         self.body_emitters.top().body.unindent();
         self.body_emitters.top().body.emit("}");
+        
+        if is_union {
+            self.body_emitters.top().body.emitln(",");
+            self.body_emitters.top().body.unindent();
+            self.body_emitters.top().body.emit("}");
+        }
     }
 
     fn field_literal(&mut self, name: usize, expression: usize, _node_type: Option<Type>) {

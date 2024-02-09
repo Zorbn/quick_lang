@@ -258,6 +258,7 @@ pub enum NodeKind {
     },
     StructLiteral {
         left: usize,
+        // TODO: Should these be renamed field_literals? They are FieldLiterals, not Fields...
         fields: Arc<Vec<usize>>,
     },
     FieldLiteral {
