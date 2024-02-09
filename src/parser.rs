@@ -145,7 +145,7 @@ pub enum NodeKind {
     },
     Function {
         declaration: usize,
-        block: usize,
+        statement: usize,
     },
     ExternFunction {
         declaration: usize,
@@ -498,7 +498,7 @@ impl Parser {
             let index;
 
             match *self.token_kind() {
-                TokenKind::Fun => {
+                TokenKind::Func => {
                     index = self.function();
                     functions.push(index);
                 }
@@ -574,7 +574,7 @@ impl Parser {
         let mut field_kinds = Vec::new();
 
         while *self.token_kind() != TokenKind::RBrace {
-            if *self.token_kind() == TokenKind::Fun {
+            if *self.token_kind() == TokenKind::Func {
                 let function = self.function();
                 functions.push(function);
 
@@ -840,7 +840,7 @@ impl Parser {
 
     fn function_declaration(&mut self) -> usize {
         let start = self.token_start();
-        assert_token!(self, TokenKind::Fun, start, self.token_end());
+        assert_token!(self, TokenKind::Func, start, self.token_end());
         self.position += 1;
 
         let name = self.name();
@@ -904,8 +904,8 @@ impl Parser {
 
         let start = self.token_start();
         let declaration = self.function_declaration();
-        let block = self.block();
-        let end = self.node_end(block);
+        let statement = self.statement();
+        let end = self.node_end(statement);
 
         self.named_type_kinds.pop();
 
@@ -918,7 +918,7 @@ impl Parser {
         };
 
         let index = self.add_node(Node {
-            kind: NodeKind::Function { declaration, block },
+            kind: NodeKind::Function { declaration, statement },
             start,
             end,
         });
@@ -1914,7 +1914,7 @@ impl Parser {
         let token_kind = self.token_kind().clone();
 
         match token_kind {
-            TokenKind::Fun => {
+            TokenKind::Func => {
                 self.position += 1;
 
                 if let Some(error_node) =

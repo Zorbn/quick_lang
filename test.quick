@@ -1,6 +1,6 @@
-extern fun puts(str String) UInt
-extern fun malloc(size UInt) *Void
-extern fun free(ptr *Void) Void
+extern func puts(str String) UInt
+extern func malloc(size UInt) *Void
+extern func free(ptr *Void) Void
 
 enum Name
 {
@@ -24,7 +24,7 @@ union GenericUnion<A, B>
     b B;
 }
 
-fun main() Int32
+func main() Int32
 {
     val someonesName = Name.Carson;
 
@@ -35,7 +35,7 @@ fun main() Int32
     val unionTag = genericUnion as Tag;
     val otherTag = GenericUnion.<Int32, Int64>.b;
 
-    var function *fun(Int, Int) Int = &add;
+    var function *func(Int, Int) Int = &add;
     function.*(1, 2);
 
     defer
@@ -211,17 +211,17 @@ fun main() Int32
     return 0;
 }
 
-fun add(a Int, b Int) Int
+func add(a Int, b Int) Int
 {
     return a + b;
 }
 
-fun zero() Int
+func zero() Int
 {
     return 0;
 }
 
-fun takesEnum(name Name) Void
+func takesEnum(name Name) Void
 {
     if (name == Name.Albert)
     {
@@ -229,37 +229,35 @@ fun takesEnum(name Name) Void
     }
 }
 
-fun takesStruct(point Point) Void
+func takesStruct(point Point) Void
 {
 }
 
-fun print(msg String) Void
+func print(msg String) Void
 {
     puts("Hello");
 }
 
-fun hello(num Int, othernum Int) Int
+func hello(num Int, othernum Int) Int
 {
     val sum Int = num + othernum;
     return sum;
 }
 
-fun makeArray(a Int, b Int, c Int) [3]Int
+func makeArray(a Int, b Int, c Int) [3]Int
 {
     return [a, b, c];
 }
 
-fun takeArray(a [3]Int) [3]Int
+func takeArray(a [3]Int) [3]Int
 {
     return a;
 }
 
-fun returnFunPtr() *fun(Int, Int) Int
-{
+func returnFunPtr() *func(Int, Int) Int
     return &add;
-}
 
-fun genericFunction<A, B>(a A, b B) A
+func genericFunction<A, B>(a A, b B) A
 {
     val arrayA = [a, a, a];
     val arrayB = [b, b];

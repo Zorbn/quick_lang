@@ -138,8 +138,8 @@ impl TypeChecker {
             }
 
             let type_kind = match self.nodes[pending_usage.index].kind.clone() {
-                NodeKind::Function { declaration, block } => {
-                    self.function(declaration, block, Some(dealiased_usage))
+                NodeKind::Function { declaration, statement } => {
+                    self.function(declaration, statement, Some(dealiased_usage))
                 }
                 NodeKind::StructDefinition {
                     name,
@@ -187,7 +187,7 @@ impl TypeChecker {
                 type_kind,
             } => self.enum_definition(name, variant_names, type_kind),
             NodeKind::Field { name, type_name } => self.field(name, type_name),
-            NodeKind::Function { declaration, block } => self.function(declaration, block, None),
+            NodeKind::Function { declaration, statement } => self.function(declaration, statement, None),
             NodeKind::FunctionDeclaration {
                 name,
                 return_type_name,
@@ -445,7 +445,7 @@ impl TypeChecker {
     fn function(
         &mut self,
         declaration: usize,
-        block: usize,
+        statement: usize,
         generic_usage: Option<Arc<Vec<usize>>>,
     ) -> Option<Type> {
         self.environment.push();
@@ -469,7 +469,7 @@ impl TypeChecker {
             replace_generic_type_kinds(&mut self.type_kinds, &generic_type_kinds, &generic_usage);
         }
 
-        self.check_node(block);
+        self.check_node(statement);
 
         Some(declaration_type)
     }

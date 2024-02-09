@@ -181,9 +181,9 @@ impl CodeGenerator {
                 node_type,
             } => self.field(name, type_name, node_type),
             TypedNode {
-                node_kind: NodeKind::Function { declaration, block },
+                node_kind: NodeKind::Function { declaration, statement },
                 node_type,
-            } => self.function(declaration, block, index, node_type),
+            } => self.function(declaration, statement, index, node_type),
             TypedNode {
                 node_kind:
                     NodeKind::FunctionDeclaration {
@@ -633,7 +633,7 @@ impl CodeGenerator {
     fn function(
         &mut self,
         declaration: usize,
-        block: usize,
+        statement: usize,
         index: usize,
         node_type: Option<Type>,
     ) {
@@ -679,15 +679,13 @@ impl CodeGenerator {
                     Some(node_type),
                 );
                 self.function_declaration_needing_init = Some(declaration);
-                self.gen_node(block);
-                self.body_emitters.top().body.newline();
+                self.emit_scoped_statement(statement);
                 self.body_emitters.top().body.newline();
             }
         } else if generic_type_kinds.is_empty() {
             self.function_declaration(name, params, None, return_type_name, Some(node_type));
             self.function_declaration_needing_init = Some(declaration);
-            self.gen_node(block);
-            self.body_emitters.top().body.newline();
+            self.emit_scoped_statement(statement);
             self.body_emitters.top().body.newline();
         }
     }
@@ -1004,25 +1002,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("case ");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(": ");
-
-        let NodeKind::Statement { inner } = self.typed_nodes[statement].node_kind else {
-            panic!("invalid statement in case statement");
-        };
-
-        let needs_scope = inner.is_none() || !matches!(self.typed_nodes[inner.unwrap()].node_kind, NodeKind::Block { .. });
-
-        if needs_scope {
-            self.body_emitters.top().body.emitln("{");
-            self.body_emitters.top().body.indent();
-        }
-
-        self.gen_node(statement);
-
-        if needs_scope {
-            self.body_emitters.top().body.unindent();
-            self.body_emitters.top().body.emitln("}");
-        }
-
+        self.emit_scoped_statement(statement);
         self.body_emitters.top().body.emitln("break;");
 
         if let Some(next) = next {
@@ -1987,6 +1967,26 @@ impl CodeGenerator {
         self.emit_namespace_prefix(kind);
         self.emit_name_node(name, kind);
         self.emit_generic_param_suffix(generic_usage.as_ref(), kind);
+    }
+
+    fn emit_scoped_statement(&mut self, statement: usize) {
+        let NodeKind::Statement { inner } = self.typed_nodes[statement].node_kind else {
+            panic!("invalid statement in scoped statement");
+        };
+
+        let needs_scope = inner.is_none() || !matches!(self.typed_nodes[inner.unwrap()].node_kind, NodeKind::Block { .. });
+
+        if needs_scope {
+            self.body_emitters.top().body.emitln("{");
+            self.body_emitters.top().body.indent();
+        }
+
+        self.gen_node(statement);
+
+        if needs_scope {
+            self.body_emitters.top().body.unindent();
+            self.body_emitters.top().body.emitln("}");
+        }
     }
 
     fn emitter(&mut self, kind: EmitterKind) -> &mut Emitter {

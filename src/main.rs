@@ -28,7 +28,7 @@ mod types;
 /*
  * BIG TODOS:
  * Complete type checking
- *     * distinguish between variable (var) and constant (val, fun) bindings.
+ *     * distinguish between variable (var) and constant (val, func) bindings.
  *     * function calls.
  *     * struct literal fields.
  *     * make sure all non-void functions return, and that all functions return the correct value.
