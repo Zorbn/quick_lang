@@ -26,6 +26,10 @@ union GenericUnion<A, B>
 
 func main() Int32
 {
+    const constant = 4;
+    val arrayWithConstSize [constant]Int = [0; constant];
+    val copyOfArrayWithConstSize [4]Int = arrayWithConstSize;
+
     val someonesName = Name.Carson;
 
     var genericUnion = GenericUnion.<Int32, Int64> { b = 0 };
@@ -207,8 +211,13 @@ func main() Int32
     val genericStruct = GenericStruct.<Int, Int> { a = 5, b = 6 };
     val genericStruct2 = GenericStruct.<Bool, Int> { a = true, b = 6 };
     val genericStruct3 = GenericStruct.<Int, Int> { a = 5, b = 6 };
+    val genericStruct4 GenericStruct.<Int, Int> = returnsGeneric();
 
     return 0;
+}
+
+func returnsGeneric() GenericStruct.<Int, Int> {
+    return GenericStruct.<Int, Int> { a = 5, b = 6 };
 }
 
 func add(a Int, b Int) Int

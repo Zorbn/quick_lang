@@ -4,11 +4,11 @@ pub struct SubEnvironment<T> {
     name_types: HashMap<Arc<str>, T>,
 }
 
-pub struct Environment<T: Clone + Copy> {
+pub struct Environment<T: Clone> {
     stack: Vec<SubEnvironment<T>>,
 }
 
-impl<T: Clone + Copy> Environment<T> {
+impl<T: Clone> Environment<T> {
     pub fn new() -> Self {
         Self { stack: Vec::new() }
     }
@@ -42,7 +42,7 @@ impl<T: Clone + Copy> Environment<T> {
     pub fn get(&self, name: &str) -> Option<T> {
         for sub_env in self.stack.iter().rev() {
             if let Some(name_type) = sub_env.name_types.get(name) {
-                return Some(*name_type);
+                return Some(name_type.clone());
             }
         }
 

@@ -6,7 +6,7 @@ use std::{
 use crate::{
     emitter::Emitter,
     emitter_stack::EmitterStack,
-    parser::{NodeKind, Op, TypeKind},
+    parser::{DeclarationKind, NodeKind, Op, TypeKind},
     type_checker::{InstanceKind, Type, TypedNode},
     types::{
         get_field_index_by_name, is_type_kind_array, is_typed_expression_array_literal,
@@ -213,13 +213,13 @@ impl CodeGenerator {
             TypedNode {
                 node_kind:
                     NodeKind::VariableDeclaration {
-                        is_mutable,
+                        declaration_kind,
                         name,
                         type_name,
                         expression,
                     },
                 node_type,
-            } => self.variable_declaration(is_mutable, name, type_name, expression, node_type),
+            } => self.variable_declaration(declaration_kind, name, type_name, expression, node_type),
             TypedNode {
                 node_kind: NodeKind::ReturnStatement { expression },
                 node_type,
@@ -274,6 +274,10 @@ impl CodeGenerator {
                     },
                 node_type,
             } => self.for_loop(iterator, op, from, to, by, statement, node_type),
+            TypedNode {
+                node_kind: NodeKind::ConstExpression { inner },
+                node_type,
+            } => self.const_expression(inner, node_type),
             TypedNode {
                 node_kind: NodeKind::Binary { left, op, right },
                 node_type,
@@ -342,10 +346,10 @@ impl CodeGenerator {
                 node_kind:
                     NodeKind::ArrayLiteral {
                         elements,
-                        repeat_count,
+                        repeat_count_const_expression,
                     },
                 node_type,
-            } => self.array_literal(elements, repeat_count, node_type),
+            } => self.array_literal(elements, repeat_count_const_expression, node_type),
             TypedNode {
                 node_kind: NodeKind::StructLiteral { left, fields },
                 node_type,
@@ -573,7 +577,7 @@ impl CodeGenerator {
                     &fields,
                     &functions,
                     Some(generic_usage),
-                    node_type,
+                    node_type.clone(),
                 );
             }
         } else if generic_type_kinds.is_empty() {
@@ -616,7 +620,7 @@ impl CodeGenerator {
 
     fn field(&mut self, name: usize, _type_name: usize, node_type: Option<Type>) {
         self.emit_type_kind_left(
-            node_type.unwrap().type_kind,
+            node_type.clone().unwrap().type_kind,
             EmitterKind::TypePrototype,
             false,
             true,
@@ -663,20 +667,18 @@ impl CodeGenerator {
 
             for generic_usage in generic_usages {
                 // Replace generic types with their concrete types for this usage.
-                for (generic_param_type_kind, generic_type_kind) in
-                    generic_usage.iter().zip(generic_type_kinds.iter())
-                {
-                    self.type_kinds[*generic_type_kind] = TypeKind::Alias {
-                        inner_type_kind: *generic_param_type_kind,
-                    };
-                }
+                replace_generic_type_kinds(
+                    &mut self.type_kinds,
+                    &generic_type_kinds,
+                    &generic_usage,
+                );
 
                 self.function_declaration(
                     name,
                     params.clone(),
                     Some(generic_usage),
                     return_type_name,
-                    Some(node_type),
+                    Some(node_type.clone()),
                 );
                 self.function_declaration_needing_init = Some(declaration);
                 self.emit_scoped_statement(statement);
@@ -704,7 +706,7 @@ impl CodeGenerator {
             &params,
             generic_usage.clone(),
             return_type_name,
-            node_type.unwrap().type_kind,
+            node_type.clone().unwrap().type_kind,
         );
         self.body_emitters.top().body.emit(" ");
 
@@ -886,7 +888,7 @@ impl CodeGenerator {
 
     fn variable_declaration(
         &mut self,
-        is_mutable: bool,
+        declaration_kind: DeclarationKind,
         name: usize,
         _type_name: Option<usize>,
         expression: usize,
@@ -895,7 +897,7 @@ impl CodeGenerator {
         let type_kind = node_type.unwrap().type_kind;
 
         let is_array = is_type_kind_array(&self.type_kinds, type_kind);
-        let needs_const = !is_mutable && !is_array;
+        let needs_const = declaration_kind != DeclarationKind::Var && !is_array;
 
         self.emit_type_kind_left(type_kind, EmitterKind::Body, false, true);
         if needs_const {
@@ -1057,6 +1059,25 @@ impl CodeGenerator {
         self.gen_node(statement);
     }
 
+    fn const_expression(&mut self, _inner: usize, node_type: Option<Type>) {
+        let Some(Type { instance_kind: InstanceKind::Const(const_value), .. }) = node_type else {
+            panic!("invalid node type of const expression");
+        };
+
+        match const_value {
+            crate::type_checker::ConstValue::Int { value } => self.body_emitters.top().body.emit(&value.to_string()),
+            crate::type_checker::ConstValue::UInt { value } => self.body_emitters.top().body.emit(&value.to_string()),
+            crate::type_checker::ConstValue::Float { value } => self.body_emitters.top().body.emit(&value.to_string()),
+            crate::type_checker::ConstValue::String { value } => self.body_emitters.top().body.emit(&value),
+            crate::type_checker::ConstValue::Char { value } => self.body_emitters.top().body.emit_char(value),
+            crate::type_checker::ConstValue::Bool { value } => if value {
+                self.body_emitters.top().body.emit("true");
+            } else {
+                self.body_emitters.top().body.emit("false");
+            },
+        }
+    }
+
     fn binary(&mut self, left: usize, op: Op, right: usize, node_type: Option<Type>) {
         if op == Op::Assign {
             let type_kind = node_type.unwrap().type_kind;
@@ -1069,7 +1090,7 @@ impl CodeGenerator {
 
             // TODO: Needs refactor into it's own fn, also consider the similar code that exists in field access.
             if let NodeKind::FieldAccess { left, name } = self.typed_nodes[left].node_kind {
-                let left_type = self.typed_nodes[left].node_type.unwrap();
+                let left_type = self.typed_nodes[left].node_type.as_ref().unwrap();
 
                 let (dereferenced_left_type_kind, is_left_pointer) =
                     if let TypeKind::Pointer { inner_type_kind } =
@@ -1184,7 +1205,7 @@ impl CodeGenerator {
             ..
         } = &self.typed_nodes[left].node_kind
         {
-            let field_access_left_type = self.typed_nodes[*field_access_left].node_type.unwrap();
+            let field_access_left_type = self.typed_nodes[*field_access_left].node_type.as_ref().unwrap();
 
             if field_access_left_type.instance_kind == InstanceKind::Variable {
                 // We have a variable to pass as the first parameter.
@@ -1237,7 +1258,7 @@ impl CodeGenerator {
     }
 
     fn field_access(&mut self, left: usize, name: usize, node_type: Option<Type>) {
-        let left_type = self.typed_nodes[left].node_type.unwrap();
+        let left_type = self.typed_nodes[left].node_type.as_ref().unwrap();
 
         match self.type_kinds[node_type.unwrap().type_kind] {
             TypeKind::Function { .. } => {
@@ -1377,7 +1398,7 @@ impl CodeGenerator {
 
     fn cast(&mut self, left: usize, type_name: usize, node_type: Option<Type>) {
         if let TypeKind::Tag { .. } = &self.type_kinds[node_type.unwrap().type_kind] {
-            let left_type_kind = self.typed_nodes[left].node_type.unwrap().type_kind;
+            let left_type_kind = self.typed_nodes[left].node_type.as_ref().unwrap().type_kind;
 
             let TypeKind::Struct { is_union, .. } = &self.type_kinds[left_type_kind] else {
                 panic!("casting to a tag is not allowed for this value");
@@ -1462,9 +1483,15 @@ impl CodeGenerator {
     fn array_literal(
         &mut self,
         elements: Arc<Vec<usize>>,
-        repeat_count: usize,
-        _node_type: Option<Type>,
+        _repeat_count_const_expression: Option<usize>,
+        node_type: Option<Type>,
     ) {
+        let TypeKind::Array { element_count, .. } = self.type_kinds[node_type.unwrap().type_kind] else {
+            panic!("invalid type for array literal");
+        };
+
+        let repeat_count = element_count / elements.len();
+
         self.body_emitters.top().body.emit("{");
         let mut i = 0;
         for _ in 0..repeat_count {
@@ -1737,7 +1764,7 @@ impl CodeGenerator {
                     is_prefix,
                 );
             }
-            TypeKind::Partial | TypeKind::PartialGeneric { .. } => {
+            TypeKind::Partial | TypeKind::PartialGeneric { .. } | TypeKind::PartialArray { .. } => {
                 panic!("can't emit partial type: {:?}", type_kind)
             }
             TypeKind::Function {

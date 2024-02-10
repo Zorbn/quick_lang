@@ -5,13 +5,17 @@ use std::{
     io::{self, stdout, Write},
     path::Path,
     process::{Command, ExitCode},
-    sync::Arc, time::Instant,
+    sync::Arc,
+    time::Instant,
 };
 
 use file_data::FileData;
 
 use crate::{
-    code_generator::CodeGenerator, lexer::Lexer, parser::{NodeKind, Parser}, type_checker::{TypeChecker, TypedNode}
+    code_generator::CodeGenerator,
+    lexer::Lexer,
+    parser::{NodeKind, Parser},
+    type_checker::{TypeChecker, TypedNode},
 };
 
 mod code_generator;
@@ -38,6 +42,7 @@ mod types;
  * Default parameters.
  * Variadic arguments.
  * Namespaces.
+ * Compile time constants (simple arthmetic, strings, bools) these should be declared with const and useable as static array lengths.
  *
  * SMALL TODOS:
  * for elem in array {}
@@ -47,6 +52,7 @@ mod types;
  * Generic type inference if possible.
  * Don't print duplicate type errors for generics, probably best to stop checking them if one variant had an error, or maybe it would be easier to stop handling generic usages after an error.
  * Enum methods.
+ * Struct equality comparisons.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.
@@ -159,7 +165,10 @@ fn main() -> ExitCode {
         .write(&mut output_file);
     code_generator.body_emitters.write(&mut output_file);
 
-    println!("Frontend finished in: {:.2?}ms", frontend_start.elapsed().as_millis());
+    println!(
+        "Frontend finished in: {:.2?}ms",
+        frontend_start.elapsed().as_millis()
+    );
 
     let mut command_builder = Command::new("clang");
 
@@ -191,7 +200,10 @@ fn main() -> ExitCode {
         }
     }
 
-    println!("Backend finished in: {:.2?}ms", backend_start.elapsed().as_millis());
+    println!(
+        "Backend finished in: {:.2?}ms",
+        backend_start.elapsed().as_millis()
+    );
 
     ExitCode::SUCCESS
 }

@@ -40,6 +40,7 @@ pub enum TokenKind {
     Or,
     Var,
     Val,
+    Const,
     Func,
     Struct,
     Union,
@@ -122,6 +123,7 @@ impl Display for TokenKind {
             TokenKind::Or => "||",
             TokenKind::Var => "var",
             TokenKind::Val => "val",
+            TokenKind::Const => "const",
             TokenKind::Func => "func",
             TokenKind::Struct => "struct",
             TokenKind::Union => "union",
@@ -184,6 +186,7 @@ fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
         let mut keywords = HashMap::new();
         keywords.insert(Arc::from("var"), TokenKind::Var);
         keywords.insert(Arc::from("val"), TokenKind::Val);
+        keywords.insert(Arc::from("const"), TokenKind::Const);
         keywords.insert(Arc::from("func"), TokenKind::Func);
         keywords.insert(Arc::from("struct"), TokenKind::Struct);
         keywords.insert(Arc::from("union"), TokenKind::Union);

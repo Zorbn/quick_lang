@@ -5,8 +5,15 @@ use crate::{
     file_data::FileData,
     lexer::{Token, TokenKind},
     position::Position,
-    types::{add_type, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer},
+    types::{add_type, get_function_type_kind, get_type_kind_as_pointer},
 };
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DeclarationKind {
+    Var,
+    Val,
+    Const
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Op {
@@ -96,6 +103,10 @@ pub enum TypeKind {
         inner_type_kind: usize,
         generic_param_type_kinds: Arc<Vec<usize>>,
     },
+    PartialArray {
+        element_type_kind: usize,
+        const_expression: usize,
+    },
     Function {
         param_type_kinds: Arc<Vec<usize>>,
         generic_type_kinds: Arc<Vec<usize>>,
@@ -161,7 +172,7 @@ pub enum NodeKind {
         inner: Option<usize>,
     },
     VariableDeclaration {
-        is_mutable: bool,
+        declaration_kind: DeclarationKind,
         name: usize,
         type_name: Option<usize>,
         expression: usize,
@@ -251,7 +262,7 @@ pub enum NodeKind {
     },
     ArrayLiteral {
         elements: Arc<Vec<usize>>,
-        repeat_count: usize,
+        repeat_count_const_expression: Option<usize>,
     },
     StructLiteral {
         left: usize,
@@ -267,6 +278,9 @@ pub enum NodeKind {
     },
     TypeName {
         type_kind: usize,
+    },
+    ConstExpression {
+        inner: usize,
     },
     Error,
 }
@@ -449,21 +463,6 @@ impl Parser {
             start,
             end,
         })
-    }
-
-    fn parse_uint_literal(&mut self) -> Option<usize> {
-        let int_string = match self.token_kind() {
-            TokenKind::IntLiteral { text } => text,
-            _ => {
-                return None;
-            }
-        };
-
-        let Ok(value) = int_string.parse::<usize>() else {
-            return None;
-        };
-
-        Some(value)
     }
 
     fn add_node(&mut self, node: Node) -> usize {
@@ -996,7 +995,7 @@ impl Parser {
 
         let inner = match self.token_kind() {
             TokenKind::Semicolon => None,
-            TokenKind::Var | TokenKind::Val => Some(self.variable_declaration()),
+            TokenKind::Var | TokenKind::Val | TokenKind::Const => Some(self.variable_declaration()),
             TokenKind::Return => Some(self.return_statement()),
             TokenKind::Defer => Some(self.defer_statement()),
             TokenKind::If => Some(self.if_statement()),
@@ -1027,12 +1026,13 @@ impl Parser {
 
     fn variable_declaration(&mut self) -> usize {
         let start = self.token_start();
-        let is_mutable = match self.token_kind() {
-            TokenKind::Var => true,
-            TokenKind::Val => false,
+        let declaration_kind = match self.token_kind() {
+            TokenKind::Var => DeclarationKind::Var,
+            TokenKind::Val => DeclarationKind::Val,
+            TokenKind::Const => DeclarationKind::Const,
             _ => parse_error!(
                 self,
-                "expected var or val keyword in declaration",
+                "expected var, val, or const keyword in declaration",
                 start,
                 self.token_end()
             ),
@@ -1050,12 +1050,16 @@ impl Parser {
         assert_token!(self, TokenKind::Equal, start, self.token_end());
         self.position += 1;
 
-        let expression = self.expression();
+        let expression = if declaration_kind == DeclarationKind::Const {
+            self.const_expression()
+        } else {
+            self.expression()
+        };
         let end = self.node_end(expression);
 
         self.add_node(Node {
             kind: NodeKind::VariableDeclaration {
-                is_mutable,
+                declaration_kind,
                 name,
                 type_name,
                 expression,
@@ -1316,6 +1320,16 @@ impl Parser {
      */
     fn expression(&mut self) -> usize {
         self.assignment()
+    }
+
+    fn const_expression(&mut self) -> usize {
+        let start = self.token_start();
+
+        // Assignment is not allowed in const expressions.
+        let inner = self.compound();
+        let end = self.node_end(inner);
+
+        self.add_node(Node { kind: NodeKind::ConstExpression { inner }, start, end })
     }
 
     fn assignment(&mut self) -> usize {
@@ -1837,15 +1851,11 @@ impl Parser {
             self.position += 1;
         }
 
-        let mut repeat_count = 1;
+        let mut repeat_count_const_expression = None;
 
         if *self.token_kind() == TokenKind::Semicolon {
             self.position += 1;
-
-            repeat_count = self.parse_uint_literal().unwrap_or_else(|| {
-                parse_error!(self, "expected uint literal", start, self.token_end())
-            });
-            self.position += 1;
+            repeat_count_const_expression = Some(self.const_expression());
         }
 
         let end = self.token_end();
@@ -1855,7 +1865,7 @@ impl Parser {
         self.add_node(Node {
             kind: NodeKind::ArrayLiteral {
                 elements: Arc::new(elements),
-                repeat_count,
+                repeat_count_const_expression,
             },
             start,
             end,
@@ -1974,10 +1984,7 @@ impl Parser {
             TokenKind::LBracket => {
                 self.position += 1;
 
-                let element_count = self.parse_uint_literal().unwrap_or_else(|| {
-                    parse_error!(self, "expected uint literal", start, self.token_end())
-                });
-                self.position += 1;
+                let const_expression = self.const_expression();
 
                 if let Some(error_node) =
                     self.assert_token(TokenKind::RBracket, start, self.token_end())
@@ -1991,12 +1998,7 @@ impl Parser {
                     return Some(error_node);
                 }
 
-                *type_kind = get_type_kind_as_array(
-                    &mut self.type_kinds,
-                    &mut self.array_type_kinds,
-                    element_type_kind,
-                    element_count,
-                );
+                *type_kind = self.add_type(TypeKind::PartialArray { element_type_kind, const_expression });
 
                 return None;
             }
