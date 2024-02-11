@@ -15,8 +15,7 @@ use crate::{
         UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
     },
     types::{
-        generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind,
-        get_type_kind_as_array, get_type_kind_as_pointer, replace_generic_type_kinds,
+        generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind, get_method_subject, get_type_kind_as_array, get_type_kind_as_pointer, replace_generic_type_kinds
     },
 };
 
@@ -975,15 +974,12 @@ impl TypeChecker {
     fn call(&mut self, left: usize, args: Arc<Vec<usize>>) -> Option<Type> {
         let left_type = self.check_node(left)?;
 
-        for arg in args.iter() {
-            self.check_node(*arg);
-        }
-
         let TypeKind::Function {
             return_type_kind,
             generic_type_kinds,
+            param_type_kinds,
             ..
-        } = &self.type_kinds[left_type.type_kind]
+        } = self.type_kinds[left_type.type_kind].clone()
         else {
             type_error!(self, "only functions can be called");
         };
@@ -995,8 +991,39 @@ impl TypeChecker {
             );
         }
 
+        let mut skip_param_count = 0;
+        if let Some(method_subject) = get_method_subject(&self.typed_nodes, left) {
+            skip_param_count += 1;
+
+            if param_type_kinds.len() < 1 {
+                type_error!(self, "function with no arguments cannot be called as an instance method");
+            }
+
+            let type_kind_as_pointer = if let TypeKind::Pointer { .. } = self.type_kinds[method_subject.type_kind] {
+                method_subject.type_kind
+            } else {
+                get_type_kind_as_pointer(&mut self.type_kinds, &mut self.pointer_type_kinds, method_subject.type_kind, true)
+            };
+
+            if type_kind_as_pointer != param_type_kinds[0] {
+                type_error!(self, "incorrect type used as subject of method call");
+            }
+        }
+
+        if args.len() + skip_param_count != param_type_kinds.len() {
+            type_error!(self, "wrong number of arguments");
+        }
+
+        for (arg, param_type_kind) in args.iter().zip(param_type_kinds.iter().skip(skip_param_count)) {
+            let arg_type = self.check_node(*arg)?;
+
+            if arg_type.type_kind != *param_type_kind {
+                type_error!(self, "incorrect argument type");
+            }
+        }
+
         Some(Type {
-            type_kind: *return_type_kind,
+            type_kind: return_type_kind,
             instance_kind: InstanceKind::Literal,
         })
     }

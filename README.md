@@ -11,7 +11,6 @@
 ### TODOs
 
 #### Type Checking
-- Check function call arguments.
 - Check struct literal fields.
 - Make sure all non-void functions return, and that all returns have the correct type.
 - Check for duplicate names of variables, functions, types, fields, etc.
@@ -40,5 +39,6 @@
 - `func alloc<T>(value T) *T` alternative to malloc for simple situations.
 
 #### Cleanup
+- Sometimes generic arguments (eg. in the generic specifier) are called "generic params" which is the opposite of what they actually are.
 - Code that generates and uses union `__WithTag/__CheckTag` needs factoring.
 - Refer to TODOs in source files.

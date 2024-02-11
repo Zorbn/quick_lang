@@ -1,9 +1,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    parser::{ArrayLayout, Field, FunctionLayout, NodeKind, PointerLayout, StructLayout, TypeKind},
-    type_checker::TypedNode,
+    as_option::AsOption, parser::{ArrayLayout, Field, FunctionLayout, NodeKind, PointerLayout, StructLayout, TypeKind}, type_checker::{InstanceKind, TypedNode}
 };
+
+pub struct MethodSubject {
+    pub node: usize,
+    pub type_kind: usize,
+}
 
 pub fn add_type(type_kinds: &mut Vec<TypeKind>, type_kind: TypeKind) -> usize {
     let index = type_kinds.len();
@@ -270,4 +274,29 @@ pub fn get_field_index_by_name(
     }
 
     tag
+}
+
+pub fn get_method_subject(typed_nodes: &[impl AsOption<TypedNode>], left: usize) -> Option<MethodSubject> {
+    let NodeKind::FieldAccess {
+        left: field_access_left,
+        ..
+    } = &typed_nodes[left].as_option()?.node_kind else
+    {
+        return None;
+    };
+
+    let field_access_left_type = typed_nodes[*field_access_left]
+        .as_option()?
+        .node_type
+        .as_ref()
+        .unwrap();
+
+    if field_access_left_type.instance_kind != InstanceKind::Var && field_access_left_type.instance_kind != InstanceKind::Val {
+        return None;
+    }
+
+    Some(MethodSubject {
+        node: *field_access_left,
+        type_kind: field_access_left_type.type_kind,
+    })
 }

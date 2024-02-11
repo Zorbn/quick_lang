@@ -698,11 +698,7 @@ impl Parser {
         while *self.token_kind() != TokenKind::RBrace {
             variant_names.push(self.name());
 
-            if *self.token_kind() != TokenKind::Comma {
-                break;
-            }
-
-            assert_token!(self, TokenKind::Comma, start, self.token_end());
+            assert_token!(self, TokenKind::Semicolon, start, self.token_end());
             self.position += 1;
         }
 

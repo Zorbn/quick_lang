@@ -4,10 +4,10 @@ extern func free(ptr *var Void) Void
 
 enum Name
 {
-    Albert,
-    Benjamin,
-    Carson,
-    Derek,
+    Albert;
+    Benjamin;
+    Carson;
+    Derek;
 }
 
 union SimpleUnion
@@ -82,7 +82,7 @@ func main() Int32
     var heapPoint *var Point = malloc(sizeof Point) as *var Point;
     heapPoint.* = Point { x = 5, y = 5 };
     val fromHeapX = heapPoint.x;
-    free(heapPoint);
+    free(heapPoint as *var Void);
 
     var myArray [3]Int = makeArray(1, 777, 3);
     var myArrayCopy [3]Int = takeArray(myArray);
