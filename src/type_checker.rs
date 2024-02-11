@@ -991,7 +991,12 @@ impl TypeChecker {
             type_error!(self, "indexing is only allowed on arrays");
         };
 
-        self.check_node(expression);
+        let expression_type = self.check_node(expression)?;
+
+        let TypeKind::Int = &self.type_kinds[expression_type.type_kind] else {
+            type_error!(self, "expected index to be of type int");
+        };
+
 
         Some(Type {
             type_kind: element_type_kind,

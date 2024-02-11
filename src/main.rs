@@ -37,6 +37,24 @@ fn main() -> ExitCode {
         args.push(".".into());
     }
 
+    let mut c_args_start = None;
+    let mut is_debug_mode = false;
+    for (i, arg) in args.iter().enumerate().skip(2) {
+        match arg.as_str() {
+            "--debug" => {
+                is_debug_mode = true;
+            }
+            "--cflags" => {
+                c_args_start = Some(i + 1);
+                break;
+            }
+            _ => {
+                println!("Unexpected argument \"{}\"", args[i]);
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
     let mut files = Vec::new();
     let path = Path::new(&args[1]);
     if is_path_source_file(path) {
@@ -116,6 +134,7 @@ fn main() -> ExitCode {
         typed_nodes,
         type_checker.type_kinds,
         type_checker.generic_usages,
+        is_debug_mode,
     );
     for start_index in &start_indices {
         code_generator.gen(*start_index);
@@ -138,14 +157,6 @@ fn main() -> ExitCode {
     );
 
     let mut command_builder = Command::new("clang");
-
-    let mut c_args_start = None;
-    for (i, arg) in args.iter().enumerate() {
-        if *arg == "-C" {
-            c_args_start = Some(i + 1);
-            break;
-        }
-    }
 
     if let Some(c_args_start) = c_args_start {
         command_builder.args(&args[c_args_start..]);

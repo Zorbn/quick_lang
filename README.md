@@ -30,12 +30,13 @@
 - Some way to represent pointers to immutable data, eg. `*var Int` vs `*val/const Int`
 - Possibly generic type inference, so specifiers aren't required?
 - Enum methods.
+- Top level const declarations.
 
 #### Missing Things and Bug Fixes
 - Struct equality comparisons.
 - Allow `sizeof` on complex types at compile time.
 - Don't print duplicate type errors for generics, probably best to stop checking them if one variant had an error, or maybe it would be easier to stop handling generic usages after an error.
-- Some for of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
+- Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
 
 #### Standard Library
 - `func alloc<T>(value T) *T` alternative to malloc for simple situations.

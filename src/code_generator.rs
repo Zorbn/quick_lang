@@ -110,6 +110,7 @@ pub struct CodeGenerator {
     function_declaration_needing_init: Option<usize>,
     temp_variable_count: usize,
     current_namespace_names: Vec<NamespaceName>,
+    is_debug_mode: bool,
 }
 
 impl CodeGenerator {
@@ -117,6 +118,7 @@ impl CodeGenerator {
         typed_nodes: Vec<TypedNode>,
         type_kinds: Vec<TypeKind>,
         generic_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>,
+        is_debug_mode: bool,
     ) -> Self {
         let mut code_generator = Self {
             typed_nodes,
@@ -129,6 +131,7 @@ impl CodeGenerator {
             function_declaration_needing_init: None,
             temp_variable_count: 0,
             current_namespace_names: Vec::new(),
+            is_debug_mode,
         };
 
         code_generator.header_emitter.emitln("#include <string.h>");
@@ -139,6 +142,10 @@ impl CodeGenerator {
         code_generator.header_emitter.emitln("#include <assert.h>");
         code_generator.header_emitter.newline();
         code_generator.body_emitters.push(1);
+
+        if is_debug_mode {
+            code_generator.emit_bounds_check();
+        }
 
         code_generator
     }
@@ -1276,7 +1283,23 @@ impl CodeGenerator {
     fn index_access(&mut self, left: usize, expression: usize, _node_type: Option<Type>) {
         self.gen_node(left);
         self.body_emitters.top().body.emit("[");
-        self.gen_node(expression);
+
+        if self.is_debug_mode {
+            let left_type = self.typed_nodes[left].node_type.as_ref().unwrap();
+            let TypeKind::Array { element_count, .. } = &self.type_kinds[left_type.type_kind] else {
+                panic!("tried to perform an index access on a non-array type");
+            };
+            let element_count = *element_count;
+
+            self.body_emitters.top().body.emit("__BoundsCheck(");
+            self.gen_node(expression);
+            self.body_emitters.top().body.emit(", ");
+            self.body_emitters.top().body.emit(&element_count.to_string());
+            self.body_emitters.top().body.emit(")");
+        } else {
+            self.gen_node(expression);
+        }
+
         self.body_emitters.top().body.emit("]");
     }
 
@@ -2049,6 +2072,19 @@ impl CodeGenerator {
             self.body_emitters.top().body.unindent();
             self.body_emitters.top().body.emitln("}");
         }
+    }
+
+    fn emit_bounds_check(&mut self) {
+        self.function_prototype_emitter.emitln("intptr_t __BoundsCheck(intptr_t index, intptr_t count);");
+        self.function_prototype_emitter.newline();
+
+        self.body_emitters.top().body.emitln("intptr_t __BoundsCheck(intptr_t index, intptr_t count) {");
+        self.body_emitters.top().body.indent();
+        self.body_emitters.top().body.emitln("assert(index >= 0 && index < count);");
+        self.body_emitters.top().body.emitln("return index;");
+        self.body_emitters.top().body.unindent();
+        self.body_emitters.top().body.emitln("}");
+        self.body_emitters.top().body.newline();
     }
 
     fn emitter(&mut self, kind: EmitterKind) -> &mut Emitter {
