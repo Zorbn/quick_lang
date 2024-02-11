@@ -11,7 +11,6 @@
 ### TODOs
 
 #### Type Checking
-- Distinguish between variable (var) and constant (val, const, fun) bindings.
 - Check function call arguments.
 - Check struct literal fields.
 - Make sure all non-void functions return, and that all returns have the correct type.
@@ -27,7 +26,6 @@
 - Variadic arguments.
 - `for elem in array {}`
 - Bitwise operations (with more intuitive precedence than C).
-- Some way to represent pointers to immutable data, eg. `*var Int` vs `*val/const Int`
 - Possibly generic type inference, so specifiers aren't required?
 - Enum methods.
 - Top level const declarations.

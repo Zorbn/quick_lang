@@ -9,10 +9,10 @@ use crate::{
     environment::Environment,
     file_data::FileData,
     parser::{
-        ArrayLayout, DeclarationKind, Field, FunctionLayout, Node, NodeKind, Op, StructLayout,
-        TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX,
-        INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, TAG_INDEX, UINT16_INDEX, UINT32_INDEX,
-        UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
+        ArrayLayout, DeclarationKind, Field, FunctionLayout, Node, NodeKind, Op, PointerLayout,
+        StructLayout, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX,
+        INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, TAG_INDEX, UINT16_INDEX,
+        UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
     },
     types::{
         generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind,
@@ -28,7 +28,8 @@ pub struct TypedNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum InstanceKind {
-    Variable,
+    Var,
+    Val,
     Literal,
     Name,
     Const(ConstValue),
@@ -56,7 +57,7 @@ pub struct TypeChecker {
     pub nodes: Vec<Node>,
     pub type_kinds: Vec<TypeKind>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
-    pub pointer_type_kinds: HashMap<usize, usize>,
+    pub pointer_type_kinds: HashMap<PointerLayout, usize>,
     pub function_type_kinds: HashMap<FunctionLayout, usize>,
     pub struct_type_kinds: HashMap<StructLayout, usize>,
     pub definition_indices: HashMap<Vec<Arc<str>>, usize>,
@@ -75,7 +76,7 @@ impl TypeChecker {
         nodes: Vec<Node>,
         type_kinds: Vec<TypeKind>,
         array_type_kinds: HashMap<ArrayLayout, usize>,
-        pointer_type_kinds: HashMap<usize, usize>,
+        pointer_type_kinds: HashMap<PointerLayout, usize>,
         function_type_kinds: HashMap<FunctionLayout, usize>,
         struct_type_kinds: HashMap<StructLayout, usize>,
         definition_indices: HashMap<Vec<Arc<str>>, usize>,
@@ -347,7 +348,7 @@ impl TypeChecker {
                 name_text,
                 Type {
                     type_kind: resolved_type_kind,
-                    instance_kind: InstanceKind::Variable,
+                    instance_kind: InstanceKind::Val,
                 },
             );
         }
@@ -583,7 +584,7 @@ impl TypeChecker {
 
         let param_type = Type {
             type_kind: type_name_type.type_kind,
-            instance_kind: InstanceKind::Variable,
+            instance_kind: InstanceKind::Var,
         };
         self.environment.insert(name_text, param_type.clone());
 
@@ -614,7 +615,7 @@ impl TypeChecker {
 
     fn variable_declaration(
         &mut self,
-        _declaration_kind: DeclarationKind,
+        declaration_kind: DeclarationKind,
         name: usize,
         type_name: Option<usize>,
         expression: usize,
@@ -630,11 +631,6 @@ impl TypeChecker {
         let mut variable_type = if let Some(type_name) = type_name {
             let variable_type = self.check_node(type_name)?;
             if variable_type.type_kind != expression_type.type_kind {
-                println!(
-                    "{:?} != {:?}",
-                    self.type_kinds[variable_type.type_kind],
-                    self.type_kinds[expression_type.type_kind]
-                );
                 type_error!(self, "mismatched types in variable declaration");
             }
 
@@ -642,6 +638,12 @@ impl TypeChecker {
         } else {
             expression_type
         };
+
+        if declaration_kind == DeclarationKind::Const
+            && !matches!(variable_type.instance_kind, InstanceKind::Const(..))
+        {
+            type_error!(self, "cannot declare a const with a non-const value");
+        }
 
         if let TypeKind::Function { .. } = self.type_kinds[variable_type.type_kind] {
             type_error!(
@@ -658,9 +660,11 @@ impl TypeChecker {
             type_error!(self, "invalid variable name");
         };
 
-        if !matches!(variable_type.instance_kind, InstanceKind::Const(..)) {
-            variable_type.instance_kind = InstanceKind::Variable;
-        }
+        variable_type.instance_kind = match declaration_kind {
+            DeclarationKind::Var => InstanceKind::Var,
+            DeclarationKind::Val => InstanceKind::Val,
+            DeclarationKind::Const => variable_type.instance_kind,
+        };
 
         self.environment.insert(name_text, variable_type.clone());
 
@@ -759,7 +763,13 @@ impl TypeChecker {
             type_error!(self, "binary operators are only useable on instances");
         }
 
-        // TODO: Make sure assignments have a variable on the left side, rather than a literal.
+        if matches!(
+            op,
+            Op::Assign | Op::PlusAssign | Op::MinusAssign | Op::MultiplyAssign | Op::DivideAssign
+        ) && left_type.instance_kind != InstanceKind::Var
+        {
+            type_error!(self, "only variables can be assigned to");
+        }
 
         match op {
             Op::Plus
@@ -872,9 +882,11 @@ impl TypeChecker {
                 Some(right_type)
             }
             Op::Reference => {
-                if right_type.instance_kind != InstanceKind::Variable {
-                    type_error!(self, "references must refer to a variable");
-                }
+                let is_mutable = match right_type.instance_kind {
+                    InstanceKind::Val => false,
+                    InstanceKind::Var => true,
+                    _ => type_error!(self, "references must refer to a variable"),
+                };
 
                 if let TypeKind::Function {
                     generic_type_kinds, ..
@@ -889,6 +901,7 @@ impl TypeChecker {
                     &mut self.type_kinds,
                     &mut self.pointer_type_kinds,
                     right_type.type_kind,
+                    is_mutable,
                 );
 
                 Some(Type {
@@ -932,7 +945,10 @@ impl TypeChecker {
         let left_type = self.check_node(left)?;
 
         if let Op::Dereference = op {
-            let TypeKind::Pointer { inner_type_kind } = &self.type_kinds[left_type.type_kind]
+            let TypeKind::Pointer {
+                inner_type_kind,
+                is_inner_mutable,
+            } = &self.type_kinds[left_type.type_kind]
             else {
                 type_error!(self, "only pointers can be dereferenced");
             };
@@ -941,9 +957,15 @@ impl TypeChecker {
                 type_error!(self, "only pointer instances can be dereferenced");
             }
 
+            let instance_kind = if *is_inner_mutable {
+                InstanceKind::Var
+            } else {
+                InstanceKind::Val
+            };
+
             Some(Type {
                 type_kind: *inner_type_kind,
-                instance_kind: InstanceKind::Variable,
+                instance_kind,
             })
         } else {
             type_error!(self, "unknown unary suffix operator")
@@ -997,10 +1019,9 @@ impl TypeChecker {
             type_error!(self, "expected index to be of type int");
         };
 
-
         Some(Type {
             type_kind: element_type_kind,
-            instance_kind: InstanceKind::Variable,
+            instance_kind: InstanceKind::Var,
         })
     }
 
@@ -1013,12 +1034,24 @@ impl TypeChecker {
         };
 
         let mut is_tag_access = false;
-        let struct_type_kind = match &self.type_kinds[parent_type.type_kind] {
+        let (struct_type_kind, field_instance_kind) = match &self.type_kinds[parent_type.type_kind]
+        {
             TypeKind::Struct { is_union, .. } => {
                 is_tag_access = parent_type.instance_kind == InstanceKind::Name && *is_union;
-                parent_type.type_kind
+                (parent_type.type_kind, InstanceKind::Var)
             }
-            TypeKind::Pointer { inner_type_kind } => *inner_type_kind,
+            TypeKind::Pointer {
+                inner_type_kind,
+                is_inner_mutable,
+            } => {
+                let field_instance_kind = if *is_inner_mutable {
+                    InstanceKind::Var
+                } else {
+                    InstanceKind::Val
+                };
+
+                (*inner_type_kind, field_instance_kind)
+            }
             TypeKind::Enum { variant_names, .. } => {
                 for variant_name in variant_names.iter() {
                     let NodeKind::Name {
@@ -1092,8 +1125,9 @@ impl TypeChecker {
                 // A method is static if it's first parameter isn't a pointer to it's own struct's type.
                 let mut is_method_static = true;
                 if param_type_kinds.len() > 0 {
-                    if let TypeKind::Pointer { inner_type_kind } =
-                        self.type_kinds[param_type_kinds[0]]
+                    if let TypeKind::Pointer {
+                        inner_type_kind, ..
+                    } = self.type_kinds[param_type_kinds[0]]
                     {
                         is_method_static = inner_type_kind != struct_type_kind;
                     }
@@ -1108,7 +1142,7 @@ impl TypeChecker {
 
             return Some(Type {
                 type_kind: *field_kind,
-                instance_kind: InstanceKind::Variable,
+                instance_kind: field_instance_kind,
             });
         }
 
@@ -1238,7 +1272,7 @@ impl TypeChecker {
                         &generic_param_type_kinds,
                     );
 
-                    (function_index, concrete_type_kind, InstanceKind::Variable)
+                    (function_index, concrete_type_kind, InstanceKind::Val)
                 }
                 TypeKind::Struct {
                     generic_type_kinds, ..
@@ -1571,16 +1605,19 @@ impl TypeChecker {
             }
             TypeKind::Pointer {
                 mut inner_type_kind,
+                is_inner_mutable,
             } => {
                 if let Some(error_type) =
                     self.resolve_partial_types(inner_type_kind, &mut inner_type_kind)
                 {
                     return Some(error_type);
                 }
+
                 *resolved_type_kind = get_type_kind_as_pointer(
                     &mut self.type_kinds,
                     &mut self.pointer_type_kinds,
                     inner_type_kind,
+                    is_inner_mutable,
                 );
             }
             TypeKind::Function {

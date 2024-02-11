@@ -3,13 +3,13 @@ struct Point
     x Int;
     y Int;
 
-    func Add(self *Point, other *Point) Void
+    func Add(self *var Point, other *var Point) Void
     {
         self.x += other.x;
         self.y += other.y;
     }
 
-    func Multiply(self *Point, other *Point) Void
+    func Multiply(self *var Point, other *var Point) Void
     {
         self.x *= other.x;
         self.y *= other.y;
@@ -20,7 +20,7 @@ struct Point
 
     }
 
-    func GenericThing<T>(self *Point, a T) Void
+    func GenericThing<T>(self *var Point, a T) Void
     {
     }
 }
@@ -30,44 +30,44 @@ struct GenericStruct<A, B>
     a A;
     b B;
 
-    func SetA(self *GenericStruct.<A, B>, a A) Void
+    func SetA(self *var GenericStruct.<A, B>, a A) Void
     {
         val genericStruct = GenericStruct.<A, B> { a = self.a, b = self.b };
         // genericFunction2.<A, B>("hello", "world");
         self.a = a;
     }
 
-    func SetB(self *GenericStruct.<A, B>, b B) Void
+    func SetB(self *var GenericStruct.<A, B>, b B) Void
     {
         self.b = b;
     }
 
-    func GetA(self *GenericStruct.<A, B>) A
+    func GetA(self *var GenericStruct.<A, B>) A
     {
         return self.a;
     }
 
-    func GetB(self *GenericStruct.<A, B>) B
+    func GetB(self *var GenericStruct.<A, B>) B
     {
         return self.b;
     }
 
-    func DoThingWithStringStruct(self *GenericStruct.<String, A>) Void
+    func DoThingWithStringStruct(self *var GenericStruct.<String, A>) Void
     {
         print("doing thing");
     }
 
-    // func DoThingWithNestedStruct(self *GenericStruct.<SimpleGeneric.<UInt16>, A>) Void
+    // func DoThingWithNestedStruct(self *var GenericStruct.<SimpleGeneric.<UInt16>, A>) Void
     // {
     //     print("doing thing");
     // }
 
-    func DoThingWithNestedStruct(self *SimpleGeneric.<UInt16>) Void
+    func DoThingWithNestedStruct(self *var SimpleGeneric.<UInt16>) Void
     {
         print("doing thing");
     }
 
-    func DoThingWithNestedFunction(self *func(SimpleGeneric.<UInt16>) GenericStruct.<A, B>) Void
+    func DoThingWithNestedFunction(f *val func(SimpleGeneric.<UInt16>) GenericStruct.<A, B>) Void
     {
         print("doing thing");
     }

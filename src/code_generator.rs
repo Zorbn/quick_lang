@@ -1120,7 +1120,7 @@ impl CodeGenerator {
                 let left_type = self.typed_nodes[left].node_type.as_ref().unwrap();
 
                 let (dereferenced_left_type_kind, is_left_pointer) =
-                    if let TypeKind::Pointer { inner_type_kind } =
+                    if let TypeKind::Pointer { inner_type_kind, .. } =
                         self.type_kinds[left_type.type_kind]
                     {
                         (inner_type_kind, true)
@@ -1237,7 +1237,7 @@ impl CodeGenerator {
                 .as_ref()
                 .unwrap();
 
-            if field_access_left_type.instance_kind == InstanceKind::Variable {
+            if field_access_left_type.instance_kind == InstanceKind::Var || field_access_left_type.instance_kind == InstanceKind::Val {
                 // We have a variable to pass as the first parameter.
                 if !matches!(
                     self.type_kinds[field_access_left_type.type_kind],
@@ -1364,7 +1364,7 @@ impl CodeGenerator {
         }
 
         let (dereferenced_left_type_kind, is_left_pointer) =
-            if let TypeKind::Pointer { inner_type_kind } = self.type_kinds[left_type.type_kind] {
+            if let TypeKind::Pointer { inner_type_kind, .. } = self.type_kinds[left_type.type_kind] {
                 (inner_type_kind, true)
             } else {
                 (left_type.type_kind, false)
@@ -1802,7 +1802,13 @@ impl CodeGenerator {
                     self.emitter(emitter_kind).emit("*");
                 }
             }
-            TypeKind::Pointer { inner_type_kind } => {
+            TypeKind::Pointer { inner_type_kind, is_inner_mutable } => {
+                // If the pointer points to an immutable value, then add a const to the generated code.
+                // Except for functions, because a const function has no meaning in C.
+                if !is_inner_mutable && !matches!(self.type_kinds[inner_type_kind], TypeKind::Function { .. }) {
+                    self.emitter(emitter_kind).emit("const ");
+                }
+
                 self.emit_type_kind_left(
                     inner_type_kind,
                     emitter_kind,
@@ -1856,7 +1862,7 @@ impl CodeGenerator {
                 }
                 self.emit_type_kind_right(element_type_kind, emitter_kind, do_arrays_as_pointers);
             }
-            TypeKind::Pointer { inner_type_kind } => {
+            TypeKind::Pointer { inner_type_kind, .. } => {
                 self.emit_type_kind_right(inner_type_kind, emitter_kind, do_arrays_as_pointers);
             }
             TypeKind::Function {

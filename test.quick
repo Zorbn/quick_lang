@@ -1,6 +1,6 @@
 extern func puts(str String) UInt
-extern func malloc(size UInt) *Void
-extern func free(ptr *Void) Void
+extern func malloc(size UInt) *var Void
+extern func free(ptr *var Void) Void
 
 enum Name
 {
@@ -47,7 +47,7 @@ func main() Int32
     val unionTag = genericUnion as Tag;
     val otherTag = GenericUnion.<Int32, Int64>.b;
 
-    var function *func(Int, Int) Int = &add;
+    var function *val func(Int, Int) Int = &add;
     function.*(1, 2);
 
     defer
@@ -66,7 +66,7 @@ func main() Int32
     puts(str);
 
     var byte UInt8 = 255 as UInt8;
-    var bytePtr *UInt8 = &byte;
+    var bytePtr *var UInt8 = &byte;
     var otherByte UInt8 = bytePtr.*;
 
     /*
@@ -79,7 +79,7 @@ func main() Int32
     */
     */
 
-    var heapPoint *Point = malloc(sizeof Point) as *Point;
+    var heapPoint *var Point = malloc(sizeof Point) as *var Point;
     heapPoint.* = Point { x = 5, y = 5 };
     val fromHeapX = heapPoint.x;
     free(heapPoint);
@@ -271,7 +271,7 @@ func takeArray(a [3]Int) [3]Int
     return a;
 }
 
-func returnFunPtr() *func(Int, Int) Int
+func returnFunPtr() *val func(Int, Int) Int
     return &add;
 
 func genericFunction<A, B>(a A, b B) A

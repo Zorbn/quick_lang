@@ -65,6 +65,12 @@ pub struct StructLayout {
     pub generic_param_type_kinds: Arc<Vec<usize>>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PointerLayout {
+    pub inner_type_kind: usize,
+    pub is_inner_mutable: bool,
+}
+
 #[derive(Clone, Debug)]
 pub enum TypeKind {
     Int,
@@ -86,6 +92,7 @@ pub enum TypeKind {
     Tag,
     Pointer {
         inner_type_kind: usize,
+        is_inner_mutable: bool,
     },
     Array {
         element_type_kind: usize,
@@ -328,7 +335,7 @@ pub struct Parser {
     pub nodes: Vec<Node>,
     pub type_kinds: Vec<TypeKind>,
     pub array_type_kinds: HashMap<ArrayLayout, usize>,
-    pub pointer_type_kinds: HashMap<usize, usize>,
+    pub pointer_type_kinds: HashMap<PointerLayout, usize>,
     pub named_type_kinds: Environment<usize>,
     pub function_type_kinds: HashMap<FunctionLayout, usize>,
     pub struct_type_kinds: HashMap<StructLayout, usize>,
@@ -2015,6 +2022,13 @@ impl Parser {
             TokenKind::Asterisk => {
                 self.position += 1;
 
+                let is_mutable = match *self.token_kind() {
+                    TokenKind::Val => false,
+                    TokenKind::Var => true,
+                    _ => return Some(self.parse_error("expected val or var to be specified for pointer", start, self.token_end()))
+                };
+                self.position += 1;
+
                 let mut inner_type_kind = 0;
                 if let Some(error_node) = self.type_kind(&mut inner_type_kind) {
                     return Some(error_node);
@@ -2024,6 +2038,7 @@ impl Parser {
                     &mut self.type_kinds,
                     &mut self.pointer_type_kinds,
                     inner_type_kind,
+                    is_mutable,
                 );
 
                 return None;

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    parser::{ArrayLayout, Field, FunctionLayout, NodeKind, StructLayout, TypeKind},
+    parser::{ArrayLayout, Field, FunctionLayout, NodeKind, PointerLayout, StructLayout, TypeKind},
     type_checker::TypedNode,
 };
 
@@ -172,19 +172,26 @@ pub fn get_function_type_kind(
 
 pub fn get_type_kind_as_pointer(
     type_kinds: &mut Vec<TypeKind>,
-    pointer_type_kinds: &mut HashMap<usize, usize>,
+    pointer_type_kinds: &mut HashMap<PointerLayout, usize>,
     type_kind: usize,
+    is_mutable: bool,
 ) -> usize {
-    if let Some(index) = pointer_type_kinds.get(&type_kind) {
+    let layout = PointerLayout {
+        inner_type_kind: type_kind,
+        is_inner_mutable: is_mutable,
+    };
+
+    if let Some(index) = pointer_type_kinds.get(&layout) {
         *index
     } else {
         let index = add_type(
             type_kinds,
             TypeKind::Pointer {
                 inner_type_kind: type_kind,
+                is_inner_mutable: is_mutable,
             },
         );
-        pointer_type_kinds.insert(type_kind, index);
+        pointer_type_kinds.insert(layout, index);
         index
     }
 }
