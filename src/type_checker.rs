@@ -4,14 +4,15 @@ use std::{
 };
 
 use crate::{
-    environment::Environment,
-    file_data::FileData,
-    parser::{
-        ArrayLayout, DeclarationKind, Field, FunctionLayout, Node, NodeKind, Op, StructLayout, TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX, INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, TAG_INDEX, UINT16_INDEX, UINT32_INDEX, UINT64_INDEX, UINT8_INDEX, UINT_INDEX
-    },
-    types::{
-        generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind, get_type_kind_as_array, get_type_kind_as_pointer, replace_generic_type_kinds
-    },
+    const_value::ConstValue, environment::Environment, file_data::FileData, parser::{
+        ArrayLayout, DeclarationKind, Field, FunctionLayout, Node, NodeKind, Op, StructLayout,
+        TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX,
+        INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, TAG_INDEX, UINT16_INDEX, UINT32_INDEX,
+        UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
+    }, types::{
+        generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind,
+        get_type_kind_as_array, get_type_kind_as_pointer, replace_generic_type_kinds,
+    }
 };
 
 #[derive(Clone, Debug)]
@@ -26,28 +27,6 @@ pub enum InstanceKind {
     Literal,
     Name,
     Const(ConstValue),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ConstValue {
-    Int {
-        value: i64,
-    },
-    UInt {
-        value: u64,
-    },
-    Float {
-        value: f64,
-    },
-    String {
-        value: Arc<str>,
-    },
-    Char {
-        value: char,
-    },
-    Bool {
-        value: bool,
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -161,9 +140,10 @@ impl TypeChecker {
             }
 
             let type_kind = match self.nodes[pending_usage.index].kind.clone() {
-                NodeKind::Function { declaration, statement } => {
-                    self.function(declaration, statement, Some(dealiased_usage))
-                }
+                NodeKind::Function {
+                    declaration,
+                    statement,
+                } => self.function(declaration, statement, Some(dealiased_usage)),
                 NodeKind::StructDefinition {
                     name,
                     fields,
@@ -210,7 +190,10 @@ impl TypeChecker {
                 type_kind,
             } => self.enum_definition(name, variant_names, type_kind),
             NodeKind::Field { name, type_name } => self.field(name, type_name),
-            NodeKind::Function { declaration, statement } => self.function(declaration, statement, None),
+            NodeKind::Function {
+                declaration,
+                statement,
+            } => self.function(declaration, statement, None),
             NodeKind::FunctionDeclaration {
                 name,
                 return_type_name,
@@ -246,7 +229,10 @@ impl TypeChecker {
                 statement,
                 next,
             } => self.case_statement(expression, statement, next),
-            NodeKind::WhileLoop { expression, statement } => self.while_loop(expression, statement),
+            NodeKind::WhileLoop {
+                expression,
+                statement,
+            } => self.while_loop(expression, statement),
             NodeKind::ForLoop {
                 iterator,
                 op,
@@ -297,7 +283,7 @@ impl TypeChecker {
         self.last_visited_index = index;
 
         let node_type = match self.nodes[index].kind.clone() {
-            // NodeKind::Binary { left, op, right } => self.binary(left, op, right),
+            NodeKind::Binary { left, op, right } => self.const_binary(left, op, right, index),
             // NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right),
             // NodeKind::Cast { left, type_name } => self.cast(left, type_name),
             NodeKind::Identifier { name } => self.const_identifier(name, index),
@@ -307,11 +293,10 @@ impl TypeChecker {
             // NodeKind::BoolLiteral { value } => self.bool_literal(value),
             // NodeKind::CharLiteral { value } => self.char_literal(value),
             // NodeKind::TypeSize { type_name } => self.type_size(type_name),
-            // NodeKind::TypeName { type_kind } => self.type_name(type_kind),
             _ => {
                 self.type_error("non-constant in constant expression");
                 None
-            },
+            }
         };
 
         self.typed_nodes[index] = Some(TypedNode {
@@ -347,7 +332,9 @@ impl TypeChecker {
             };
 
             let mut resolved_type_kind = 0;
-            if let Some(error_type) = self.resolve_partial_types(*type_kind, &mut resolved_type_kind) {
+            if let Some(error_type) =
+                self.resolve_partial_types(*type_kind, &mut resolved_type_kind)
+            {
                 return Some(error_type);
             }
 
@@ -638,7 +625,11 @@ impl TypeChecker {
         let mut variable_type = if let Some(type_name) = type_name {
             let variable_type = self.check_node(type_name)?;
             if variable_type.type_kind != expression_type.type_kind {
-                println!("{:?} != {:?}", self.type_kinds[variable_type.type_kind], self.type_kinds[expression_type.type_kind]);
+                println!(
+                    "{:?} != {:?}",
+                    self.type_kinds[variable_type.type_kind],
+                    self.type_kinds[expression_type.type_kind]
+                );
                 type_error!(self, "mismatched types in variable declaration");
             }
 
@@ -646,7 +637,6 @@ impl TypeChecker {
         } else {
             expression_type
         };
-
 
         if let TypeKind::Function { .. } = self.type_kinds[variable_type.type_kind] {
             type_error!(
@@ -703,7 +693,12 @@ impl TypeChecker {
         None
     }
 
-    fn case_statement(&mut self, expression: usize, statement: usize, next: Option<usize>) -> Option<Type> {
+    fn case_statement(
+        &mut self,
+        expression: usize,
+        statement: usize,
+        next: Option<usize>,
+    ) -> Option<Type> {
         self.check_node(expression);
         self.check_node(statement);
 
@@ -790,7 +785,7 @@ impl TypeChecker {
                     instance_kind: InstanceKind::Literal,
                 });
             }
-            Op::Not | Op::And | Op::Or => {
+            Op::And | Op::Or => {
                 if left_type.type_kind != BOOL_INDEX {
                     type_error!(self, "expected bool");
                 }
@@ -802,6 +797,39 @@ impl TypeChecker {
             type_kind: left_type.type_kind,
             instance_kind: InstanceKind::Literal,
         })
+    }
+
+    fn const_binary(&mut self, left: usize, op: Op, right: usize, index: usize) -> Option<Type> {
+        let binary_type = self.check_node(index)?;
+
+        let InstanceKind::Const(left_const_value) = self.check_const_node(left)?.instance_kind else {
+            type_error!(self, "expected const operand")
+        };
+        let InstanceKind::Const(right_const_value) = self.check_const_node(right)?.instance_kind else {
+            type_error!(self, "expected const operand")
+        };
+
+        let result_value = match op {
+            Op::Plus => left_const_value.add(right_const_value),
+            Op::Minus => left_const_value.subtract(right_const_value),
+            Op::Multiply => left_const_value.multiply(right_const_value),
+            Op::Divide => left_const_value.divide(right_const_value),
+            Op::Equal => Some(ConstValue::Bool { value: left_const_value == right_const_value }),
+            Op::NotEqual => Some(ConstValue::Bool { value: left_const_value != right_const_value }),
+            Op::Less => left_const_value.less(right_const_value),
+            Op::Greater => left_const_value.greater(right_const_value),
+            Op::LessEqual => left_const_value.less_equal(right_const_value),
+            Op::GreaterEqual => left_const_value.greater_equal(right_const_value),
+            Op::And => left_const_value.and(right_const_value),
+            Op::Or => left_const_value.or(right_const_value),
+            _ => type_error!(self, "unexpected operator in constant binary expression"),
+        };
+
+        let Some(result_value) = result_value else {
+            type_error!(self, "unexpected const types for operator");
+        };
+
+        Some(Type { type_kind: binary_type.type_kind, instance_kind: InstanceKind::Const(result_value) })
     }
 
     fn unary_prefix(&mut self, op: Op, right: usize) -> Option<Type> {
@@ -942,7 +970,7 @@ impl TypeChecker {
             TypeKind::Struct { is_union, .. } => {
                 is_tag_access = parent_type.instance_kind == InstanceKind::Name && *is_union;
                 parent_type.type_kind
-            },
+            }
             TypeKind::Pointer { inner_type_kind } => *inner_type_kind,
             TypeKind::Enum { variant_names, .. } => {
                 for variant_name in variant_names.iter() {
@@ -1189,7 +1217,7 @@ impl TypeChecker {
         Some(identifier_type)
     }
 
-    fn const_identifier(&mut self, name: usize, index: usize) -> Option<Type> {
+    fn const_identifier(&mut self, _name: usize, index: usize) -> Option<Type> {
         let const_type = self.check_node(index)?;
 
         if !matches!(const_type.instance_kind, InstanceKind::Const(..)) {
@@ -1213,7 +1241,10 @@ impl TypeChecker {
             return None;
         };
 
-        Some(Type { type_kind: const_type.type_kind, instance_kind: InstanceKind::Const(ConstValue::Int { value }) })
+        Some(Type {
+            type_kind: const_type.type_kind,
+            instance_kind: InstanceKind::Const(ConstValue::Int { value }),
+        })
     }
 
     fn float32_literal(&mut self, _text: Arc<str>) -> Option<Type> {
@@ -1244,14 +1275,20 @@ impl TypeChecker {
         })
     }
 
-    fn array_literal(&mut self, elements: Arc<Vec<usize>>, repeat_count_const_expression: Option<usize>) -> Option<Type> {
+    fn array_literal(
+        &mut self,
+        elements: Arc<Vec<usize>>,
+        repeat_count_const_expression: Option<usize>,
+    ) -> Option<Type> {
         for element in elements.iter() {
             self.check_node(*element);
         }
 
         let repeat_count = if let Some(const_expression) = repeat_count_const_expression {
             let mut repeat_count = 0;
-            if let Some(error_type) = self.const_expression_to_uint(const_expression, &mut repeat_count) {
+            if let Some(error_type) =
+                self.const_expression_to_uint(const_expression, &mut repeat_count)
+            {
                 return Some(error_type);
             }
 
@@ -1312,47 +1349,85 @@ impl TypeChecker {
         })
     }
 
-    fn const_expression_to_uint(&mut self, const_expression: usize, result: &mut usize) -> Option<Type> {
+    fn const_expression_to_uint(
+        &mut self,
+        const_expression: usize,
+        result: &mut usize,
+    ) -> Option<Type> {
         let NodeKind::ConstExpression { inner } = self.nodes[const_expression].kind else {
             return self.type_error("expected const expression");
         };
 
-        let Some(Type { instance_kind: InstanceKind::Const(const_value), .. }) = self.const_expression(inner) else {
+        let Some(Type {
+            instance_kind: InstanceKind::Const(const_value),
+            ..
+        }) = self.const_expression(inner)
+        else {
             return self.type_error("expected const value from const expression");
         };
 
         *result = match const_value {
-            ConstValue::Int { value } => if value < 0 {
-                return self.type_error("expected positive integer")
-            } else {
-                value as usize
-            },
+            ConstValue::Int { value } => {
+                if value < 0 {
+                    return self.type_error("expected positive integer");
+                } else {
+                    value as usize
+                }
+            }
             ConstValue::UInt { value } => value as usize,
-            _ => return self.type_error("expected integer")
+            _ => return self.type_error("expected integer"),
         };
 
         None
     }
 
-    fn resolve_partial_types(&mut self, type_kind: usize, resolved_type_kind: &mut usize) -> Option<Type> {
+    fn resolve_partial_types(
+        &mut self,
+        type_kind: usize,
+        resolved_type_kind: &mut usize,
+    ) -> Option<Type> {
         match self.type_kinds[type_kind].clone() {
-            TypeKind::Array { mut element_type_kind, element_count } => {
-                if let Some(error_type) = self.resolve_partial_types(element_type_kind, &mut element_type_kind) {
+            TypeKind::Array {
+                mut element_type_kind,
+                element_count,
+            } => {
+                if let Some(error_type) =
+                    self.resolve_partial_types(element_type_kind, &mut element_type_kind)
+                {
                     return Some(error_type);
                 }
-                *resolved_type_kind = get_type_kind_as_array(&mut self.type_kinds, &mut self.array_type_kinds, element_type_kind, element_count);
-            },
-            TypeKind::Pointer { mut inner_type_kind } => {
-                if let Some(error_type) = self.resolve_partial_types(inner_type_kind, &mut inner_type_kind) {
+                *resolved_type_kind = get_type_kind_as_array(
+                    &mut self.type_kinds,
+                    &mut self.array_type_kinds,
+                    element_type_kind,
+                    element_count,
+                );
+            }
+            TypeKind::Pointer {
+                mut inner_type_kind,
+            } => {
+                if let Some(error_type) =
+                    self.resolve_partial_types(inner_type_kind, &mut inner_type_kind)
+                {
                     return Some(error_type);
                 }
-                *resolved_type_kind = get_type_kind_as_pointer(&mut self.type_kinds, &mut self.pointer_type_kinds, inner_type_kind);
-            },
-            TypeKind::Function { param_type_kinds, generic_type_kinds, return_type_kind } => {
+                *resolved_type_kind = get_type_kind_as_pointer(
+                    &mut self.type_kinds,
+                    &mut self.pointer_type_kinds,
+                    inner_type_kind,
+                );
+            }
+            TypeKind::Function {
+                param_type_kinds,
+                generic_type_kinds,
+                return_type_kind,
+            } => {
                 let mut resolved_param_type_kinds = Vec::new();
                 for param_type_kind in param_type_kinds.iter() {
                     let mut resolved_type_kind = 0;
-                    if let Some(error_type) = self.resolve_partial_types(*param_type_kind, &mut resolved_type_kind) {
+                    if let Some(error_type) =
+                        self.resolve_partial_types(*param_type_kind, &mut resolved_type_kind)
+                    {
                         return Some(error_type);
                     }
                     resolved_param_type_kinds.push(resolved_type_kind);
@@ -1360,7 +1435,9 @@ impl TypeChecker {
                 let resolved_param_type_kinds = Arc::new(resolved_param_type_kinds);
 
                 let mut resolved_return_type_kind = 0;
-                if let Some(error_type) = self.resolve_partial_types(return_type_kind, &mut resolved_return_type_kind) {
+                if let Some(error_type) =
+                    self.resolve_partial_types(return_type_kind, &mut resolved_return_type_kind)
+                {
                     return Some(error_type);
                 }
 
@@ -1370,26 +1447,43 @@ impl TypeChecker {
                     return_type_kind: resolved_return_type_kind,
                 };
 
-                *resolved_type_kind = get_function_type_kind(&mut self.type_kinds, &mut self.function_type_kinds, function_layout);
+                *resolved_type_kind = get_function_type_kind(
+                    &mut self.type_kinds,
+                    &mut self.function_type_kinds,
+                    function_layout,
+                );
             }
-            TypeKind::PartialArray { mut element_type_kind, const_expression } => {
-                if let Some(error_type) = self.resolve_partial_types(element_type_kind, &mut element_type_kind) {
+            TypeKind::PartialArray {
+                mut element_type_kind,
+                const_expression,
+            } => {
+                if let Some(error_type) =
+                    self.resolve_partial_types(element_type_kind, &mut element_type_kind)
+                {
                     return Some(error_type);
                 }
 
                 let mut element_count = 0;
-                if let Some(error_type) = self.const_expression_to_uint(const_expression, &mut element_count) {
+                if let Some(error_type) =
+                    self.const_expression_to_uint(const_expression, &mut element_count)
+                {
                     return Some(error_type);
                 }
 
-                *resolved_type_kind = get_type_kind_as_array(&mut self.type_kinds, &mut self.array_type_kinds, element_type_kind, element_count);
-            },
+                *resolved_type_kind = get_type_kind_as_array(
+                    &mut self.type_kinds,
+                    &mut self.array_type_kinds,
+                    element_type_kind,
+                    element_count,
+                );
+            }
             TypeKind::PartialGeneric {
                 inner_type_kind,
                 generic_param_type_kinds,
             } => {
                 let TypeKind::Struct { name, .. } = self.type_kinds[inner_type_kind].clone() else {
-                    return self.type_error("cannot apply generic specifier to non-struct type name");
+                    return self
+                        .type_error("cannot apply generic specifier to non-struct type name");
                 };
 
                 let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
@@ -1399,7 +1493,9 @@ impl TypeChecker {
                 let mut resolved_generic_param_type_kinds = Vec::new();
                 for generic_param_type_kind in generic_param_type_kinds.iter() {
                     let mut resolved_type_kind = 0;
-                    if let Some(error_type) = self.resolve_partial_types(*generic_param_type_kind, &mut resolved_type_kind) {
+                    if let Some(error_type) = self
+                        .resolve_partial_types(*generic_param_type_kind, &mut resolved_type_kind)
+                    {
                         return Some(error_type);
                     }
                     resolved_generic_param_type_kinds.push(resolved_type_kind);

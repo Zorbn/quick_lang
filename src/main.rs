@@ -28,6 +28,7 @@ mod parser;
 mod position;
 mod type_checker;
 mod types;
+mod const_value;
 
 /*
  * BIG TODOS:
@@ -46,7 +47,7 @@ mod types;
  *
  * SMALL TODOS:
  * for elem in array {}
- * Bitwise operations.
+ * Bitwise operations (precedence should be more intuitive than C).
  * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
  * Don't use keywords for primitive types, use named types instead.
  * Generic type inference if possible.

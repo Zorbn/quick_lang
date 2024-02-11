@@ -4,14 +4,10 @@ use std::{
 };
 
 use crate::{
-    emitter::Emitter,
-    emitter_stack::EmitterStack,
-    parser::{DeclarationKind, NodeKind, Op, TypeKind},
-    type_checker::{InstanceKind, Type, TypedNode},
-    types::{
+    const_value::ConstValue, emitter::Emitter, emitter_stack::EmitterStack, parser::{DeclarationKind, NodeKind, Op, TypeKind}, type_checker::{InstanceKind, Type, TypedNode}, types::{
         get_field_index_by_name, is_type_kind_array, is_typed_expression_array_literal,
         replace_generic_type_kinds,
-    },
+    }
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -1065,12 +1061,12 @@ impl CodeGenerator {
         };
 
         match const_value {
-            crate::type_checker::ConstValue::Int { value } => self.body_emitters.top().body.emit(&value.to_string()),
-            crate::type_checker::ConstValue::UInt { value } => self.body_emitters.top().body.emit(&value.to_string()),
-            crate::type_checker::ConstValue::Float { value } => self.body_emitters.top().body.emit(&value.to_string()),
-            crate::type_checker::ConstValue::String { value } => self.body_emitters.top().body.emit(&value),
-            crate::type_checker::ConstValue::Char { value } => self.body_emitters.top().body.emit_char(value),
-            crate::type_checker::ConstValue::Bool { value } => if value {
+            ConstValue::Int { value } => self.body_emitters.top().body.emit(&value.to_string()),
+            ConstValue::UInt { value } => self.body_emitters.top().body.emit(&value.to_string()),
+            ConstValue::Float32 { value } => self.body_emitters.top().body.emit(&value.to_string()),
+            ConstValue::String { value } => self.body_emitters.top().body.emit(&value),
+            ConstValue::Char { value } => self.body_emitters.top().body.emit_char(value),
+            ConstValue::Bool { value } => if value {
                 self.body_emitters.top().body.emit("true");
             } else {
                 self.body_emitters.top().body.emit("false");

@@ -1347,7 +1347,7 @@ impl Parser {
             };
 
             self.position += 1;
-            let right = self.assignment();
+            let right = self.compound();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1371,7 +1371,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.compound();
+            let right = self.equality();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1395,7 +1395,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.equality();
+            let right = self.inequality();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1421,7 +1421,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.inequality();
+            let right = self.term();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1445,7 +1445,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.term();
+            let right = self.factor();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1469,7 +1469,7 @@ impl Parser {
             };
             self.position += 1;
 
-            let right = self.factor();
+            let right = self.unary_prefix();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
