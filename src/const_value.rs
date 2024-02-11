@@ -1,4 +1,7 @@
-use std::{ops::{Add, Sub, Mul, Div}, sync::Arc};
+use std::{
+    ops::{Add, Div, Mul, Sub},
+    sync::Arc,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConstValue {
@@ -11,7 +14,13 @@ pub enum ConstValue {
 }
 
 impl ConstValue {
-    pub fn apply_numeric_to_numeric(self, other: ConstValue, operation_int: fn(i64, i64) -> i64, operation_uint: fn(u64, u64) -> u64, operation_float: fn(f32, f32) -> f32) -> Option<ConstValue> {
+    pub fn apply_numeric_to_numeric(
+        self,
+        other: ConstValue,
+        operation_int: fn(i64, i64) -> i64,
+        operation_uint: fn(u64, u64) -> u64,
+        operation_float: fn(f32, f32) -> f32,
+    ) -> Option<ConstValue> {
         match self {
             ConstValue::Int { value } => {
                 let ConstValue::Int { value: other_value } = other else {
@@ -44,7 +53,13 @@ impl ConstValue {
         }
     }
 
-    pub fn apply_numeric_to_bool(self, other: ConstValue, operation_int: fn(&i64, &i64) -> bool, operation_uint: fn(&u64, &u64) -> bool, operation_float: fn(&f32, &f32) -> bool) -> Option<ConstValue> {
+    pub fn apply_numeric_to_bool(
+        self,
+        other: ConstValue,
+        operation_int: fn(&i64, &i64) -> bool,
+        operation_uint: fn(&u64, &u64) -> bool,
+        operation_float: fn(&f32, &f32) -> bool,
+    ) -> Option<ConstValue> {
         match self {
             ConstValue::Int { value } => {
                 let ConstValue::Int { value: other_value } = other else {
@@ -119,7 +134,7 @@ impl ConstValue {
         };
 
         Some(ConstValue::Bool {
-            value: value && other_value
+            value: value && other_value,
         })
     }
 
@@ -133,39 +148,63 @@ impl ConstValue {
         };
 
         Some(ConstValue::Bool {
-            value: value || other_value
+            value: value || other_value,
         })
     }
 
     pub fn cast_to_int(self) -> Option<ConstValue> {
         match self {
             ConstValue::Int { value } => Some(ConstValue::Int { value }),
-            ConstValue::UInt { value } => Some(ConstValue::Int { value: value as i64 }),
-            ConstValue::Float32 { value } => Some(ConstValue::Int { value: value as i64 }),
-            ConstValue::Char { value } => Some(ConstValue::Int { value: value as i64 }),
-            ConstValue::Bool { value } => Some(ConstValue::Int { value: value as i64 }),
+            ConstValue::UInt { value } => Some(ConstValue::Int {
+                value: value as i64,
+            }),
+            ConstValue::Float32 { value } => Some(ConstValue::Int {
+                value: value as i64,
+            }),
+            ConstValue::Char { value } => Some(ConstValue::Int {
+                value: value as i64,
+            }),
+            ConstValue::Bool { value } => Some(ConstValue::Int {
+                value: value as i64,
+            }),
             _ => None,
         }
     }
 
     pub fn cast_to_uint(self) -> Option<ConstValue> {
         match self {
-            ConstValue::Int { value } => Some(ConstValue::UInt { value: value as u64 }),
+            ConstValue::Int { value } => Some(ConstValue::UInt {
+                value: value as u64,
+            }),
             ConstValue::UInt { value } => Some(ConstValue::UInt { value }),
-            ConstValue::Float32 { value } => Some(ConstValue::UInt { value: value as u64 }),
-            ConstValue::Char { value } => Some(ConstValue::UInt { value: value as u64 }),
-            ConstValue::Bool { value } => Some(ConstValue::UInt { value: value as u64 }),
+            ConstValue::Float32 { value } => Some(ConstValue::UInt {
+                value: value as u64,
+            }),
+            ConstValue::Char { value } => Some(ConstValue::UInt {
+                value: value as u64,
+            }),
+            ConstValue::Bool { value } => Some(ConstValue::UInt {
+                value: value as u64,
+            }),
             _ => None,
         }
     }
 
     pub fn cast_to_float(self) -> Option<ConstValue> {
         match self {
-            ConstValue::Int { value } => Some(ConstValue::Float32 { value: value as f32 }),
-            ConstValue::UInt { value } => Some(ConstValue::Float32 { value: value as f32 }),
+            ConstValue::Int { value } => Some(ConstValue::Float32 {
+                value: value as f32,
+            }),
+            ConstValue::UInt { value } => Some(ConstValue::Float32 {
+                value: value as f32,
+            }),
             ConstValue::Float32 { value } => Some(ConstValue::Float32 { value }),
-            ConstValue::Char { value } => Some(ConstValue::Float32 { value: value as u64 as f32 }),
-            ConstValue::Bool { value } => Some(ConstValue::Float32 { value: value as i64 as f32 }),
+            ConstValue::Char { value } => Some(ConstValue::Float32 {
+                value: value as u64 as f32,
+            }),
+            ConstValue::Bool { value } => Some(ConstValue::Float32 {
+                value: value as i64 as f32,
+            }),
             _ => None,
         }
     }
@@ -174,8 +213,12 @@ impl ConstValue {
         match self {
             ConstValue::Int { value } => Some(ConstValue::Bool { value: value != 0 }),
             ConstValue::UInt { value } => Some(ConstValue::Bool { value: value != 0 }),
-            ConstValue::Float32 { value } => Some(ConstValue::Bool { value: value != 0.0 }),
-            ConstValue::Char { value } => Some(ConstValue::Bool { value: value as u8 != 0 }),
+            ConstValue::Float32 { value } => Some(ConstValue::Bool {
+                value: value != 0.0,
+            }),
+            ConstValue::Char { value } => Some(ConstValue::Bool {
+                value: value as u8 != 0,
+            }),
             ConstValue::Bool { value } => Some(ConstValue::Bool { value }),
             _ => None,
         }
@@ -183,11 +226,19 @@ impl ConstValue {
 
     pub fn cast_to_char(self) -> Option<ConstValue> {
         match self {
-            ConstValue::Int { value } => Some(ConstValue::Char { value: value as u8 as char }),
-            ConstValue::UInt { value } => Some(ConstValue::Char { value: value as u8 as char }),
-            ConstValue::Float32 { value } => Some(ConstValue::Char { value: value as u8 as char }),
+            ConstValue::Int { value } => Some(ConstValue::Char {
+                value: value as u8 as char,
+            }),
+            ConstValue::UInt { value } => Some(ConstValue::Char {
+                value: value as u8 as char,
+            }),
+            ConstValue::Float32 { value } => Some(ConstValue::Char {
+                value: value as u8 as char,
+            }),
             ConstValue::Char { value } => Some(ConstValue::Char { value }),
-            ConstValue::Bool { value } => Some(ConstValue::Char { value: value as u8 as char }),
+            ConstValue::Bool { value } => Some(ConstValue::Char {
+                value: value as u8 as char,
+            }),
             _ => None,
         }
     }
@@ -196,7 +247,7 @@ impl ConstValue {
         match self {
             ConstValue::Int { value } => Some(ConstValue::Int { value: -value }),
             ConstValue::Float32 { value } => Some(ConstValue::Float32 { value: -value }),
-            _ => None
+            _ => None,
         }
     }
 

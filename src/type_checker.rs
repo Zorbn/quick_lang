@@ -1,17 +1,23 @@
 use std::{
-    collections::{HashMap, HashSet}, mem, sync::Arc
+    collections::{HashMap, HashSet},
+    mem,
+    sync::Arc,
 };
 
 use crate::{
-    const_value::ConstValue, environment::Environment, file_data::FileData, parser::{
+    const_value::ConstValue,
+    environment::Environment,
+    file_data::FileData,
+    parser::{
         ArrayLayout, DeclarationKind, Field, FunctionLayout, Node, NodeKind, Op, StructLayout,
         TypeKind, BOOL_INDEX, CHAR_INDEX, FLOAT32_INDEX, FLOAT64_INDEX, INT16_INDEX, INT32_INDEX,
         INT64_INDEX, INT8_INDEX, INT_INDEX, STRING_INDEX, TAG_INDEX, UINT16_INDEX, UINT32_INDEX,
         UINT64_INDEX, UINT8_INDEX, UINT_INDEX,
-    }, types::{
+    },
+    types::{
         generic_function_to_concrete, generic_struct_to_concrete, get_function_type_kind,
         get_type_kind_as_array, get_type_kind_as_pointer, replace_generic_type_kinds,
-    }
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -801,10 +807,12 @@ impl TypeChecker {
     fn const_binary(&mut self, left: usize, op: Op, right: usize, index: usize) -> Option<Type> {
         let binary_type = self.check_node(index)?;
 
-        let InstanceKind::Const(left_const_value) = self.check_const_node(left)?.instance_kind else {
+        let InstanceKind::Const(left_const_value) = self.check_const_node(left)?.instance_kind
+        else {
             type_error!(self, "expected const operand")
         };
-        let InstanceKind::Const(right_const_value) = self.check_const_node(right)?.instance_kind else {
+        let InstanceKind::Const(right_const_value) = self.check_const_node(right)?.instance_kind
+        else {
             type_error!(self, "expected const operand")
         };
 
@@ -813,8 +821,12 @@ impl TypeChecker {
             Op::Minus => left_const_value.subtract(right_const_value),
             Op::Multiply => left_const_value.multiply(right_const_value),
             Op::Divide => left_const_value.divide(right_const_value),
-            Op::Equal => Some(ConstValue::Bool { value: left_const_value == right_const_value }),
-            Op::NotEqual => Some(ConstValue::Bool { value: left_const_value != right_const_value }),
+            Op::Equal => Some(ConstValue::Bool {
+                value: left_const_value == right_const_value,
+            }),
+            Op::NotEqual => Some(ConstValue::Bool {
+                value: left_const_value != right_const_value,
+            }),
             Op::Less => left_const_value.less(right_const_value),
             Op::Greater => left_const_value.greater(right_const_value),
             Op::LessEqual => left_const_value.less_equal(right_const_value),
@@ -828,7 +840,10 @@ impl TypeChecker {
             type_error!(self, "unexpected const types for operator");
         };
 
-        Some(Type { type_kind: binary_type.type_kind, instance_kind: InstanceKind::Const(result_value) })
+        Some(Type {
+            type_kind: binary_type.type_kind,
+            instance_kind: InstanceKind::Const(result_value),
+        })
     }
 
     fn unary_prefix(&mut self, op: Op, right: usize) -> Option<Type> {
@@ -888,7 +903,8 @@ impl TypeChecker {
     fn const_unary_prefix(&mut self, op: Op, right: usize, index: usize) -> Option<Type> {
         let unary_type = self.check_node(index)?;
 
-        let InstanceKind::Const(right_const_value) = self.check_const_node(right)?.instance_kind else {
+        let InstanceKind::Const(right_const_value) = self.check_const_node(right)?.instance_kind
+        else {
             type_error!(self, "expected const operand")
         };
 
@@ -896,14 +912,20 @@ impl TypeChecker {
             Op::Plus => Some(right_const_value),
             Op::Minus => right_const_value.unary_prefix_minus(),
             Op::Not => right_const_value.unary_prefix_not(),
-            _ => type_error!(self, "unexpected operator in constant unary prefix expression"),
+            _ => type_error!(
+                self,
+                "unexpected operator in constant unary prefix expression"
+            ),
         };
 
         let Some(result_value) = result_value else {
             type_error!(self, "unexpected const types for operator");
         };
 
-        Some(Type { type_kind: unary_type.type_kind, instance_kind: InstanceKind::Const(result_value) })
+        Some(Type {
+            type_kind: unary_type.type_kind,
+            instance_kind: InstanceKind::Const(result_value),
+        })
     }
 
     fn unary_suffix(&mut self, left: usize, op: Op) -> Option<Type> {
@@ -1107,12 +1129,20 @@ impl TypeChecker {
         };
 
         let result_value = match &self.type_kinds[const_type.type_kind] {
-            TypeKind::Int | TypeKind::Int8 | TypeKind::Int16 | TypeKind::Int32 | TypeKind::Int64 => left_const_value.cast_to_int(),
-            TypeKind::UInt | TypeKind::UInt8 | TypeKind::UInt16 | TypeKind::UInt32 | TypeKind::UInt64 => left_const_value.cast_to_uint(),
+            TypeKind::Int
+            | TypeKind::Int8
+            | TypeKind::Int16
+            | TypeKind::Int32
+            | TypeKind::Int64 => left_const_value.cast_to_int(),
+            TypeKind::UInt
+            | TypeKind::UInt8
+            | TypeKind::UInt16
+            | TypeKind::UInt32
+            | TypeKind::UInt64 => left_const_value.cast_to_uint(),
             TypeKind::Float32 | TypeKind::Float64 => left_const_value.cast_to_float(),
             TypeKind::Bool => left_const_value.cast_to_bool(),
             TypeKind::Char => left_const_value.cast_to_char(),
-            _ => type_error!(self, "compile time casts to this type are not allowed")
+            _ => type_error!(self, "compile time casts to this type are not allowed"),
         };
 
         let Some(result_value) = result_value else {
@@ -1471,7 +1501,7 @@ impl TypeChecker {
             TypeKind::Float64 => 8,
             TypeKind::Tag => native_size,
             TypeKind::Pointer { .. } => native_size,
-            _ => type_error!(self, "size unknown at compile time")
+            _ => type_error!(self, "size unknown at compile time"),
         };
 
         Some(Type {

@@ -4,10 +4,15 @@ use std::{
 };
 
 use crate::{
-    const_value::ConstValue, emitter::Emitter, emitter_stack::EmitterStack, parser::{DeclarationKind, NodeKind, Op, TypeKind}, type_checker::{InstanceKind, Type, TypedNode}, types::{
+    const_value::ConstValue,
+    emitter::Emitter,
+    emitter_stack::EmitterStack,
+    parser::{DeclarationKind, NodeKind, Op, TypeKind},
+    type_checker::{InstanceKind, Type, TypedNode},
+    types::{
         get_field_index_by_name, is_type_kind_array, is_typed_expression_array_literal,
         replace_generic_type_kinds,
-    }
+    },
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -177,7 +182,11 @@ impl CodeGenerator {
                 node_type,
             } => self.field(name, type_name, node_type),
             TypedNode {
-                node_kind: NodeKind::Function { declaration, statement },
+                node_kind:
+                    NodeKind::Function {
+                        declaration,
+                        statement,
+                    },
                 node_type,
             } => self.function(declaration, statement, index, node_type),
             TypedNode {
@@ -215,7 +224,9 @@ impl CodeGenerator {
                         expression,
                     },
                 node_type,
-            } => self.variable_declaration(declaration_kind, name, type_name, expression, node_type),
+            } => {
+                self.variable_declaration(declaration_kind, name, type_name, expression, node_type)
+            }
             TypedNode {
                 node_kind: NodeKind::ReturnStatement { expression },
                 node_type,
@@ -1004,7 +1015,10 @@ impl CodeGenerator {
         self.body_emitters.top().body.emitln("break;");
 
         if let Some(next) = next {
-            if !matches!(self.typed_nodes[next].node_kind, NodeKind::CaseStatement { .. }) {
+            if !matches!(
+                self.typed_nodes[next].node_kind,
+                NodeKind::CaseStatement { .. }
+            ) {
                 self.body_emitters.top().body.emit("default: ");
                 self.emit_scoped_statement(next);
                 self.body_emitters.top().body.emitln("break;");
@@ -1056,7 +1070,11 @@ impl CodeGenerator {
     }
 
     fn const_expression(&mut self, _inner: usize, node_type: Option<Type>) {
-        let Some(Type { instance_kind: InstanceKind::Const(const_value), .. }) = node_type else {
+        let Some(Type {
+            instance_kind: InstanceKind::Const(const_value),
+            ..
+        }) = node_type
+        else {
             panic!("invalid node type of const expression");
         };
 
@@ -1068,13 +1086,15 @@ impl CodeGenerator {
                 self.body_emitters.top().body.emit_char('"');
                 self.body_emitters.top().body.emit(&value);
                 self.body_emitters.top().body.emit_char('"');
-            },
+            }
             ConstValue::Char { value } => self.body_emitters.top().body.emit_char(value),
-            ConstValue::Bool { value } => if value {
-                self.body_emitters.top().body.emit("true");
-            } else {
-                self.body_emitters.top().body.emit("false");
-            },
+            ConstValue::Bool { value } => {
+                if value {
+                    self.body_emitters.top().body.emit("true");
+                } else {
+                    self.body_emitters.top().body.emit("false");
+                }
+            }
         }
     }
 
@@ -1205,7 +1225,10 @@ impl CodeGenerator {
             ..
         } = &self.typed_nodes[left].node_kind
         {
-            let field_access_left_type = self.typed_nodes[*field_access_left].node_type.as_ref().unwrap();
+            let field_access_left_type = self.typed_nodes[*field_access_left]
+                .node_type
+                .as_ref()
+                .unwrap();
 
             if field_access_left_type.instance_kind == InstanceKind::Variable {
                 // We have a variable to pass as the first parameter.
@@ -1392,7 +1415,10 @@ impl CodeGenerator {
             }
             TypeKind::Array { element_count, .. } => {
                 // On arrays, only the "count" field is allowed.
-                self.body_emitters.top().body.emit(&element_count.to_string());
+                self.body_emitters
+                    .top()
+                    .body
+                    .emit(&element_count.to_string());
                 return;
             }
             _ => panic!("tried to access type that cannot be accessed"),
@@ -1491,7 +1517,8 @@ impl CodeGenerator {
         _repeat_count_const_expression: Option<usize>,
         node_type: Option<Type>,
     ) {
-        let TypeKind::Array { element_count, .. } = self.type_kinds[node_type.unwrap().type_kind] else {
+        let TypeKind::Array { element_count, .. } = self.type_kinds[node_type.unwrap().type_kind]
+        else {
             panic!("invalid type for array literal");
         };
 
@@ -2005,7 +2032,11 @@ impl CodeGenerator {
             panic!("invalid statement in scoped statement");
         };
 
-        let needs_scope = inner.is_none() || !matches!(self.typed_nodes[inner.unwrap()].node_kind, NodeKind::Block { .. });
+        let needs_scope = inner.is_none()
+            || !matches!(
+                self.typed_nodes[inner.unwrap()].node_kind,
+                NodeKind::Block { .. }
+            );
 
         if needs_scope {
             self.body_emitters.top().body.emitln("{");

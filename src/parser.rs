@@ -12,7 +12,7 @@ use crate::{
 pub enum DeclarationKind {
     Var,
     Val,
-    Const
+    Const,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -917,7 +917,10 @@ impl Parser {
         };
 
         let index = self.add_node(Node {
-            kind: NodeKind::Function { declaration, statement },
+            kind: NodeKind::Function {
+                declaration,
+                statement,
+            },
             start,
             end,
         });
@@ -1329,7 +1332,11 @@ impl Parser {
         let inner = self.compound();
         let end = self.node_end(inner);
 
-        self.add_node(Node { kind: NodeKind::ConstExpression { inner }, start, end })
+        self.add_node(Node {
+            kind: NodeKind::ConstExpression { inner },
+            start,
+            end,
+        })
     }
 
     fn assignment(&mut self) -> usize {
@@ -1998,7 +2005,10 @@ impl Parser {
                     return Some(error_node);
                 }
 
-                *type_kind = self.add_type(TypeKind::PartialArray { element_type_kind, const_expression });
+                *type_kind = self.add_type(TypeKind::PartialArray {
+                    element_type_kind,
+                    const_expression,
+                });
 
                 return None;
             }

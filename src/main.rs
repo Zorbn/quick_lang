@@ -19,6 +19,7 @@ use crate::{
 };
 
 mod code_generator;
+mod const_value;
 mod emitter;
 mod emitter_stack;
 mod environment;
@@ -28,41 +29,6 @@ mod parser;
 mod position;
 mod type_checker;
 mod types;
-mod const_value;
-
-/*
- * BIG TODOS:
- * Complete type checking
- *     * distinguish between variable (var) and constant (val, func) bindings.
- *     * function calls.
- *     * struct literal fields.
- *     * make sure all non-void functions return, and that all functions return the correct value.
- *     * prevent multiple functions, enums, structs with the same name.
- *     * prevent name collisions in struct members.
- * Incremental and parallel compilation.
- * Default parameters.
- * Variadic arguments.
- * Namespaces.
- *
- * SMALL TODOS:
- * for elem in array {}
- * Bitwise operations (precedence should be more intuitive than C).
- * Some way to represent pointer to immutable data (eg. you can modify the pointer but not the thing it's pointing to).
- * Don't use keywords for primitive types, use named types instead.
- * Generic type inference if possible.
- * Don't print duplicate type errors for generics, probably best to stop checking them if one variant had an error, or maybe it would be easier to stop handling generic usages after an error.
- * Enum methods.
- * Struct equality comparisons.
- * Allow sizeof on complex types at compile time.
- *
- * NOTES:
- * After adding generics, add functions for alloc and free to the standard library.
- * fn alloc<T>(value: T) { calls malloc with sizeof T, assigns value to new memory, returns new memory }
- *
- * Of course, there will still need to be some equivalent of void* for direct malloc without having to first initialize the value
- * on the stack like the alloc<T> method would. eg, if you're creating an array that is too big for the stack you need to
- * allocate the memory on the heap then write into it directly.
- */
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();

@@ -222,12 +222,20 @@ pub fn is_type_kind_array(type_kinds: &[TypeKind], type_kind: usize) -> bool {
 }
 
 pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: usize) -> bool {
-    matches!(typed_nodes[expression].node_kind, NodeKind::ArrayLiteral { .. })
+    matches!(
+        typed_nodes[expression].node_kind,
+        NodeKind::ArrayLiteral { .. }
+    )
 }
 
-pub fn replace_generic_type_kinds(type_kinds: &mut [TypeKind], generic_type_kinds: &[usize], generic_param_type_kinds: &[usize]) {
-    for (generic_param_type_kind, generic_type_kind) in
-        generic_param_type_kinds.iter().zip(generic_type_kinds.iter())
+pub fn replace_generic_type_kinds(
+    type_kinds: &mut [TypeKind],
+    generic_type_kinds: &[usize],
+    generic_param_type_kinds: &[usize],
+) {
+    for (generic_param_type_kind, generic_type_kind) in generic_param_type_kinds
+        .iter()
+        .zip(generic_type_kinds.iter())
     {
         type_kinds[*generic_type_kind] = TypeKind::Alias {
             inner_type_kind: *generic_param_type_kind,
@@ -235,7 +243,11 @@ pub fn replace_generic_type_kinds(type_kinds: &mut [TypeKind], generic_type_kind
     }
 }
 
-pub fn get_field_index_by_name(name_text: &Arc<str>, typed_nodes: &[TypedNode], field_kinds: &Arc<Vec<Field>>) -> Option<usize> {
+pub fn get_field_index_by_name(
+    name_text: &Arc<str>,
+    typed_nodes: &[TypedNode],
+    field_kinds: &Arc<Vec<Field>>,
+) -> Option<usize> {
     let mut tag = None;
     for (i, field) in field_kinds.iter().enumerate() {
         let NodeKind::Name {
@@ -249,6 +261,6 @@ pub fn get_field_index_by_name(name_text: &Arc<str>, typed_nodes: &[TypedNode], 
             tag = Some(i);
         }
     }
-    
+
     tag
 }
