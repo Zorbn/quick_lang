@@ -539,6 +539,11 @@ impl CodeGenerator {
         self.type_prototype_emitter.emitln("{");
         self.type_prototype_emitter.indent();
 
+        if fields.is_empty() {
+            // C doesn't allow empty structs.
+            self.type_prototype_emitter.emitln("bool placeholder;");
+        }
+
         for field in fields.iter() {
             self.gen_node(*field);
         }
@@ -1162,7 +1167,10 @@ impl CodeGenerator {
                         self.emit_namespace_prefix(EmitterKind::Body);
                         self.current_namespace_names.pop();
 
-                        self.body_emitters.top().body.emit("__WithTag(");
+                        self.body_emitters.top().body.emit("__WithTag((");
+                        self.emit_type_kind_left(dereferenced_left_type_kind, EmitterKind::Body, false, false);
+                        self.emit_type_kind_right(dereferenced_left_type_kind, EmitterKind::Body, false);
+                        self.body_emitters.top().body.emit("*)");
 
                         if !is_left_pointer {
                             self.body_emitters.top().body.emit("&");
@@ -1390,7 +1398,10 @@ impl CodeGenerator {
                 self.emit_namespace_prefix(EmitterKind::Body);
                 self.current_namespace_names.pop();
 
-                self.body_emitters.top().body.emit("__CheckTag(");
+                self.body_emitters.top().body.emit("__CheckTag((");
+                self.emit_type_kind_left(dereferenced_left_type_kind, EmitterKind::Body, false, false);
+                self.emit_type_kind_right(dereferenced_left_type_kind, EmitterKind::Body, false);
+                self.body_emitters.top().body.emit("*)");
 
                 if !is_left_pointer {
                     self.body_emitters.top().body.emit("&");
@@ -1598,6 +1609,12 @@ impl CodeGenerator {
 
         self.body_emitters.top().body.emitln("{");
         self.body_emitters.top().body.indent();
+
+        if fields.is_empty() {
+            // Since empty structs aren't allowed in C, we generate a placeholder field
+            // in structs that would be empty otherwise. We also have to initialize it here.
+            self.body_emitters.top().body.emitln("0,");
+        }
 
         for field in fields.iter() {
             self.gen_node(*field);

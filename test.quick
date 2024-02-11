@@ -24,8 +24,21 @@ union GenericUnion<A, B>
     b B;
 }
 
+struct None {}
+
+union Maybe<T>
+{
+    some T;
+    none None;
+}
+
 func main() Int32
 {
+    val mySome = Maybe.<Int> { some = 5 };
+    val myNone = Maybe.<Int> { none = None {} };
+
+    val unwrappedSome = mySome.some;
+
     const constExpression1 = !false;
     const constExpression2 = "hello world";
     const constExpression3 = -7 as Float32 + 0.5;
