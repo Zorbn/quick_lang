@@ -26,6 +26,10 @@ union GenericUnion<A, B>
 
 func main() Int32
 {
+    const constExpression1 = !false;
+    const constExpression2 = "hello world";
+    const constExpression3 = -7 as Float32 + 0.5;
+
     const constant = 4;
     const otherConstant = constant * 77 / 77 * 3 + 4;
     const constBool = 1 == 1 && 2 == 1 || 1 != 1;

@@ -1064,7 +1064,11 @@ impl CodeGenerator {
             ConstValue::Int { value } => self.body_emitters.top().body.emit(&value.to_string()),
             ConstValue::UInt { value } => self.body_emitters.top().body.emit(&value.to_string()),
             ConstValue::Float32 { value } => self.body_emitters.top().body.emit(&value.to_string()),
-            ConstValue::String { value } => self.body_emitters.top().body.emit(&value),
+            ConstValue::String { value } => {
+                self.body_emitters.top().body.emit_char('"');
+                self.body_emitters.top().body.emit(&value);
+                self.body_emitters.top().body.emit_char('"');
+            },
             ConstValue::Char { value } => self.body_emitters.top().body.emit_char(value),
             ConstValue::Bool { value } => if value {
                 self.body_emitters.top().body.emit("true");

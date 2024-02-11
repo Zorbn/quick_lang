@@ -43,7 +43,6 @@ mod const_value;
  * Default parameters.
  * Variadic arguments.
  * Namespaces.
- * Compile time constants (simple arthmetic, strings, bools) these should be declared with const and useable as static array lengths.
  *
  * SMALL TODOS:
  * for elem in array {}
@@ -54,6 +53,7 @@ mod const_value;
  * Don't print duplicate type errors for generics, probably best to stop checking them if one variant had an error, or maybe it would be easier to stop handling generic usages after an error.
  * Enum methods.
  * Struct equality comparisons.
+ * Allow sizeof on complex types at compile time.
  *
  * NOTES:
  * After adding generics, add functions for alloc and free to the standard library.

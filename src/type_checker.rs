@@ -1,6 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
+    collections::{HashMap, HashSet}, mem, sync::Arc
 };
 
 use crate::{
@@ -284,15 +283,15 @@ impl TypeChecker {
 
         let node_type = match self.nodes[index].kind.clone() {
             NodeKind::Binary { left, op, right } => self.const_binary(left, op, right, index),
-            // NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right),
-            // NodeKind::Cast { left, type_name } => self.cast(left, type_name),
+            NodeKind::UnaryPrefix { op, right } => self.const_unary_prefix(op, right, index),
+            NodeKind::Cast { left, type_name } => self.const_cast(left, type_name, index),
             NodeKind::Identifier { name } => self.const_identifier(name, index),
             NodeKind::IntLiteral { text } => self.const_int_literal(text, index),
-            // NodeKind::Float32Literal { text } => self.float32_literal(text),
-            // NodeKind::StringLiteral { text } => self.string_literal(text),
-            // NodeKind::BoolLiteral { value } => self.bool_literal(value),
-            // NodeKind::CharLiteral { value } => self.char_literal(value),
-            // NodeKind::TypeSize { type_name } => self.type_size(type_name),
+            NodeKind::Float32Literal { text } => self.const_float32_literal(text, index),
+            NodeKind::StringLiteral { text } => self.const_string_literal(text, index),
+            NodeKind::BoolLiteral { value } => self.const_bool_literal(value, index),
+            NodeKind::CharLiteral { value } => self.const_char_literal(value, index),
+            NodeKind::TypeSize { type_name } => self.const_type_size(type_name, index),
             _ => {
                 self.type_error("non-constant in constant expression");
                 None
@@ -886,6 +885,27 @@ impl TypeChecker {
         }
     }
 
+    fn const_unary_prefix(&mut self, op: Op, right: usize, index: usize) -> Option<Type> {
+        let unary_type = self.check_node(index)?;
+
+        let InstanceKind::Const(right_const_value) = self.check_const_node(right)?.instance_kind else {
+            type_error!(self, "expected const operand")
+        };
+
+        let result_value = match op {
+            Op::Plus => Some(right_const_value),
+            Op::Minus => right_const_value.unary_prefix_minus(),
+            Op::Not => right_const_value.unary_prefix_not(),
+            _ => type_error!(self, "unexpected operator in constant unary prefix expression"),
+        };
+
+        let Some(result_value) = result_value else {
+            type_error!(self, "unexpected const types for operator");
+        };
+
+        Some(Type { type_kind: unary_type.type_kind, instance_kind: InstanceKind::Const(result_value) })
+    }
+
     fn unary_suffix(&mut self, left: usize, op: Op) -> Option<Type> {
         let left_type = self.check_node(left)?;
 
@@ -1065,6 +1085,33 @@ impl TypeChecker {
         Some(Type {
             type_kind: type_name_type.type_kind,
             instance_kind: InstanceKind::Literal,
+        })
+    }
+
+    fn const_cast(&mut self, left: usize, _type_name: usize, index: usize) -> Option<Type> {
+        let const_type = self.check_node(index)?;
+        let left_type = self.check_const_node(left)?;
+
+        let InstanceKind::Const(left_const_value) = left_type.instance_kind else {
+            type_error!(self, "cannot cast non const in const expression");
+        };
+
+        let result_value = match &self.type_kinds[const_type.type_kind] {
+            TypeKind::Int | TypeKind::Int8 | TypeKind::Int16 | TypeKind::Int32 | TypeKind::Int64 => left_const_value.cast_to_int(),
+            TypeKind::UInt | TypeKind::UInt8 | TypeKind::UInt16 | TypeKind::UInt32 | TypeKind::UInt64 => left_const_value.cast_to_uint(),
+            TypeKind::Float32 | TypeKind::Float64 => left_const_value.cast_to_float(),
+            TypeKind::Bool => left_const_value.cast_to_bool(),
+            TypeKind::Char => left_const_value.cast_to_char(),
+            _ => type_error!(self, "compile time casts to this type are not allowed")
+        };
+
+        let Some(result_value) = result_value else {
+            type_error!(self, "value cannot be cast at compile time");
+        };
+
+        Some(Type {
+            type_kind: const_type.type_kind,
+            instance_kind: InstanceKind::Const(result_value),
         })
     }
 
@@ -1254,10 +1301,32 @@ impl TypeChecker {
         })
     }
 
+    fn const_float32_literal(&mut self, text: Arc<str>, index: usize) -> Option<Type> {
+        let const_type = self.check_node(index)?;
+        let Ok(value) = text.parse::<f32>() else {
+            self.type_error("invalid value of float32 literal");
+            return None;
+        };
+
+        Some(Type {
+            type_kind: const_type.type_kind,
+            instance_kind: InstanceKind::Const(ConstValue::Float32 { value }),
+        })
+    }
+
     fn string_literal(&mut self, _text: Arc<str>) -> Option<Type> {
         Some(Type {
             type_kind: STRING_INDEX,
             instance_kind: InstanceKind::Literal,
+        })
+    }
+
+    fn const_string_literal(&mut self, text: Arc<str>, index: usize) -> Option<Type> {
+        let const_type = self.check_node(index)?;
+
+        Some(Type {
+            type_kind: const_type.type_kind,
+            instance_kind: InstanceKind::Const(ConstValue::String { value: text }),
         })
     }
 
@@ -1268,10 +1337,28 @@ impl TypeChecker {
         })
     }
 
+    fn const_bool_literal(&mut self, value: bool, index: usize) -> Option<Type> {
+        let const_type = self.check_node(index)?;
+
+        Some(Type {
+            type_kind: const_type.type_kind,
+            instance_kind: InstanceKind::Const(ConstValue::Bool { value }),
+        })
+    }
+
     fn char_literal(&mut self, _value: char) -> Option<Type> {
         Some(Type {
             type_kind: CHAR_INDEX,
             instance_kind: InstanceKind::Literal,
+        })
+    }
+
+    fn const_char_literal(&mut self, value: char, index: usize) -> Option<Type> {
+        let const_type = self.check_node(index)?;
+
+        Some(Type {
+            type_kind: const_type.type_kind,
+            instance_kind: InstanceKind::Const(ConstValue::Char { value }),
         })
     }
 
@@ -1344,8 +1431,42 @@ impl TypeChecker {
         self.check_node(type_name);
 
         Some(Type {
-            type_kind: INT_INDEX,
+            type_kind: UINT_INDEX,
             instance_kind: InstanceKind::Literal,
+        })
+    }
+
+    fn const_type_size(&mut self, type_name: usize, index: usize) -> Option<Type> {
+        let type_name_type = self.check_node(type_name)?;
+        let const_type = self.check_node(index)?;
+
+        let native_size = mem::size_of::<usize>() as u64;
+
+        let value = match self.type_kinds[type_name_type.type_kind] {
+            TypeKind::Int => native_size,
+            TypeKind::String => native_size,
+            TypeKind::Bool => 1,
+            TypeKind::Char => 1,
+            TypeKind::Void => 0,
+            TypeKind::UInt => native_size,
+            TypeKind::Int8 => 1,
+            TypeKind::UInt8 => 1,
+            TypeKind::Int16 => 2,
+            TypeKind::UInt16 => 2,
+            TypeKind::Int32 => 4,
+            TypeKind::UInt32 => 4,
+            TypeKind::Int64 => 8,
+            TypeKind::UInt64 => 8,
+            TypeKind::Float32 => 4,
+            TypeKind::Float64 => 8,
+            TypeKind::Tag => native_size,
+            TypeKind::Pointer { .. } => native_size,
+            _ => type_error!(self, "size unknown at compile time")
+        };
+
+        Some(Type {
+            type_kind: const_type.type_kind,
+            instance_kind: InstanceKind::Const(ConstValue::UInt { value }),
         })
     }
 
