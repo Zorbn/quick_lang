@@ -1390,6 +1390,11 @@ impl CodeGenerator {
                 self.body_emitters.top().body.emit("__");
                 self.gen_node(enum_name);
             }
+            TypeKind::Array { element_count, .. } => {
+                // On arrays, only the "count" field is allowed.
+                self.body_emitters.top().body.emit(&element_count.to_string());
+                return;
+            }
             _ => panic!("tried to access type that cannot be accessed"),
         }
 

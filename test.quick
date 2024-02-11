@@ -34,7 +34,9 @@ func main() Int32
     const otherConstant = constant * 77 / 77 * 3 + 4;
     const constBool = 1 == 1 && 2 == 1 || 1 != 1;
     val arrayWithConstSize [constant]Int = [0; constant];
+    val countOfArrayWithConstSize = arrayWithConstSize.count;
     val copyOfArrayWithConstSize [4]Int = arrayWithConstSize;
+    val countOfCopyOfArrayWithConstSize = copyOfArrayWithConstSize.count;
 
     val someonesName = Name.Carson;
 

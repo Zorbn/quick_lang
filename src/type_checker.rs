@@ -1011,6 +1011,16 @@ impl TypeChecker {
 
                 type_error!(self, "variant not found in enum");
             }
+            TypeKind::Array { .. } => {
+                if name_text.as_ref() != "count" {
+                    type_error!(self, "field not found on array");
+                }
+
+                return Some(Type {
+                    type_kind: UINT_INDEX,
+                    instance_kind: InstanceKind::Literal,
+                });
+            }
             _ => type_error!(
                 self,
                 "field access is only allowed on structs, enums, and pointers to structs"
