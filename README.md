@@ -10,6 +10,9 @@
 
 ### TODOs
 
+### Major, Before Anything Else
+The type system needs to be redone. There should be no type_kinds in the parser at all. Then from there the generic system needs to be fully redone. There should probably be no partial generics or other hacks that are used now.
+
 #### Type Checking
 - Check struct literal fields.
 - Make sure all non-void functions return, and that all returns have the correct type.
