@@ -23,20 +23,20 @@ impl<T: Clone> Environment<T> {
         self.stack.pop();
     }
 
-    pub fn insert(&mut self, name: Arc<str>, name_type: T) {
-        self.stack
-            .last_mut()
-            .unwrap()
-            .name_types
-            .insert(name, name_type);
-    }
-
-    pub fn insert_global(&mut self, name: Arc<str>, name_type: T) {
-        self.stack
-            .first_mut()
-            .unwrap()
-            .name_types
-            .insert(name, name_type);
+    pub fn insert(&mut self, name: Arc<str>, name_type: T, is_global: bool) {
+        if is_global {
+            self.stack
+                .first_mut()
+                .unwrap()
+                .name_types
+                .insert(name, name_type);
+        } else {
+            self.stack
+                .last_mut()
+                .unwrap()
+                .name_types
+                .insert(name, name_type);
+        }
     }
 
     pub fn get(&self, name: &str) -> Option<T> {

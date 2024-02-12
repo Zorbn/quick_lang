@@ -12,7 +12,7 @@ use std::{
 use file_data::FileData;
 
 use crate::{
-    code_generator::CodeGenerator,
+    // code_generator::CodeGenerator,
     lexer::Lexer,
     parser::{NodeKind, Parser},
     type_checker::{TypeChecker, TypedNode},
@@ -28,7 +28,8 @@ mod lexer;
 mod parser;
 mod position;
 mod type_checker;
-mod types;
+mod type_kinds;
+mod utils;
 mod as_option;
 
 fn main() -> ExitCode {
@@ -103,11 +104,6 @@ fn main() -> ExitCode {
 
     let mut type_checker = TypeChecker::new(
         parser.nodes,
-        parser.type_kinds,
-        parser.array_type_kinds,
-        parser.pointer_type_kinds,
-        parser.function_type_kinds,
-        parser.struct_type_kinds,
         parser.definition_indices,
         files.clone(),
     );
@@ -119,7 +115,7 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let typed_nodes = type_checker
+    let typed_nodes: Vec<TypedNode> = type_checker
         .typed_nodes
         .iter()
         .map(|n| match n.clone() {
@@ -131,26 +127,26 @@ fn main() -> ExitCode {
         })
         .collect();
 
-    let mut code_generator = CodeGenerator::new(
-        typed_nodes,
-        type_checker.type_kinds,
-        type_checker.generic_usages,
-        is_debug_mode,
-    );
-    for start_index in &start_indices {
-        code_generator.gen(*start_index);
-    }
+    // let mut code_generator = CodeGenerator::new(
+    //     typed_nodes,
+    //     type_checker.type_kinds,
+    //     type_checker.generic_usages,
+    //     is_debug_mode,
+    // );
+    // for start_index in &start_indices {
+    //     code_generator.gen(*start_index);
+    // }
 
     let mut output_file = fs::File::create("bin/out.c").unwrap();
 
-    code_generator.header_emitter.write(&mut output_file);
-    code_generator
-        .type_prototype_emitter
-        .write(&mut output_file);
-    code_generator
-        .function_prototype_emitter
-        .write(&mut output_file);
-    code_generator.body_emitters.write(&mut output_file);
+    // code_generator.header_emitter.write(&mut output_file);
+    // code_generator
+    //     .type_prototype_emitter
+    //     .write(&mut output_file);
+    // code_generator
+    //     .function_prototype_emitter
+    //     .write(&mut output_file);
+    // code_generator.body_emitters.write(&mut output_file);
 
     println!(
         "Frontend finished in: {:.2?}ms",
