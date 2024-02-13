@@ -12,7 +12,7 @@ use std::{
 use file_data::FileData;
 
 use crate::{
-    // code_generator::CodeGenerator,
+    code_generator::CodeGenerator,
     lexer::Lexer,
     parser::{NodeKind, Parser},
     typer::{TypeChecker, TypedNode},
@@ -126,26 +126,26 @@ fn main() -> ExitCode {
         })
         .collect();
 
-    // let mut code_generator = CodeGenerator::new(
-    //     typed_nodes,
-    //     typer.type_kinds,
-    //     typer.generic_usages,
-    //     is_debug_mode,
-    // );
-    // for start_index in &start_indices {
-    //     code_generator.gen(*start_index);
-    // }
+    let mut code_generator = CodeGenerator::new(
+        typed_nodes,
+        typer.type_kinds,
+        typer.generic_usages,
+        is_debug_mode,
+    );
+    for start_index in &start_indices {
+        code_generator.gen(*start_index);
+    }
 
     let mut output_file = fs::File::create("bin/out.c").unwrap();
 
-    // code_generator.header_emitter.write(&mut output_file);
-    // code_generator
-    //     .type_prototype_emitter
-    //     .write(&mut output_file);
-    // code_generator
-    //     .function_prototype_emitter
-    //     .write(&mut output_file);
-    // code_generator.body_emitters.write(&mut output_file);
+    code_generator.header_emitter.write(&mut output_file);
+    code_generator
+        .type_prototype_emitter
+        .write(&mut output_file);
+    code_generator
+        .function_prototype_emitter
+        .write(&mut output_file);
+    code_generator.body_emitters.write(&mut output_file);
 
     println!(
         "Frontend finished in: {:.2?}ms",
