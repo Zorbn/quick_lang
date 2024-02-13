@@ -58,23 +58,6 @@ pub enum TokenKind {
     As,
     Defer,
     Sizeof,
-    Int,
-    String,
-    Bool,
-    Char,
-    Void,
-    UInt,
-    Int8,
-    UInt8,
-    Int16,
-    UInt16,
-    Int32,
-    UInt32,
-    Int64,
-    UInt64,
-    Float32,
-    Float64,
-    Tag,
     True,
     False,
     IntLiteral { text: Arc<str> },
@@ -141,23 +124,6 @@ impl Display for TokenKind {
             TokenKind::As => "as",
             TokenKind::Defer => "defer",
             TokenKind::Sizeof => "sizeof",
-            TokenKind::Int => "int",
-            TokenKind::String => "string",
-            TokenKind::Bool => "bool",
-            TokenKind::Char => "char",
-            TokenKind::Void => "void",
-            TokenKind::UInt => "UInt",
-            TokenKind::Int8 => "Int8",
-            TokenKind::UInt8 => "UInt8",
-            TokenKind::Int16 => "Int16",
-            TokenKind::UInt16 => "UInt16",
-            TokenKind::Int32 => "Int32",
-            TokenKind::UInt32 => "UInt32",
-            TokenKind::Int64 => "Int64",
-            TokenKind::UInt64 => "UInt64",
-            TokenKind::Float32 => "Float32",
-            TokenKind::Float64 => "Float64",
-            TokenKind::Tag => "Tag",
             TokenKind::True => "true",
             TokenKind::False => "false",
             TokenKind::IntLiteral { text } => text,
@@ -204,23 +170,6 @@ fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
         keywords.insert(Arc::from("as"), TokenKind::As);
         keywords.insert(Arc::from("defer"), TokenKind::Defer);
         keywords.insert(Arc::from("sizeof"), TokenKind::Sizeof);
-        keywords.insert(Arc::from("String"), TokenKind::String);
-        keywords.insert(Arc::from("Bool"), TokenKind::Bool);
-        keywords.insert(Arc::from("Char"), TokenKind::Char);
-        keywords.insert(Arc::from("Void"), TokenKind::Void);
-        keywords.insert(Arc::from("Int8"), TokenKind::Int8);
-        keywords.insert(Arc::from("UInt8"), TokenKind::UInt8);
-        keywords.insert(Arc::from("Int16"), TokenKind::Int16);
-        keywords.insert(Arc::from("UInt16"), TokenKind::UInt16);
-        keywords.insert(Arc::from("Int32"), TokenKind::Int32);
-        keywords.insert(Arc::from("UInt32"), TokenKind::UInt32);
-        keywords.insert(Arc::from("Int64"), TokenKind::Int64);
-        keywords.insert(Arc::from("UInt64"), TokenKind::UInt64);
-        keywords.insert(Arc::from("UInt"), TokenKind::UInt);
-        keywords.insert(Arc::from("Int"), TokenKind::Int);
-        keywords.insert(Arc::from("Float32"), TokenKind::Float32);
-        keywords.insert(Arc::from("Float64"), TokenKind::Float64);
-        keywords.insert(Arc::from("Tag"), TokenKind::Tag);
         keywords.insert(Arc::from("true"), TokenKind::True);
         keywords.insert(Arc::from("false"), TokenKind::False);
         keywords

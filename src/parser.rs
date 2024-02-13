@@ -52,6 +52,7 @@ pub enum NodeKind {
         fields: Arc<Vec<usize>>,
         generic_params: Arc<Vec<usize>>,
         functions: Arc<Vec<usize>>,
+        is_union: bool,
     },
     EnumDefinition {
         name: usize,
@@ -152,7 +153,8 @@ pub enum NodeKind {
         type_name: usize,
     },
     GenericSpecifier {
-        left: usize,
+        // TODO: Convert this to name: usize?
+        name_text: Arc<str>,
         generic_arg_type_names: Arc<Vec<usize>>,
     },
     Identifier {
@@ -208,7 +210,8 @@ pub enum NodeKind {
         return_type_name: usize,
     },
     TypeNameGenericSpecifier {
-        inner: usize,
+        // TODO: Convert this to name: usize?
+        name_text: Arc<str>,
         generic_arg_type_names: Arc<Vec<usize>>,
     },
     Error,
@@ -281,20 +284,6 @@ impl Parser {
         }
 
         tokens[self.position].start
-    }
-
-    fn last_token_end(&self) -> Position {
-        if self.position < 1 {
-            return self.token_end();
-        }
-
-        let tokens = self.tokens.as_ref().unwrap();
-
-        if tokens.len() <= self.position {
-            return Position::new(0);
-        }
-
-        tokens[self.position - 1].end
     }
 
     fn token_end(&self) -> Position {
@@ -471,6 +460,7 @@ impl Parser {
                 fields: Arc::new(fields),
                 generic_params: Arc::new(generic_params),
                 functions: Arc::new(functions),
+                is_union,
             },
             start,
             end,
@@ -490,6 +480,10 @@ impl Parser {
 
         let name = self.name();
 
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            parse_error!(self, "invalid struct name", start, self.node_end(name));
+        };
+
         assert_token!(self, TokenKind::LBrace, start, self.token_end());
         self.position += 1;
 
@@ -508,14 +502,19 @@ impl Parser {
 
         let variant_names = Arc::new(variant_names);
 
-        self.add_node(Node {
+        let index = self.add_node(Node {
             kind: NodeKind::EnumDefinition {
                 name,
                 variant_names,
             },
             start,
             end,
-        })
+        });
+
+        let namespaced_name = self.get_namespaced_name(name_text);
+        self.definition_indices.insert(namespaced_name, index);
+
+        index
     }
 
     fn field(&mut self) -> usize {
@@ -545,14 +544,6 @@ impl Parser {
         while *self.token_kind() != TokenKind::RParen {
             let param = self.param();
             params.push(param);
-
-            let NodeKind::Param {
-                type_name: param_type_name,
-                ..
-            } = self.nodes[param].kind
-            else {
-                return Some(self.parse_error("invalid parameter", start, self.token_end()));
-            };
 
             if *self.token_kind() != TokenKind::Comma {
                 break;
@@ -585,10 +576,6 @@ impl Parser {
         while *self.token_kind() != TokenKind::Greater {
             let name = self.name();
             generic_params.push(name);
-
-            let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-                return Some(self.parse_error("invalid generic name", start, self.token_end()));
-            };
 
             if *self.token_kind() != TokenKind::Comma {
                 break;
@@ -681,11 +668,24 @@ impl Parser {
         let declaration = self.function_declaration();
         let end = self.node_end(declaration);
 
-        self.add_node(Node {
+        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration].kind else {
+            parse_error!(self, "invalid function declaration", start, end);
+        };
+
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            parse_error!(self, "invalid function name", start, self.node_end(name));
+        };
+
+        let index = self.add_node(Node {
             kind: NodeKind::ExternFunction { declaration },
             start,
             end,
-        })
+        });
+
+        let namespaced_name = self.get_namespaced_name(name_text);
+        self.definition_indices.insert(namespaced_name, index);
+
+        index
     }
 
     fn param(&mut self) -> usize {
@@ -1331,14 +1331,22 @@ impl Parser {
                         return error_node;
                     }
 
+                    let NodeKind::Identifier { name } = &self.nodes[left].kind else {
+                        parse_error!(self, "expected identifier before generic specifier", start, end);
+                    };
+
+                    let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
+                        parse_error!(self, "invalid identifier name", start, end);
+                    };
+
                     left = self.add_node(Node {
                         kind: NodeKind::GenericSpecifier {
-                            left,
+                            name_text,
                             generic_arg_type_names: Arc::new(generic_arg_type_names),
                         },
                         start,
                         end,
-                    })
+                    });
                 }
                 TokenKind::LBrace => {
                     left = self.struct_literal(left, start);
@@ -1677,14 +1685,14 @@ impl Parser {
                 let return_type_name = self.type_name();
                 let end = self.node_end(return_type_name);
 
-                return self.add_node(Node {
+                self.add_node(Node {
                     kind: NodeKind::TypeNameFunction {
                         param_type_names: Arc::new(param_type_names),
                         return_type_name,
                     },
                     start,
                     end,
-                });
+                })
             }
             TokenKind::LBracket => {
                 self.position += 1;
@@ -1697,14 +1705,14 @@ impl Parser {
                 let inner = self.type_name();
                 let end = self.node_end(inner);
 
-                return self.add_node(Node {
+                self.add_node(Node {
                     kind: NodeKind::TypeNameArray {
                         inner,
                         element_count_const_expression,
                     },
                     start,
                     end,
-                });
+                })
             }
             TokenKind::Asterisk => {
                 self.position += 1;
@@ -1724,21 +1732,17 @@ impl Parser {
                 let inner = self.type_name();
                 let end = self.node_end(inner);
 
-                return self.add_node(Node {
+                self.add_node(Node {
                     kind: NodeKind::TypeNamePointer {
                         inner,
                         is_inner_mutable,
                     },
                     start,
                     end,
-                });
+                })
             }
             TokenKind::Identifier { text } => {
-                let mut type_name = self.add_node(Node {
-                    kind: NodeKind::TypeName { text },
-                    start,
-                    end: self.token_end(),
-                });
+                self.position += 1;
 
                 if *self.token_kind() == TokenKind::GenericSpecifier {
                     let mut generic_arg_type_names = Vec::new();
@@ -1751,9 +1755,9 @@ impl Parser {
                         return error_node;
                     }
 
-                    type_name = self.add_node(Node {
+                    return self.add_node(Node {
                         kind: NodeKind::TypeNameGenericSpecifier {
-                            inner: type_name,
+                            name_text: text,
                             generic_arg_type_names: Arc::new(generic_arg_type_names),
                         },
                         start,
@@ -1761,7 +1765,11 @@ impl Parser {
                     });
                 }
 
-                return type_name;
+                self.add_node(Node {
+                    kind: NodeKind::TypeName { text },
+                    start,
+                    end: self.token_end(),
+                })
             }
             _ => parse_error!(self, "expected type name", start, self.token_end()),
         }

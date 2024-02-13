@@ -34,8 +34,10 @@ union Maybe<T>
 
 func main() Int32
 {
+    val myBool = 1;
     val mySome = Maybe.<Int> { some = 5 };
     val myNone = Maybe.<Int> { none = None {} };
+
 
     val unwrappedSome = mySome.some;
 
@@ -124,12 +126,6 @@ func main() Int32
 
     var x Int = (xy[0].x);
     var y Int = xy[0].y;
-
-    Point.Multiply(&xy[0], &xy[1]);
-    xy[0].Multiply(&xy[1]);
-    // xy[0].GenericThing.<*Point>(&xy[1]);
-
-    Point.Static(x);
 
     var ch Char = 'a';
 

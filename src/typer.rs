@@ -1,39 +1,3 @@
-/*
-
-How the flow type checking needs to be implemented:
-
-struct Gen<A> {
-	func(self Gen.<A>) Void {
-		var other = Gen.<A> {};
-	}
-}
-
-func main() Int32 {
-	var gen = Gen.<Int> {};
-}
-
-The following should be done for all types, generic or otherwise, starting at the body of main this should cause type checking of everything that was used.
-However, it would be good to type check all functions/structs that haven't been checked yet, even if they are never used.
-
-Environment for types and functions should have keys be name + optional generic args.
-
-On encountering Gen.<Int>, look it up in the environment (Gen + Int), and realize that it's not there.
-look up "Gen" to find generic struct.
-Add Gen.<Int> to the environment with a placeholder TypeKind to get a TypeId. Because Gen.<Int> is a global type it should be added to the top level of the environment.
-Type check with A as Int. Push environment with A having Int's TypeId. Because A is a scoped type it should be added to the current level of the environment.
-Check each function (prototype only) and normal field to get all the field types for Gen.<Int>.
-When "self Gen.<A>" is reached, look up A to find that it's TypeId is Int's TypeId, then look up Gen.<Int> to find the type id that was added earlier, use it.
-
-When done with the prototypes of each field/function, replace the placeholder TypeKind for Gen.<Int> with the real TypeKind at the same TypeId using the information gathered.
-Now loop over each function body in Gen.<Int> to check them. This might require recursing if more new types are encountered
-
-Pop environment.
-
-Loop over each function doing type checking.
-When "A" is type checked look it up in the environment, and find Int
-
-*/
-
 use std::{
     collections::{HashMap, HashSet},
     mem,
@@ -41,34 +5,8 @@ use std::{
 };
 
 use crate::{
-    const_value::ConstValue, environment::Environment, file_data::FileData, parser::{DeclarationKind, Node, NodeKind, Op}, type_kinds::{Field, TypeKind, TypeKinds}, utils::get_method_subject
+    const_value::ConstValue, environment::Environment, file_data::FileData, parser::{DeclarationKind, Node, NodeKind, Op}, type_kinds::{Field, TypeKind, TypeKinds},
 };
-
-// Used to search for the index of an array type by its layout.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ArrayLayout {
-    pub element_type_kind: usize,
-    pub element_count: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FunctionLayout {
-    pub param_type_kinds: Arc<Vec<usize>>,
-    pub generic_type_kinds: Arc<Vec<usize>>,
-    pub return_type_kind: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct StructLayout {
-    pub name: Arc<str>,
-    pub generic_param_type_kinds: Arc<Vec<usize>>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PointerLayout {
-    pub inner_type_kind: usize,
-    pub is_inner_mutable: bool,
-}
 
 #[derive(Clone, Debug)]
 pub struct TypedNode {
@@ -97,9 +35,10 @@ macro_rules! type_error {
     }};
 }
 
-struct PendingGenericUsage {
-    index: usize,
-    usage: Arc<Vec<usize>>,
+#[derive(Clone, Hash, Debug, PartialEq, Eq)]
+pub struct GenericIdentifier {
+    pub name: Arc<str>,
+    pub generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
 }
 
 pub struct TypeChecker {
@@ -110,10 +49,12 @@ pub struct TypeChecker {
     pub generic_usages: HashMap<usize, HashSet<Arc<Vec<usize>>>>,
     pub had_error: bool,
     files: Arc<Vec<FileData>>,
-    environment: Environment<Type>,
+    environment: Environment<Arc<str>, Type>,
+    type_kind_environment: Environment<GenericIdentifier, usize>,
+    function_type_kinds: HashMap<GenericIdentifier, usize>,
     has_function_opened_block: bool,
-    last_visited_index: usize,
-    pending_generic_usages: Vec<PendingGenericUsage>,
+    // TODO: Sometimes it's necessary to not call check_node because a node needs arguments (eg. generic_args) in which the node stack won't include them.
+    node_index_stack: Vec<usize>
 }
 
 impl TypeChecker {
@@ -134,38 +75,56 @@ impl TypeChecker {
             generic_usages: HashMap::new(),
             had_error: false,
             environment: Environment::new(),
+            type_kind_environment: Environment::new(),
+            function_type_kinds: HashMap::new(),
             has_function_opened_block: false,
-            last_visited_index: 0,
-            pending_generic_usages: Vec::new(),
+            node_index_stack: Vec::new(),
         };
 
         type_checker.typed_nodes.resize(node_count, None);
-        type_checker.environment.push();
 
-        type_checker.type_kinds.add_or_get(TypeKind::Int);
-        type_checker.type_kinds.add_or_get(TypeKind::String);
-        type_checker.type_kinds.add_or_get(TypeKind::Bool);
-        type_checker.type_kinds.add_or_get(TypeKind::Char);
-        type_checker.type_kinds.add_or_get(TypeKind::Void);
-        type_checker.type_kinds.add_or_get(TypeKind::UInt);
-        type_checker.type_kinds.add_or_get(TypeKind::Int8);
-        type_checker.type_kinds.add_or_get(TypeKind::UInt8);
-        type_checker.type_kinds.add_or_get(TypeKind::Int16);
-        type_checker.type_kinds.add_or_get(TypeKind::UInt16);
-        type_checker.type_kinds.add_or_get(TypeKind::Int32);
-        type_checker.type_kinds.add_or_get(TypeKind::UInt32);
-        type_checker.type_kinds.add_or_get(TypeKind::Int64);
-        type_checker.type_kinds.add_or_get(TypeKind::UInt64);
-        type_checker.type_kinds.add_or_get(TypeKind::Float32);
-        type_checker.type_kinds.add_or_get(TypeKind::Float64);
-        type_checker.type_kinds.add_or_get(TypeKind::Tag);
+        // All of these primitives need to be defined by default.
+        let int_id = type_checker.type_kinds.add_or_get(TypeKind::Int);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Int".into(), generic_arg_type_kind_ids: None }, int_id, true);
+        let string_id = type_checker.type_kinds.add_or_get(TypeKind::String);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "String".into(), generic_arg_type_kind_ids: None }, string_id, true);
+        let bool_id = type_checker.type_kinds.add_or_get(TypeKind::Bool);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Bool".into(), generic_arg_type_kind_ids: None }, bool_id, true);
+        let char_id = type_checker.type_kinds.add_or_get(TypeKind::Char);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Char".into(), generic_arg_type_kind_ids: None }, char_id, true);
+        let void_id = type_checker.type_kinds.add_or_get(TypeKind::Void);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Void".into(), generic_arg_type_kind_ids: None }, void_id, true);
+        let uint_id = type_checker.type_kinds.add_or_get(TypeKind::UInt);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "UInt".into(), generic_arg_type_kind_ids: None }, uint_id, true);
+        let int8_id = type_checker.type_kinds.add_or_get(TypeKind::Int8);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Int8".into(), generic_arg_type_kind_ids: None }, int8_id, true);
+        let uint8_id = type_checker.type_kinds.add_or_get(TypeKind::UInt8);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "UInt8".into(), generic_arg_type_kind_ids: None }, uint8_id, true);
+        let int16_id = type_checker.type_kinds.add_or_get(TypeKind::Int16);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Int16".into(), generic_arg_type_kind_ids: None }, int16_id, true);
+        let uint16_id = type_checker.type_kinds.add_or_get(TypeKind::UInt16);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "UInt16".into(), generic_arg_type_kind_ids: None }, uint16_id, true);
+        let int32_id = type_checker.type_kinds.add_or_get(TypeKind::Int32);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Int32".into(), generic_arg_type_kind_ids: None }, int32_id, true);
+        let uint32_id = type_checker.type_kinds.add_or_get(TypeKind::UInt32);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "UInt32".into(), generic_arg_type_kind_ids: None }, uint32_id, true);
+        let int64_id = type_checker.type_kinds.add_or_get(TypeKind::Int64);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Int64".into(), generic_arg_type_kind_ids: None }, int64_id, true);
+        let uint64_id = type_checker.type_kinds.add_or_get(TypeKind::UInt64);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "UInt64".into(), generic_arg_type_kind_ids: None }, uint64_id, true);
+        let float32_id = type_checker.type_kinds.add_or_get(TypeKind::Float32);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Float32".into(), generic_arg_type_kind_ids: None }, float32_id, true);
+        let float64_id = type_checker.type_kinds.add_or_get(TypeKind::Float64);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Float64".into(), generic_arg_type_kind_ids: None }, float64_id, true);
+        let tag_id = type_checker.type_kinds.add_or_get(TypeKind::Tag);
+        type_checker.type_kind_environment.insert(GenericIdentifier { name: "Tag".into(), generic_arg_type_kind_ids: None }, tag_id, true);
 
         type_checker
     }
 
     fn type_error(&mut self, message: &str) -> Option<Type> {
         self.had_error = true;
-        self.nodes[self.last_visited_index]
+        self.nodes[self.node_index_stack.last().copied().unwrap_or(0)]
             .start
             .error("Type", message, &self.files);
 
@@ -177,7 +136,7 @@ impl TypeChecker {
     }
 
     fn check_node(&mut self, index: usize) -> Option<Type> {
-        self.last_visited_index = index;
+        self.node_index_stack.push(index);
 
         let node_type = match self.nodes[index].kind.clone() {
             NodeKind::TopLevel {
@@ -245,6 +204,17 @@ impl TypeChecker {
             NodeKind::StructLiteral { left, fields } => self.struct_literal(left, fields),
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
             NodeKind::TypeSize { type_name } => self.type_size(type_name),
+            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => self.struct_definition(name, fields, generic_params, functions, is_union, None),
+            NodeKind::EnumDefinition { name, variant_names } => self.enum_definition(name, variant_names),
+            NodeKind::Field { name, type_name } => self.field(name, type_name),
+            NodeKind::FunctionDeclaration { name, params, generic_params, return_type_name } => self.function_declaration(name, params, generic_params, return_type_name),
+            NodeKind::Function { declaration, statement } => self.function(declaration, statement, None),
+            NodeKind::GenericSpecifier { name_text, generic_arg_type_names } => self.generic_specifier(name_text, generic_arg_type_names),
+            NodeKind::TypeName { text } => self.type_name(text),
+            NodeKind::TypeNamePointer { inner, is_inner_mutable } => self.type_name_pointer(inner, is_inner_mutable),
+            NodeKind::TypeNameArray { inner, element_count_const_expression } => self.type_name_array(inner, element_count_const_expression),
+            NodeKind::TypeNameFunction { param_type_names, return_type_name } => self.type_name_function(param_type_names, return_type_name),
+            NodeKind::TypeNameGenericSpecifier { name_text, generic_arg_type_names } => self.type_name_generic_specifier(name_text, generic_arg_type_names),
             NodeKind::Error => type_error!(self, "cannot generate error node"),
         };
 
@@ -253,11 +223,13 @@ impl TypeChecker {
             node_type: node_type.clone(),
         });
 
+        self.node_index_stack.pop();
+
         node_type
     }
 
     fn check_const_node(&mut self, index: usize) -> Option<Type> {
-        self.last_visited_index = index;
+        self.node_index_stack.push(index);
 
         let node_type = match self.nodes[index].kind.clone() {
             NodeKind::Binary { left, op, right } => self.const_binary(left, op, right, index),
@@ -271,6 +243,7 @@ impl TypeChecker {
             NodeKind::CharLiteral { value } => self.const_char_literal(value, index),
             NodeKind::TypeSize { type_name } => self.const_type_size(type_name, index),
             _ => {
+                println!("{:?}", self.nodes[index].kind);
                 self.type_error("non-constant in constant expression");
                 None
             }
@@ -280,6 +253,8 @@ impl TypeChecker {
             node_kind: self.nodes[index].kind.clone(),
             node_type: node_type.clone(),
         });
+
+        self.node_index_stack.pop();
 
         node_type
     }
@@ -305,164 +280,34 @@ impl TypeChecker {
         None
     }
 
-//     fn struct_definition(
-//         &mut self,
-//         name: usize,
-//         fields: Arc<Vec<usize>>,
-//         generic_params: Arc<Vec<usize>>,
-//         functions: Arc<Vec<usize>>,
-//         generic_usage: Option<Arc<Vec<usize>>>,
-//     ) -> Option<Type> {
-//         let TypeKind::Struct {
-//             generic_type_kinds, ..
-//         } = self.type_kinds[type_kind].clone()
-//         else {
-//             type_error!(self, "invalid struct definition");
-//         };
-//
-//         if !generic_type_kinds.is_empty() && generic_usage.is_none() {
-//             return None;
-//         }
-//
-//         if let Some(generic_usage) = generic_usage {
-//             replace_generic_type_kinds(&mut self.type_kinds, &generic_type_kinds, &generic_usage);
-//         }
-//
-//         self.check_node(name);
-//
-//         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-//             type_error!(self, "invalid name in struct definition");
-//         };
-//
-//         let struct_type = Type {
-//             type_kind,
-//             instance_kind: InstanceKind::Name,
-//         };
-//         self.environment.insert(name_text, struct_type.clone());
-//
-//         self.environment.push();
-//
-//         for generic_param in generic_params.iter() {
-//             self.check_node(*generic_param);
-//         }
-//
-//         for field in fields.iter() {
-//             self.check_node(*field);
-//         }
-//
-//         for function in functions.iter() {
-//             self.check_node(*function);
-//         }
-//
-//         self.environment.pop();
-//
-//         Some(struct_type)
-//     }
-//
-//     fn enum_definition(
-//         &mut self,
-//         name: usize,
-//         variant_names: Arc<Vec<usize>>,
-//     ) -> Option<Type> {
-//         self.check_node(name);
-//
-//         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-//             type_error!(self, "invalid name in enum definition");
-//         };
-//
-//         let type_kind = self.type_kinds.add_or_get(TypeKind::Enum { name, variant_names });
-//
-//         let enum_type = Type {
-//             type_kind,
-//             instance_kind: InstanceKind::Name,
-//         };
-//         self.environment.insert(name_text, enum_type.clone());
-//
-//         for variant_name in variant_names.iter() {
-//             self.check_node(*variant_name);
-//         }
-//
-//         Some(enum_type)
-//     }
-//
-//     fn field(&mut self, name: usize, type_name: usize) -> Option<Type> {
-//         self.check_node(name);
-//         self.check_node(type_name)
-//     }
-//
-//     fn function(
-//         &mut self,
-//         declaration: usize,
-//         statement: usize,
-//         generic_usage: Option<Arc<Vec<usize>>>,
-//     ) -> Option<Type> {
-//         self.environment.push();
-//         let declaration_type = self.check_node(declaration)?;
-//
-//         let TypeKind::Function {
-//             generic_type_kinds, ..
-//         } = self.type_kinds[declaration_type.type_kind].clone()
-//         else {
-//             type_error!(self, "invalid function declaration");
-//         };
-//
-//         if !generic_type_kinds.is_empty() && generic_usage.is_none() {
-//             self.environment.pop();
-//             return None;
-//         }
-//
-//         self.has_function_opened_block = true;
-//
-//         if let Some(generic_usage) = generic_usage {
-//             replace_generic_type_kinds(&mut self.type_kinds, &generic_type_kinds, &generic_usage);
-//         }
-//
-//         self.check_node(statement);
-//
-//         Some(declaration_type)
-//     }
-//
-//     fn function_declaration(
-//         &mut self,
-//         name: usize,
-//         return_type_name: usize,
-//         params: Arc<Vec<usize>>,
-//         generic_params: Arc<Vec<usize>>,
-//     ) -> Option<Type> {
-//         self.check_node(name);
-//
-//         for param in params.iter() {
-//             self.check_node(*param);
-//         }
-//
-//         for generic_param in generic_params.iter() {
-//             self.check_node(*generic_param);
-//         }
-//
-//         self.check_node(return_type_name);
-//
-//         let mut resolved_type_kind = 0;
-//         if let Some(error_type) = self.resolve_partial_types(type_kind, &mut resolved_type_kind) {
-//             return Some(error_type);
-//         }
-//
-//         Some(Type {
-//             type_kind: resolved_type_kind,
-//             instance_kind: InstanceKind::Literal,
-//         })
-//     }
-
     fn extern_function(&mut self, declaration: usize) -> Option<Type> {
-        let NodeKind::FunctionDeclaration { generic_params, .. } = &self.nodes[declaration].kind
+        let NodeKind::FunctionDeclaration { name, generic_params, .. } = &self.nodes[declaration].kind
         else {
             type_error!(self, "invalid function declaration");
         };
+
+        let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
+            type_error!(self, "invalid function name");
+        };
+
+        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
+        if let Some(existing_type_kind_id) = self.function_type_kinds.get(&identifier) {
+            return Some(Type { type_kind_id: *existing_type_kind_id, instance_kind: InstanceKind::Name });
+        }
 
         if !generic_params.is_empty() {
             type_error!(self, "extern function cannot be generic");
         }
 
-        self.check_node(declaration)
+        self.environment.push(false);
+
+        let declaration_type = self.check_node(declaration)?;
+
+        self.environment.pop();
+
+        self.function_type_kinds.insert(identifier, declaration_type.type_kind_id);
+
+        Some(Type { type_kind_id: declaration_type.type_kind_id, instance_kind: InstanceKind::Val })
     }
 
     fn param(&mut self, name: usize, type_name: usize) -> Option<Type> {
@@ -470,11 +315,7 @@ impl TypeChecker {
 
         let type_name_type = self.check_node(type_name)?;
 
-        let Node {
-            kind: NodeKind::Name { text: name_text },
-            ..
-        } = self.nodes[name].clone()
-        else {
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid parameter name");
         };
 
@@ -489,7 +330,7 @@ impl TypeChecker {
 
     fn block(&mut self, statements: Arc<Vec<usize>>) -> Option<Type> {
         if !self.has_function_opened_block {
-            self.environment.push();
+            self.environment.push(true);
         } else {
             self.has_function_opened_block = false;
         }
@@ -548,11 +389,7 @@ impl TypeChecker {
             );
         }
 
-        let Node {
-            kind: NodeKind::Name { text: name_text },
-            ..
-        } = self.nodes[name].clone()
-        else {
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid variable name");
         };
 
@@ -564,15 +401,19 @@ impl TypeChecker {
 
         self.environment.insert(name_text, variable_type.clone(), false);
 
-        Some(variable_type)
+        None
     }
 
     fn return_statement(&mut self, expression: Option<usize>) -> Option<Type> {
-        self.check_node(expression?)
+        self.check_node(expression?);
+
+        None
     }
 
     fn defer_statement(&mut self, statement: usize) -> Option<Type> {
-        self.check_node(statement)
+        self.check_node(statement);
+
+        None
     }
 
     fn if_statement(
@@ -756,6 +597,12 @@ impl TypeChecker {
         let right_type = self.check_node(right)?;
 
         if right_type.instance_kind == InstanceKind::Name {
+            println!("u.p.: {:?}, {:?}", self.type_kinds.get_by_id(right_type.type_kind_id), self.nodes[right].kind);
+            if let NodeKind::Identifier { name } = self.nodes[right].kind.clone() {
+                if let NodeKind::Name { text } = self.nodes[name].kind.clone() {
+                    println!("u.p. identifier name: {:?}", text);
+                }
+            }
             type_error!(
                 self,
                 "unary prefix operators can only be applied to instances"
@@ -783,15 +630,6 @@ impl TypeChecker {
                     InstanceKind::Var => true,
                     _ => type_error!(self, "references must refer to a variable"),
                 };
-
-                if let TypeKind::Function {
-                    generic_type_kind_ids, ..
-                } = &self.type_kinds.get_by_id(right_type.type_kind_id)
-                {
-                    if !generic_type_kind_ids.is_empty() {
-                        type_error!(self, "cannot take a function pointer to a generic function, specify its types first");
-                    }
-                }
 
                 let type_kind_id = self.type_kinds.add_or_get(TypeKind::Pointer { inner_type_kind_id: right_type.type_kind_id, is_inner_mutable: is_mutable });
 
@@ -868,7 +706,6 @@ impl TypeChecker {
 
         let TypeKind::Function {
             return_type_kind_id,
-            generic_type_kind_ids,
             param_type_kind_ids,
             ..
         } = self.type_kinds.get_by_id(left_type.type_kind_id).clone()
@@ -876,37 +713,11 @@ impl TypeChecker {
             type_error!(self, "only functions can be called");
         };
 
-        if !generic_type_kind_ids.is_empty() {
-            type_error!(
-                self,
-                "cannot call generic function without generic specifier"
-            );
-        }
-
-        let mut skip_param_count = 0;
-        if let Some(method_subject) = get_method_subject(&self.typed_nodes, left) {
-            skip_param_count += 1;
-
-            if param_type_kind_ids.len() < 1 {
-                type_error!(self, "function with no arguments cannot be called as an instance method");
-            }
-
-            let type_kind_as_pointer_id = if let TypeKind::Pointer { .. } = self.type_kinds.get_by_id(method_subject.type_kind_id) {
-                method_subject.type_kind_id
-            } else {
-                self.type_kinds.add_or_get(TypeKind::Pointer { inner_type_kind_id: method_subject.type_kind_id, is_inner_mutable: true })
-            };
-
-            if type_kind_as_pointer_id != param_type_kind_ids[0] {
-                type_error!(self, "incorrect type used as subject of method call");
-            }
-        }
-
-        if args.len() + skip_param_count != param_type_kind_ids.len() {
+        if args.len() != param_type_kind_ids.len() {
             type_error!(self, "wrong number of arguments");
         }
 
-        for (arg, param_type_kind) in args.iter().zip(param_type_kind_ids.iter().skip(skip_param_count)) {
+        for (arg, param_type_kind) in args.iter().zip(param_type_kind_ids.iter()) {
             let arg_type = self.check_node(*arg)?;
 
             if arg_type.type_kind_id != *param_type_kind {
@@ -1033,32 +844,6 @@ impl TypeChecker {
                 });
             }
 
-            if let TypeKind::Function {
-                param_type_kind_ids, ..
-            } = &self.type_kinds.get_by_id(*field_kind_id)
-            {
-                if parent_type.instance_kind == InstanceKind::Literal {
-                    type_error!(self, "method calls are not allowed on literals");
-                }
-
-                // A method is static if it's first parameter isn't a pointer to it's own struct's type.
-                let mut is_method_static = true;
-                if param_type_kind_ids.len() > 0 {
-                    if let TypeKind::Pointer {
-                        inner_type_kind_id, ..
-                    } = self.type_kinds.get_by_id(param_type_kind_ids[0])
-                    {
-                        is_method_static = inner_type_kind_id != struct_type_kind_id;
-                    }
-                }
-
-                if is_method_static && parent_type.instance_kind != InstanceKind::Name {
-                    type_error!(self, "static method calls are not allowed on instances");
-                }
-            } else if parent_type.instance_kind == InstanceKind::Name {
-                type_error!(self, "struct field access is only allowed on instances");
-            }
-
             return Some(Type {
                 type_kind_id: *field_kind_id,
                 instance_kind: field_instance_kind,
@@ -1113,137 +898,6 @@ impl TypeChecker {
         })
     }
 
-    fn get_namespaced_name(&mut self, node: usize) -> Option<Vec<Arc<str>>> {
-        let mut namespaced_name = Vec::new();
-
-        match self.nodes[node].kind.clone() {
-            NodeKind::FieldAccess { left, name } => {
-                let Some(Type { type_kind_id, .. }) =
-                    &self.typed_nodes[left].as_ref().unwrap().node_type
-                else {
-                    return None;
-                };
-
-                let TypeKind::Struct {
-                    name: left_name, ..
-                } = &self.type_kinds.get_by_id(*type_kind_id)
-                else {
-                    return None;
-                };
-
-                let NodeKind::Name {
-                    text: left_name_text,
-                } = self.nodes[*left_name].kind.clone()
-                else {
-                    return None;
-                };
-
-                let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-                    return None;
-                };
-
-                namespaced_name.push(left_name_text);
-                namespaced_name.push(name_text);
-            }
-            NodeKind::Identifier { name } => {
-                let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
-                    return None;
-                };
-
-                namespaced_name.push(name_text);
-            }
-            _ => return None,
-        };
-
-        Some(namespaced_name)
-    }
-
-/*     fn generic_specifier(
-        &mut self,
-        left: usize,
-        generic_arg_type_names: Arc<Vec<usize>>,
-    ) -> Option<Type> {
-        let left_type = self.check_node(left)?;
-        let (index, concrete_type_kind, instance_kind) =
-            match self.type_kinds[left_type.type_kind].clone() {
-                TypeKind::Function {
-                    generic_type_kinds, ..
-                } => {
-                    if generic_type_kinds.is_empty() {
-                        type_error!(
-                            self,
-                            "generic specifier cannot be applied to non-generic functions"
-                        );
-                    }
-
-                    let Some(namespaced_name) = self.get_namespaced_name(left) else {
-                        type_error!(self, "expected function name before generic specifier");
-                    };
-
-                    let Some(function_index) = self.definition_indices.get(&namespaced_name) else {
-                        type_error!(self, "invalid function before generic specifier");
-                    };
-
-                    let concrete_type_kind = generic_function_to_concrete(
-                        &mut self.type_kinds,
-                        left_type.type_kind,
-                        &mut self.function_type_kinds,
-                        &generic_param_type_kinds,
-                    );
-
-                    (function_index, concrete_type_kind, InstanceKind::Val)
-                }
-                TypeKind::Struct {
-                    generic_type_kinds, ..
-                } => {
-                    if generic_type_kinds.is_empty() {
-                        type_error!(
-                            self,
-                            "generic specifier cannot be applied to non-generic functions"
-                        );
-                    }
-
-                    let Some(namespaced_name) = self.get_namespaced_name(left) else {
-                        type_error!(self, "expected struct name before generic specifier");
-                    };
-
-                    let Some(struct_index) = self.definition_indices.get(&namespaced_name) else {
-                        type_error!(self, "invalid struct before generic specifier");
-                    };
-
-                    let struct_layout = StructLayout {
-                        name: namespaced_name.last().unwrap().clone(),
-                        generic_param_type_kinds: generic_param_type_kinds.clone(),
-                    };
-
-                    let concrete_type_kind = generic_struct_to_concrete(
-                        struct_layout,
-                        &mut self.type_kinds,
-                        left_type.type_kind,
-                        &mut self.struct_type_kinds,
-                        &mut self.function_type_kinds,
-                        &generic_param_type_kinds,
-                    );
-
-                    (struct_index, concrete_type_kind, InstanceKind::Name)
-                }
-                _ => type_error!(
-                    self,
-                    "generic specifier can only be applied to functions and structs"
-                ),
-            };
-
-        self.pending_generic_usages.push(PendingGenericUsage {
-            index: *index,
-            usage: generic_param_type_kinds.clone(),
-        });
-
-        Some(Type {
-            type_kind: concrete_type_kind,
-            instance_kind,
-        })
-    } */
-
     fn name(&mut self, _text: Arc<str>) -> Option<Type> {
         None
     }
@@ -1251,15 +905,48 @@ impl TypeChecker {
     fn identifier(&mut self, name: usize) -> Option<Type> {
         self.check_node(name);
 
-        let NodeKind::Name { text } = &self.nodes[name].kind else {
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid identifier name");
         };
 
-        let Some(identifier_type) = self.environment.get(text) else {
+        if let Some(identifier_type) = self.environment.get(&name_text) {
+            return Some(identifier_type)
+        };
+
+        let identifier = GenericIdentifier {
+            name: name_text.clone(),
+            generic_arg_type_kind_ids: None,
+        };
+
+        if let Some(function_type_kind_id) = self.function_type_kinds.get(&identifier) {
+            return Some(Type { type_kind_id: *function_type_kind_id, instance_kind: InstanceKind::Val });
+        }
+
+        if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
+            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+        }
+
+        let Some(definition_index) = self.definition_indices.get(&vec![name_text]).copied() else {
             type_error!(self, "undeclared identifier");
         };
 
-        Some(identifier_type)
+        let definition_type = match self.nodes[definition_index].kind.clone() {
+            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => {
+                self.struct_definition(name, fields, generic_params, functions, is_union, None)?
+            }
+            NodeKind::Function { declaration, statement } => {
+                self.function(declaration, statement, None)?
+            }
+            NodeKind::ExternFunction { declaration } => {
+                self.extern_function(declaration)?
+            }
+            NodeKind::EnumDefinition { name, variant_names } => {
+                self.enum_definition(name, variant_names)?
+            }
+            _ => type_error!(self, "found unexpected definition type in identifier")
+        };
+
+        Some(definition_type)
     }
 
     fn const_identifier(&mut self, _name: usize, index: usize) -> Option<Type> {
@@ -1461,6 +1148,289 @@ impl TypeChecker {
             type_kind_id: const_type.type_kind_id,
             instance_kind: InstanceKind::Const(ConstValue::UInt { value }),
         })
+    }
+
+    fn struct_definition(&mut self, name: usize, fields: Arc<Vec<usize>>, generic_params: Arc<Vec<usize>>, functions: Arc<Vec<usize>>, is_union: bool, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>) -> Option<Type> {
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            type_error!(self, "invalid name");
+        };
+
+        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone() };
+
+        if let Some(existing_type_kind_id) = self.type_kind_environment.get(&identifier) {
+            return Some(Type { type_kind_id: existing_type_kind_id, instance_kind: InstanceKind::Name });
+        }
+
+        if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
+            return None;
+        }
+
+        let type_kind_id = self.type_kinds.add_placeholder();
+        self.type_kind_environment.insert(identifier, type_kind_id, true);
+
+        self.type_kind_environment.push(false);
+
+        if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids {
+            if generic_arg_type_kind_ids.len() != generic_params.len() {
+                type_error!(self, "incorrect number of generic arguments");
+            }
+
+            for i in 0..generic_arg_type_kind_ids.len() {
+                let NodeKind::Name { text: param_text } = self.nodes[generic_params[i]].kind.clone() else {
+                    type_error!(self, "invalid parameter name");
+                };
+
+                self.type_kind_environment.insert(GenericIdentifier { name: param_text, generic_arg_type_kind_ids: None }, generic_arg_type_kind_ids[i], false);
+            }
+        }
+
+        let mut field_kinds = Vec::new();
+
+        for field in fields.iter() {
+            let field_type_kind_id = self.check_node(*field)?.type_kind_id;
+
+            let NodeKind::Field { name: field_name, .. } = self.nodes[*field].kind else {
+                type_error!(self, "invalid field");
+            };
+
+            field_kinds.push(Field { name: field_name, type_kind_id: field_type_kind_id })
+        }
+
+        if !functions.is_empty() {
+            // TODO:
+            panic!("Methods are not currently supported");
+        }
+
+        self.type_kind_environment.pop();
+
+        self.type_kinds.replace_placeholder(type_kind_id, TypeKind::Struct { name, field_kinds: Arc::new(field_kinds), is_union });
+
+        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+    }
+
+    fn enum_definition(&mut self, name: usize, variant_names: Arc<Vec<usize>>) -> Option<Type> {
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            type_error!(self, "invalid enum name");
+        };
+
+        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
+
+        if let Some(existing_type_kind_id) = self.type_kind_environment.get(&identifier) {
+            return Some(Type { type_kind_id: existing_type_kind_id, instance_kind: InstanceKind::Name });
+        }
+
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Enum { name, variant_names });
+
+        self.type_kind_environment.insert(identifier, type_kind_id, true);
+
+        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+    }
+
+    fn field(&mut self, _name: usize, type_name: usize) -> Option<Type> {
+        self.check_node(type_name)
+    }
+
+    fn function_declaration(&mut self, _name: usize, params: Arc<Vec<usize>>, _generic_params: Arc<Vec<usize>>, return_type_name: usize) -> Option<Type> {
+        let mut param_type_kind_ids = Vec::new();
+        for param in params.iter() {
+            let param_type = self.check_node(*param)?;
+            param_type_kind_ids.push(param_type.type_kind_id);
+        }
+
+        let return_type = self.check_node(return_type_name)?;
+        if return_type.instance_kind != InstanceKind::Name {
+            type_error!(self, "expected type name");
+        }
+
+        let type_kind = TypeKind::Function { param_type_kind_ids: Arc::new(param_type_kind_ids), return_type_kind_id: return_type.type_kind_id };
+        let type_kind_id = self.type_kinds.add_or_get(type_kind);
+
+        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+    }
+
+    fn function(&mut self, declaration: usize, statement: usize, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>) -> Option<Type> {
+        let NodeKind::FunctionDeclaration { name, params, generic_params, return_type_name } = self.nodes[declaration].kind.clone() else {
+            type_error!(self, "invalid function declaration");
+        };
+
+        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+            type_error!(self, "invalid function name");
+        };
+
+        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone() };
+        if let Some(existing_type_kind_id) = self.function_type_kinds.get(&identifier) {
+            return Some(Type { type_kind_id: *existing_type_kind_id, instance_kind: InstanceKind::Name });
+        }
+
+        if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
+            return None;
+        }
+
+        self.type_kind_environment.push(false);
+        self.environment.push(false);
+
+        if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids {
+            if generic_arg_type_kind_ids.len() != generic_params.len() {
+                type_error!(self, "incorrect number of generic arguments");
+            }
+
+            for i in 0..generic_arg_type_kind_ids.len() {
+                let NodeKind::Name { text: param_text } = self.nodes[generic_params[i]].kind.clone() else {
+                    type_error!(self, "invalid parameter name");
+                };
+
+                self.type_kind_environment.insert(GenericIdentifier { name: param_text, generic_arg_type_kind_ids: None }, generic_arg_type_kind_ids[i], false);
+            }
+        }
+
+        let declaration_type = self.function_declaration(name, params, generic_params, return_type_name)?;
+        self.function_type_kinds.insert(identifier, declaration_type.type_kind_id);
+
+        self.check_node(statement);
+
+        self.environment.pop();
+        self.type_kind_environment.pop();
+
+        Some(Type { type_kind_id: declaration_type.type_kind_id, instance_kind: InstanceKind::Val })
+    }
+
+    fn generic_specifier(&mut self, name_text: Arc<str>, generic_arg_type_names: Arc<Vec<usize>>) -> Option<Type> {
+        let mut generic_arg_type_kind_ids = Vec::new();
+        for generic_arg_type_name in generic_arg_type_names.iter() {
+            let generic_arg_type = self.check_node(*generic_arg_type_name)?;
+            if generic_arg_type.instance_kind != InstanceKind::Name {
+                type_error!(self, "expected type name");
+            }
+
+            generic_arg_type_kind_ids.push(generic_arg_type.type_kind_id);
+        }
+        let generic_arg_type_kind_ids = Arc::new(generic_arg_type_kind_ids);
+
+        let identifier = GenericIdentifier { name: name_text.clone(), generic_arg_type_kind_ids: Some(generic_arg_type_kind_ids.clone()) };
+
+        if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
+            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+        }
+
+        if let Some(type_kind_id) = self.function_type_kinds.get(&identifier).copied() {
+            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+        }
+
+        let Some(definition_index) = self.definition_indices.get(&vec![name_text]).copied() else {
+            type_error!(self, "type with this name was not found");
+        };
+
+        let definition_type = match self.nodes[definition_index].kind.clone() {
+            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => {
+                self.struct_definition(name, fields, generic_params, functions, is_union, Some(generic_arg_type_kind_ids))?
+            }
+            NodeKind::Function { declaration, statement } => {
+                self.function(declaration, statement, Some(generic_arg_type_kind_ids))?
+            }
+            NodeKind::ExternFunction { declaration } => {
+                self.extern_function(declaration)?
+            }
+            _ => type_error!(self, "expected function, struct, or union before generic specifier")
+        };
+
+        Some(definition_type)
+    }
+
+    fn type_name(&mut self, text: Arc<str>) -> Option<Type> {
+        let identifier = GenericIdentifier { name: text.clone(), generic_arg_type_kind_ids: None };
+
+        if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
+            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+        }
+
+        let Some(definition_index) = self.definition_indices.get(&vec![text]) else {
+            type_error!(self, "type with this name was not found");
+        };
+
+        let definition_type = self.check_node(*definition_index)?;
+
+        Some(Type { type_kind_id: definition_type.type_kind_id, instance_kind: InstanceKind::Name })
+    }
+
+    fn type_name_pointer(&mut self, inner: usize, is_inner_mutable: bool) -> Option<Type> {
+        let inner_type = self.check_node(inner)?;
+        if inner_type.instance_kind != InstanceKind::Name {
+            type_error!(self, "expected type name");
+        }
+
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Pointer { inner_type_kind_id: inner_type.type_kind_id, is_inner_mutable });
+
+        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+    }
+
+    fn type_name_array(&mut self, inner: usize, element_count_const_expression: usize) -> Option<Type> {
+        let inner_type = self.check_node(inner)?;
+        if inner_type.instance_kind != InstanceKind::Name {
+            type_error!(self, "expected type name");
+        }
+
+        let element_count_const_type = self.check_node(element_count_const_expression)?;
+
+        let InstanceKind::Const(ConstValue::Int { value: element_count }) = element_count_const_type.instance_kind else {
+            type_error!(self, "expected int for element count");
+        };
+
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Array { element_type_kind_id: inner_type.type_kind_id, element_count: element_count as usize });
+
+        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+    }
+
+    fn type_name_function(&mut self, param_type_names: Arc<Vec<usize>>, return_type_name: usize) -> Option<Type> {
+        let mut param_type_kind_ids = Vec::new();
+        for param_type_name in param_type_names.iter() {
+            let param_type = self.check_node(*param_type_name)?;
+            if param_type.instance_kind != InstanceKind::Name {
+                type_error!(self, "expected type name");
+            }
+
+            param_type_kind_ids.push(param_type.type_kind_id);
+        }
+
+        let return_type = self.check_node(return_type_name)?;
+        if return_type.instance_kind != InstanceKind::Name {
+            type_error!(self, "expected type name");
+        }
+
+        let type_kind = TypeKind::Function { param_type_kind_ids: Arc::new(param_type_kind_ids), return_type_kind_id: return_type.type_kind_id };
+        let type_kind_id = self.type_kinds.add_or_get(type_kind);
+
+        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+    }
+
+    fn type_name_generic_specifier(&mut self, name_text: Arc<str>, generic_arg_type_names: Arc<Vec<usize>>) -> Option<Type> {
+        let mut generic_arg_type_kind_ids = Vec::new();
+        for generic_arg_type_name in generic_arg_type_names.iter() {
+            let generic_arg_type = self.check_node(*generic_arg_type_name)?;
+            if generic_arg_type.instance_kind != InstanceKind::Name {
+                type_error!(self, "expected type name");
+            }
+
+            generic_arg_type_kind_ids.push(generic_arg_type.type_kind_id);
+        }
+        let generic_arg_type_kind_ids = Arc::new(generic_arg_type_kind_ids);
+
+        let identifier = GenericIdentifier { name: name_text.clone(), generic_arg_type_kind_ids: Some(generic_arg_type_kind_ids.clone()) };
+
+        if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
+            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+        }
+
+        let Some(definition_index) = self.definition_indices.get(&vec![name_text]).copied() else {
+            type_error!(self, "type with this name was not found");
+        };
+
+        let definition_type = if let NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } = self.nodes[definition_index].kind.clone() {
+            self.struct_definition(name, fields, generic_params, functions, is_union, Some(generic_arg_type_kind_ids))?
+        } else {
+            type_error!(self, "expected struct/union before generic specifier in type name");
+        };
+
+        Some(Type { type_kind_id: definition_type.type_kind_id, instance_kind: InstanceKind::Name })
     }
 
     fn const_expression_to_uint(

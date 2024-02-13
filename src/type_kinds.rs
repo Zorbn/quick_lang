@@ -36,14 +36,14 @@ pub enum TypeKind {
     Struct {
         name: usize,
         field_kinds: Arc<Vec<Field>>,
-        generic_type_kind_ids: Arc<Vec<usize>>,
-        generic_param_type_kind_ids: Arc<Vec<usize>>,
+        // generic_type_kind_ids: Arc<Vec<usize>>,
+        // generic_param_type_kind_ids: Arc<Vec<usize>>,
         is_union: bool,
     },
-    Partial,
+    Placeholder,
     Function {
         param_type_kind_ids: Arc<Vec<usize>>,
-        generic_type_kind_ids: Arc<Vec<usize>>,
+        // generic_type_kind_ids: Arc<Vec<usize>>,
         return_type_kind_id: usize,
     },
     Enum {
@@ -99,5 +99,19 @@ impl TypeKinds {
 
     pub fn get_by_id(&mut self, type_kind_id: usize) -> TypeKind {
         self.type_kinds[type_kind_id].clone()
+    }
+
+    pub fn add_placeholder(&mut self) -> usize {
+        let type_kind_id = self.type_kinds.len();
+        self.type_kinds.push(TypeKind::Placeholder);
+        type_kind_id
+    }
+
+    pub fn replace_placeholder(&mut self, type_kind_id: usize, type_kind: TypeKind) {
+        if self.type_kinds[type_kind_id] != TypeKind::Placeholder {
+            panic!("tried to replace a non-placeholder type kind");
+        }
+
+        self.type_kinds[type_kind_id] = type_kind;
     }
 }

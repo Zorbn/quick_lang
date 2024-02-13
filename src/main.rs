@@ -15,7 +15,7 @@ use crate::{
     // code_generator::CodeGenerator,
     lexer::Lexer,
     parser::{NodeKind, Parser},
-    type_checker::{TypeChecker, TypedNode},
+    typer::{TypeChecker, TypedNode},
 };
 
 mod code_generator;
@@ -27,10 +27,9 @@ mod file_data;
 mod lexer;
 mod parser;
 mod position;
-mod type_checker;
+mod typer;
 mod type_kinds;
 mod utils;
-mod as_option;
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();
@@ -102,20 +101,20 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let mut type_checker = TypeChecker::new(
+    let mut typer = TypeChecker::new(
         parser.nodes,
         parser.definition_indices,
         files.clone(),
     );
     for start_index in &start_indices {
-        type_checker.check(*start_index);
+        typer.check(*start_index);
     }
 
-    if type_checker.had_error {
+    if typer.had_error {
         return ExitCode::FAILURE;
     }
 
-    let typed_nodes: Vec<TypedNode> = type_checker
+    let typed_nodes: Vec<TypedNode> = typer
         .typed_nodes
         .iter()
         .map(|n| match n.clone() {
@@ -129,8 +128,8 @@ fn main() -> ExitCode {
 
     // let mut code_generator = CodeGenerator::new(
     //     typed_nodes,
-    //     type_checker.type_kinds,
-    //     type_checker.generic_usages,
+    //     typer.type_kinds,
+    //     typer.generic_usages,
     //     is_debug_mode,
     // );
     // for start_index in &start_indices {
