@@ -11,12 +11,7 @@ use std::{
 
 use file_data::FileData;
 
-use crate::{
-    code_generator::CodeGenerator,
-    lexer::Lexer,
-    parser::Parser,
-    typer::Typer,
-};
+use crate::{code_generator::CodeGenerator, lexer::Lexer, parser::Parser, typer::Typer};
 
 mod code_generator;
 mod const_value;
@@ -27,8 +22,8 @@ mod file_data;
 mod lexer;
 mod parser;
 mod position;
-mod typer;
 mod type_kinds;
+mod typer;
 mod utils;
 
 fn main() -> ExitCode {
@@ -101,11 +96,7 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let mut typer = Typer::new(
-        parser.nodes,
-        parser.definition_indices,
-        files.clone(),
-    );
+    let mut typer = Typer::new(parser.nodes, parser.definition_indices, files.clone());
 
     for start_index in &parser_start_indices {
         let start_index = typer.check(*start_index);

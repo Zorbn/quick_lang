@@ -531,11 +531,7 @@ impl Parser {
         })
     }
 
-    fn parse_function_params(
-        &mut self,
-        start: Position,
-        params: &mut Vec<usize>,
-    ) -> Option<usize> {
+    fn parse_function_params(&mut self, start: Position, params: &mut Vec<usize>) -> Option<usize> {
         if let Some(error_node) = self.assert_token(TokenKind::LParen, start, self.token_end()) {
             return Some(error_node);
         }
@@ -1332,7 +1328,12 @@ impl Parser {
                     }
 
                     let NodeKind::Identifier { name } = &self.nodes[left].kind else {
-                        parse_error!(self, "expected identifier before generic specifier", start, end);
+                        parse_error!(
+                            self,
+                            "expected identifier before generic specifier",
+                            start,
+                            end
+                        );
                     };
 
                     let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {

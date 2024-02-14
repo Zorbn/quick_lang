@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use crate::{
-    parser::NodeKind, typer::TypedNode, type_kinds::Field
-};
+use crate::{parser::NodeKind, type_kinds::Field, typer::TypedNode};
 
 // TODO: Get rid of this, could just use a matches! inline...
 pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: usize) -> bool {

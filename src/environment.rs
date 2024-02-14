@@ -36,11 +36,7 @@ impl<K: Clone + Hash + PartialEq + Eq, V: Clone> Environment<K, V> {
                 .name_types
                 .insert(key, value);
         } else {
-            self.stack
-                .last_mut()
-                .unwrap()
-                .name_types
-                .insert(key, value);
+            self.stack.last_mut().unwrap().name_types.insert(key, value);
         }
     }
 
