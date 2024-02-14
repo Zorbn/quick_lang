@@ -1039,7 +1039,8 @@ impl Parser {
      * Term: +, -
      * Inequality: <, <=, >, >=
      * Equality: ==, !=
-     * Compound: &&, ||
+     * BooleanAnd: &&
+     * BooleanOr: ||
      * Assignment: =, +=, -=, /=, *=
      */
     fn expression(&mut self) -> usize {
@@ -1050,7 +1051,7 @@ impl Parser {
         let start = self.token_start();
 
         // Assignment is not allowed in const expressions.
-        let inner = self.compound();
+        let inner = self.boolean_or();
         let end = self.node_end(inner);
 
         self.add_node(Node {
@@ -1062,7 +1063,7 @@ impl Parser {
 
     fn assignment(&mut self) -> usize {
         let start = self.token_start();
-        let mut left = self.compound();
+        let mut left = self.boolean_or();
 
         loop {
             let op = match *self.token_kind() {
@@ -1075,7 +1076,7 @@ impl Parser {
             };
 
             self.position += 1;
-            let right = self.compound();
+            let right = self.boolean_or();
             let end = self.node_end(right);
             left = self.add_node(Node {
                 kind: NodeKind::Binary { left, op, right },
@@ -1087,22 +1088,42 @@ impl Parser {
         left
     }
 
-    fn compound(&mut self) -> usize {
+    fn boolean_or(&mut self) -> usize {
+        let start = self.token_start();
+        let mut left = self.boolean_and();
+
+        loop {
+            let TokenKind::Or = *self.token_kind() else {
+                break;
+            };
+            self.position += 1;
+
+            let right = self.boolean_and();
+            let end = self.node_end(right);
+            left = self.add_node(Node {
+                kind: NodeKind::Binary { left, op: Op::Or, right },
+                start,
+                end,
+            })
+        }
+
+        left
+    }
+
+    fn boolean_and(&mut self) -> usize {
         let start = self.token_start();
         let mut left = self.equality();
 
         loop {
-            let op = match *self.token_kind() {
-                TokenKind::And => Op::And,
-                TokenKind::Or => Op::Or,
-                _ => break,
+            let TokenKind::And = *self.token_kind() else {
+                break;
             };
             self.position += 1;
 
             let right = self.equality();
             let end = self.node_end(right);
             left = self.add_node(Node {
-                kind: NodeKind::Binary { left, op, right },
+                kind: NodeKind::Binary { left, op: Op::And, right },
                 start,
                 end,
             })

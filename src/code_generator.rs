@@ -85,14 +85,6 @@ fn reserved_names() -> &'static HashSet<Arc<str>> {
     })
 }
 
-/*
-TODOs FOR WIP REFACTOR
-
-Need some alternative to the namespace system for enum field names and auto generated union With/Check functions.
-Switch to a new system of name mangling that doesn't require generic args to be known to generate a struct/function name. Maybe just print the type_kind_id after the name.
-
-*/
-
 pub struct CodeGenerator {
     typed_nodes: Vec<TypedNode>,
     type_kinds: TypeKinds,
@@ -142,7 +134,7 @@ impl CodeGenerator {
         code_generator.header_emitter.emitln("#include <assert.h>");
         code_generator.header_emitter.newline();
         code_generator.body_emitters.push(1);
-        
+
         code_generator.emit_main_function();
 
         if is_debug_mode {
@@ -1616,11 +1608,11 @@ impl CodeGenerator {
 
         self.emit_type_kind_left(return_type_kind_id, kind, true, true);
         self.emit_name_node(name, kind);
-        
+
         let NodeKind::Name { text: name_text } = &self.typed_nodes[name].node_kind else {
             panic!("invalid name in function declaration");
         };
-        
+
         if !self.extern_function_names.contains(name_text) {
             self.emit_number_backwards(type_kind_id, kind);
         }
@@ -1770,7 +1762,7 @@ impl CodeGenerator {
         self.emit_name(text, kind);
         self.emit_number_backwards(type_kind_id, kind);
     }
-    
+
     fn emit_main_function(&mut self) {
         let Some(main_function_type_kind_id) = self.main_function_type_kind_id else {
             self.body_emitters.top().body.emitln("int main(void) {");
@@ -1781,11 +1773,11 @@ impl CodeGenerator {
             self.body_emitters.top().body.newline();
             return;
         };
-        
+
         let TypeKind::Function { param_type_kind_ids, .. } = &self.type_kinds.get_by_id(main_function_type_kind_id) else {
             panic!("invalid main function");
         };
-        
+
         if param_type_kind_ids.len() > 0 {
             self.body_emitters.top().body.emitln("int main(int argc, char** argv) {");
             self.body_emitters.top().body.indent();
@@ -1798,7 +1790,7 @@ impl CodeGenerator {
 
             return;
         }
-        
+
         self.body_emitters.top().body.emitln("int main(void) {");
         self.body_emitters.top().body.indent();
         self.body_emitters.top().body.emit("return (int)Main");
