@@ -155,8 +155,8 @@ impl Typer {
         self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
     }
 
-    pub fn check(&mut self, start_index: usize) -> usize {
-        self.check_node(start_index)
+    pub fn check(&mut self, start_index: usize) {
+        self.check_node(start_index);
     }
 
     fn check_optional_node(&mut self, index: Option<usize>) -> Option<usize> {
@@ -354,11 +354,13 @@ impl Typer {
                 panic!("invalid function name");
             };
 
-            let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
+            let identifier = GenericIdentifier { name: name_text.clone(), generic_arg_type_kind_ids: None };
 
             if self.function_type_kinds.get(&identifier).is_some() {
                 continue;
             }
+
+            println!("top level > typing fn: {:?}", name_text);
 
             typed_functions.push(self.check_node(*function));
         }
@@ -1421,6 +1423,8 @@ impl Typer {
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid function name");
         };
+
+        println!("typing fn: {:?}", name_text);
 
         if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
             return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None });

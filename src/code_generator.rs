@@ -144,8 +144,18 @@ impl CodeGenerator {
         code_generator
     }
 
-    pub fn gen(&mut self, start_index: usize) {
-        self.gen_node(start_index);
+    pub fn gen(&mut self) {
+        for i in 0..self.typed_definitions.len() {
+            let TypedNode { node_kind, node_type } = self.typed_nodes[self.typed_definitions[i].index].clone();
+
+            match node_kind {
+                NodeKind::StructDefinition { name, fields, functions, is_union, .. } => self.struct_definition(name, fields, functions, is_union, node_type, self.typed_definitions[i].generic_arg_type_kind_ids.clone()),
+                NodeKind::EnumDefinition { name, variant_names } => self.enum_definition(name, variant_names, node_type),
+                NodeKind::Function { declaration, statement } => self.function(declaration, statement, node_type, self.typed_definitions[i].generic_arg_type_kind_ids.clone()),
+                NodeKind::ExternFunction { declaration } => self.extern_function(declaration, node_type),
+                _ => panic!("unexpected definition kind: {:?}", node_kind)
+            }
+        }
     }
 
     fn gen_node(&mut self, index: usize) {
@@ -277,30 +287,11 @@ impl CodeGenerator {
         _enums: Arc<Vec<usize>>,
         _node_type: Option<Type>,
     ) {
-        for i in 0..self.typed_definitions.len() {
-            let TypedNode { node_kind, node_type } = self.typed_nodes[self.typed_definitions[i].index].clone();
-
-            if let NodeKind::Function { declaration, statement } = node_kind.clone() {
-                if let NodeKind::FunctionDeclaration { name, params, generic_params, return_type_name } = self.typed_nodes[declaration].node_kind.clone() {
-                    if let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() {
-                        println!("function: {:?}", text);
-                    }
-                }
-            }
-
-            match node_kind {
-                NodeKind::StructDefinition { name, fields, functions, is_union, .. } => self.struct_definition(name, fields, functions, is_union, node_type, self.typed_definitions[i].generic_arg_type_kind_ids.clone()),
-                NodeKind::EnumDefinition { name, variant_names } => self.enum_definition(name, variant_names, node_type),
-                NodeKind::Function { declaration, statement } => self.function(declaration, statement, node_type, self.typed_definitions[i].generic_arg_type_kind_ids.clone()),
-                NodeKind::ExternFunction { declaration } => self.extern_function(declaration, node_type),
-                _ => panic!("unexpected definition kind: {:?}", node_kind)
-            }
-        }
     }
 
     fn struct_definition(
         &mut self,
-        name: usize,
+        _name: usize,
         fields: Arc<Vec<usize>>,
         functions: Arc<Vec<usize>>,
         is_union: bool,
@@ -322,6 +313,7 @@ impl CodeGenerator {
                 false,
             );
             self.function_prototype_emitter.emit("* ");
+            self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
             self.function_prototype_emitter.emit("__CheckTag(");
             self.emit_type_kind_left(
                 type_kind_id,
@@ -340,6 +332,7 @@ impl CodeGenerator {
 
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
             self.body_emitters.top().body.emit("* ");
+            self.emit_struct_name(type_kind_id, EmitterKind::Body);
             self.body_emitters.top().body.emit("__CheckTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.body_emitters.top().body.emit(" *self");
@@ -368,6 +361,7 @@ impl CodeGenerator {
                 true,
             );
             self.function_prototype_emitter.emit("* ");
+            self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
             self.function_prototype_emitter.emit("__WithTag(");
             self.emit_type_kind_left(
                 type_kind_id,
@@ -387,6 +381,7 @@ impl CodeGenerator {
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::Body, true);
             self.body_emitters.top().body.emit("* ");
+            self.emit_struct_name(type_kind_id, EmitterKind::Body);
             self.body_emitters.top().body.emit("__WithTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.body_emitters.top().body.emit(" *self");
@@ -400,12 +395,8 @@ impl CodeGenerator {
             self.body_emitters.top().body.newline();
         }
 
-        self.emit_type_kind_left(
-            type_kind_id,
-            EmitterKind::TypePrototype,
-            false,
-            false,
-        );
+        self.type_prototype_emitter.emit("struct ");
+        self.emit_struct_name(type_kind_id, EmitterKind::TypePrototype);
 
         self.type_prototype_emitter.emit(" ");
 
@@ -484,7 +475,7 @@ impl CodeGenerator {
         &mut self,
         declaration: usize,
         statement: usize,
-        node_type: Option<Type>,
+        _node_type: Option<Type>,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
     ) {
         self.gen_node(declaration);
@@ -692,7 +683,7 @@ impl CodeGenerator {
         name: usize,
         _type_name: Option<usize>,
         expression: usize,
-        node_type: Option<Type>,
+        _node_type: Option<Type>,
     ) {
         let type_kind_id = self.typed_nodes[expression].node_type.as_ref().unwrap().type_kind_id;
 
@@ -723,7 +714,7 @@ impl CodeGenerator {
         }
     }
 
-    fn return_statement(&mut self, expression: Option<usize>, node_type: Option<Type>) {
+    fn return_statement(&mut self, expression: Option<usize>, _node_type: Option<Type>) {
         self.body_emitters.exiting_all_scopes();
 
         let expression = if let Some(expression) = expression {
@@ -925,7 +916,6 @@ impl CodeGenerator {
                     };
 
                 if let TypeKind::Struct {
-                    name: struct_name,
                     field_kinds,
                     is_union,
                     ..
@@ -944,13 +934,7 @@ impl CodeGenerator {
                             panic!("tag not found in union assignment");
                         };
 
-                        let NodeKind::Name {
-                            text: struct_name_text,
-                        } = self.typed_nodes[*struct_name].node_kind.clone()
-                        else {
-                            panic!("invalid name in struct field access");
-                        };
-
+                        self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
                         self.body_emitters.top().body.emit("__WithTag((");
                         self.emit_type_kind_left(
                             dereferenced_left_type_kind_id,
@@ -1018,16 +1002,13 @@ impl CodeGenerator {
         self.gen_node(left);
 
         self.body_emitters.top().body.emit("(");
-        let mut i = 0;
 
-        for arg in args.iter() {
+        for (i, arg) in args.iter().enumerate() {
             if i > 0 {
                 self.body_emitters.top().body.emit(", ");
             }
 
             self.gen_node(*arg);
-
-            i += 1;
         }
 
         let type_kind_id = node_type.unwrap().type_kind_id;
@@ -1082,55 +1063,33 @@ impl CodeGenerator {
     fn field_access(&mut self, left: usize, name: usize, node_type: Option<Type>) {
         let left_type = self.typed_nodes[left].node_type.as_ref().unwrap();
 
-        match self.type_kinds.get_by_id(node_type.unwrap().type_kind_id) {
-            TypeKind::Function { .. } => {
-                let TypeKind::Struct {
-                    name: struct_name, ..
-                } = self.type_kinds.get_by_id(left_type.type_kind_id)
+        if let TypeKind::Tag = self.type_kinds.get_by_id(node_type.unwrap().type_kind_id) {
+            let TypeKind::Struct {
+                field_kinds,
+                is_union,
+                ..
+            } = &self.type_kinds.get_by_id(left_type.type_kind_id)
+            else {
+                panic!("expected tag field to be part of a struct");
+            };
+
+            if left_type.instance_kind == InstanceKind::Name && *is_union {
+                let NodeKind::Name { text: name_text } =
+                    self.typed_nodes[name].node_kind.clone()
                 else {
-                    panic!("expected function field to be part of a struct");
+                    panic!("invalid tag name in tag access");
                 };
 
-                let NodeKind::Name {
-                    text: struct_name_text,
-                } = self.typed_nodes[struct_name].node_kind.clone()
+                let Some(tag) =
+                    get_field_index_by_name(&name_text, &self.typed_nodes, field_kinds)
                 else {
-                    panic!("invalid name in struct field access");
+                    panic!("tag not found in field access");
                 };
 
-                self.gen_node(name);
+                self.body_emitters.top().body.emit(&tag.to_string());
 
                 return;
             }
-            TypeKind::Tag => {
-                let TypeKind::Struct {
-                    field_kinds,
-                    is_union,
-                    ..
-                } = &self.type_kinds.get_by_id(left_type.type_kind_id)
-                else {
-                    panic!("expected tag field to be part of a struct");
-                };
-
-                if left_type.instance_kind == InstanceKind::Name && *is_union {
-                    let NodeKind::Name { text: name_text } =
-                        self.typed_nodes[name].node_kind.clone()
-                    else {
-                        panic!("invalid tag name in tag access");
-                    };
-
-                    let Some(tag) =
-                        get_field_index_by_name(&name_text, &self.typed_nodes, field_kinds)
-                    else {
-                        panic!("tag not found in field access");
-                    };
-
-                    self.body_emitters.top().body.emit(&tag.to_string());
-
-                    return;
-                }
-            }
-            _ => {}
         }
 
         let (dereferenced_left_type_kind_id, is_left_pointer) =
@@ -1144,7 +1103,6 @@ impl CodeGenerator {
             };
 
         if let TypeKind::Struct {
-            name: struct_name,
             field_kinds,
             is_union,
             ..
@@ -1161,13 +1119,7 @@ impl CodeGenerator {
                     panic!("tag not found in field access");
                 };
 
-                let NodeKind::Name {
-                    text: struct_name_text,
-                } = self.typed_nodes[*struct_name].node_kind.clone()
-                else {
-                    panic!("invalid name in struct field access");
-                };
-
+                self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
                 self.body_emitters.top().body.emit("__CheckTag((");
                 self.emit_type_kind_left(
                     dereferenced_left_type_kind_id,
@@ -1536,13 +1488,9 @@ impl CodeGenerator {
             TypeKind::UInt64 => self.emitter(kind).emit("uint64_t"),
             TypeKind::Float32 => self.emitter(kind).emit("float"),
             TypeKind::Float64 => self.emitter(kind).emit("double"),
-            TypeKind::Struct { name, .. } => {
+            TypeKind::Struct { .. } => {
                 self.emitter(kind).emit("struct ");
-                let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
-                    panic!("invalid struct name: {:?}", self.typed_nodes[name].node_kind);
-                };
-                self.emit_name(text, kind);
-                self.emit_number_backwards(type_kind_id, kind);
+                self.emit_struct_name(type_kind_id, kind);
             }
             TypeKind::Enum { name, .. } => {
                 self.emitter(kind).emit("enum ");
@@ -1851,6 +1799,19 @@ impl CodeGenerator {
         self.body_emitters.top().body.unindent();
         self.body_emitters.top().body.emitln("}");
         self.body_emitters.top().body.newline();
+    }
+
+    fn emit_struct_name(&mut self, type_kind_id: usize, kind: EmitterKind) {
+        let TypeKind::Struct { name, .. } = self.type_kinds.get_by_id(type_kind_id) else {
+            panic!("invalid struct");
+        };
+
+        let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
+            panic!("invalid struct name: {:?}", self.typed_nodes[name].node_kind);
+        };
+
+        self.emit_name(text, kind);
+        self.emit_number_backwards(type_kind_id, kind);
     }
 
     fn emitter(&mut self, kind: EmitterKind) -> &mut Emitter {

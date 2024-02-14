@@ -107,10 +107,8 @@ fn main() -> ExitCode {
         files.clone(),
     );
 
-    let mut typer_start_indices = Vec::with_capacity(parser_start_indices.len());
     for start_index in &parser_start_indices {
         let start_index = typer.check(*start_index);
-        typer_start_indices.push(start_index);
     }
 
     if typer.had_error {
@@ -123,9 +121,7 @@ fn main() -> ExitCode {
         typer.typed_definitions,
         is_debug_mode,
     );
-    for start_index in &typer_start_indices {
-        code_generator.gen(*start_index);
-    }
+    code_generator.gen();
 
     let mut output_file = fs::File::create("bin/out.c").unwrap();
 
