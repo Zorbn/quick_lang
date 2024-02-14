@@ -14,7 +14,7 @@ use file_data::FileData;
 use crate::{
     code_generator::CodeGenerator,
     lexer::Lexer,
-    parser::{NodeKind, Parser},
+    parser::Parser,
     typer::{TypeChecker, TypedNode},
 };
 
@@ -114,17 +114,29 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let typed_nodes: Vec<TypedNode> = typer
-        .typed_nodes
-        .iter()
-        .map(|n| match n.clone() {
-            Some(n) => n,
-            None => TypedNode {
-                node_kind: NodeKind::Error,
-                node_type: None,
-            },
-        })
-        .collect();
+    // let typed_nodes: Vec<TypedNode> = typer
+    //     .typed_nodes
+    //     .iter()
+    //     .map(|n| match n.clone() {
+    //         Some(n) => n,
+    //         None => TypedNode {
+    //             node_kind: NodeKind::Error,
+    //             node_type: None,
+    //         },
+    //     })
+    //     .collect();
+
+    let mut typed_nodes = Vec::with_capacity(typer.nodes.len());
+
+    // TODO: Now with this system it's not necessary to pointlessly type check nodes that don't need types, check to see if there are any instances of this we can get rid of.
+    for i in 0..typer.nodes.len() {
+        if let Some(typed_node) = typer.typed_nodes[i].clone() {
+            typed_nodes.push(typed_node);
+            continue;
+        }
+
+        typed_nodes.push(TypedNode { node_kind: typer.nodes[i].kind.clone(), node_type: None });
+    }
 
     let mut code_generator = CodeGenerator::new(
         typed_nodes,

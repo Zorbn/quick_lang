@@ -61,7 +61,6 @@ pub struct TypeChecker {
     files: Arc<Vec<FileData>>,
     environment: Environment<Arc<str>, Type>,
     has_function_opened_block: bool,
-    // TODO: Sometimes it's necessary to not call check_node because a node needs arguments (eg. generic_args) in which the node stack won't include them.
     node_index_stack: Vec<usize>
 }
 
@@ -224,6 +223,25 @@ impl TypeChecker {
             NodeKind::TypeNameFunction { param_type_names, return_type_name } => self.type_name_function(param_type_names, return_type_name),
             NodeKind::TypeNameGenericSpecifier { name_text, generic_arg_type_names } => self.type_name_generic_specifier(name_text, generic_arg_type_names),
             NodeKind::Error => type_error!(self, "cannot generate error node"),
+        };
+
+        self.typed_nodes[index] = Some(TypedNode {
+            node_kind: self.nodes[index].kind.clone(),
+            node_type: node_type.clone(),
+        });
+
+        self.node_index_stack.pop();
+
+        node_type
+    }
+
+    fn check_node_with_generic_args(&mut self, index: usize, generic_arg_type_kind_ids: Arc<Vec<usize>>) -> Option<Type> {
+        self.node_index_stack.push(index);
+
+        let node_type = match self.nodes[index].kind.clone() {
+            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => self.struct_definition(name, fields, generic_params, functions, is_union, Some(generic_arg_type_kind_ids), index),
+            NodeKind::Function { declaration, statement } => self.function(declaration, statement, Some(generic_arg_type_kind_ids), index),
+            _ => type_error!(self, "tried to generate unexpected node with generic args")
         };
 
         self.typed_nodes[index] = Some(TypedNode {
@@ -943,23 +961,7 @@ impl TypeChecker {
             type_error!(self, "undeclared identifier");
         };
 
-        let definition_type = match self.nodes[definition_index].kind.clone() {
-            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => {
-                self.struct_definition(name, fields, generic_params, functions, is_union, None, definition_index)?
-            }
-            NodeKind::Function { declaration, statement } => {
-                self.function(declaration, statement, None, definition_index)?
-            }
-            NodeKind::ExternFunction { declaration } => {
-                self.extern_function(declaration, definition_index)?
-            }
-            NodeKind::EnumDefinition { name, variant_names } => {
-                self.enum_definition(name, variant_names, definition_index)?
-            }
-            _ => type_error!(self, "found unexpected definition type in identifier")
-        };
-
-        Some(definition_type)
+        self.check_node(definition_index)
     }
 
     fn const_identifier(&mut self, _name: usize, index: usize) -> Option<Type> {
@@ -1164,11 +1166,6 @@ impl TypeChecker {
     }
 
     fn struct_definition(&mut self, name: usize, fields: Arc<Vec<usize>>, generic_params: Arc<Vec<usize>>, functions: Arc<Vec<usize>>, is_union: bool, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>, index: usize) -> Option<Type> {
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
-        });
-
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid name");
         };
@@ -1188,7 +1185,7 @@ impl TypeChecker {
 
         self.type_kind_environment.push(false);
 
-        if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids {
+        if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids.clone() {
             if generic_arg_type_kind_ids.len() != generic_params.len() {
                 type_error!(self, "incorrect number of generic arguments");
             }
@@ -1221,17 +1218,17 @@ impl TypeChecker {
 
         self.type_kind_environment.pop();
 
-        self.type_kinds.replace_placeholder(type_kind_id, TypeKind::Struct { name, field_kinds: Arc::new(field_kinds), is_union, generic_arg_type_kind_ids });
+        self.type_kinds.replace_placeholder(type_kind_id, TypeKind::Struct { name, field_kinds: Arc::new(field_kinds), is_union });
+
+        self.typed_definitions.push(TypedDefinition {
+            index,
+            generic_arg_type_kind_ids,
+        });
 
         Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
     }
 
     fn enum_definition(&mut self, name: usize, variant_names: Arc<Vec<usize>>, index: usize) -> Option<Type> {
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            generic_arg_type_kind_ids: None,
-        });
-
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid enum name");
         };
@@ -1245,6 +1242,11 @@ impl TypeChecker {
         let type_kind_id = self.type_kinds.add_or_get(TypeKind::Enum { name, variant_names });
 
         self.type_kind_environment.insert(identifier, type_kind_id, true);
+
+        self.typed_definitions.push(TypedDefinition {
+            index,
+            generic_arg_type_kind_ids: None,
+        });
 
         Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
     }
@@ -1272,12 +1274,7 @@ impl TypeChecker {
     }
 
     fn function(&mut self, declaration: usize, statement: usize, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>, index: usize) -> Option<Type> {
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
-        });
-
-        let NodeKind::FunctionDeclaration { name, params, generic_params, return_type_name } = self.nodes[declaration].kind.clone() else {
+        let NodeKind::FunctionDeclaration { name, generic_params, .. } = self.nodes[declaration].kind.clone() else {
             type_error!(self, "invalid function declaration");
         };
 
@@ -1297,7 +1294,7 @@ impl TypeChecker {
         self.type_kind_environment.push(false);
         self.environment.push(false);
 
-        if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids {
+        if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids.clone() {
             if generic_arg_type_kind_ids.len() != generic_params.len() {
                 type_error!(self, "incorrect number of generic arguments");
             }
@@ -1311,13 +1308,18 @@ impl TypeChecker {
             }
         }
 
-        let declaration_type = self.function_declaration(name, params, generic_params, return_type_name)?;
+        let declaration_type = self.check_node(declaration)?;
         self.function_type_kinds.insert(identifier, declaration_type.type_kind_id);
 
         self.check_node(statement);
 
         self.environment.pop();
         self.type_kind_environment.pop();
+
+        self.typed_definitions.push(TypedDefinition {
+            index,
+            generic_arg_type_kind_ids,
+        });
 
         Some(Type { type_kind_id: declaration_type.type_kind_id, instance_kind: InstanceKind::Val })
     }
@@ -1348,20 +1350,7 @@ impl TypeChecker {
             type_error!(self, "type with this name was not found");
         };
 
-        let definition_type = match self.nodes[definition_index].kind.clone() {
-            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => {
-                self.struct_definition(name, fields, generic_params, functions, is_union, Some(generic_arg_type_kind_ids), definition_index)?
-            }
-            NodeKind::Function { declaration, statement } => {
-                self.function(declaration, statement, Some(generic_arg_type_kind_ids), definition_index)?
-            }
-            NodeKind::ExternFunction { declaration } => {
-                self.extern_function(declaration, definition_index)?
-            }
-            _ => type_error!(self, "expected function, struct, or union before generic specifier")
-        };
-
-        Some(definition_type)
+        self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids)
     }
 
     fn type_name(&mut self, text: Arc<str>) -> Option<Type> {
@@ -1452,8 +1441,8 @@ impl TypeChecker {
             type_error!(self, "type with this name was not found");
         };
 
-        let definition_type = if let NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } = self.nodes[definition_index].kind.clone() {
-            self.struct_definition(name, fields, generic_params, functions, is_union, Some(generic_arg_type_kind_ids), definition_index)?
+        let definition_type = if let NodeKind::StructDefinition { .. } = self.nodes[definition_index].kind.clone() {
+            self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids)?
         } else {
             type_error!(self, "expected struct/union before generic specifier in type name");
         };

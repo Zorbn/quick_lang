@@ -4,11 +4,7 @@ use crate::{
     parser::NodeKind, typer::TypedNode, type_kinds::Field
 };
 
-pub struct MethodSubject {
-    pub node: usize,
-    pub type_kind_id: usize,
-}
-
+// TODO: Get rid of this, could just use a matches! inline...
 pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: usize) -> bool {
     matches!(
         typed_nodes[expression].node_kind,
