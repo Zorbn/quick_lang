@@ -41,17 +41,32 @@ macro_rules! type_error {
     }};
 }
 
+macro_rules! assert_typed {
+    ($self:ident, $index:expr) => {{
+        let Some(node_type) = $self.typed_nodes[$index].node_type.clone() else {
+            return $self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None });
+        };
+
+        node_type
+    }};
+}
+
 #[derive(Clone, Hash, Debug, PartialEq, Eq)]
 pub struct GenericIdentifier {
     pub name: Arc<str>,
     pub generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
 }
 
-pub struct TypeChecker {
+/*
+ * Typer refactor WIP:
+ * Need to add an add_node function like in the parser. Can't just reuse the old tree because we need to expand the tree with generics and such.
+ */
+
+pub struct Typer {
     pub nodes: Vec<Node>,
     pub definition_indices: HashMap<Vec<Arc<str>>, usize>,
 
-    pub typed_nodes: Vec<Option<TypedNode>>,
+    pub typed_nodes: Vec<TypedNode>,
     pub typed_definitions: Vec<TypedDefinition>,
     pub type_kinds: TypeKinds,
     pub had_error: bool,
@@ -64,15 +79,13 @@ pub struct TypeChecker {
     node_index_stack: Vec<usize>
 }
 
-impl TypeChecker {
+impl Typer {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         nodes: Vec<Node>,
         definition_indices: HashMap<Vec<Arc<str>>, usize>,
         files: Arc<Vec<FileData>>,
     ) -> Self {
-        let node_count = nodes.len();
-
         let mut type_checker = Self {
             files,
             typed_nodes: Vec::new(),
@@ -87,8 +100,6 @@ impl TypeChecker {
             has_function_opened_block: false,
             node_index_stack: Vec::new(),
         };
-
-        type_checker.typed_nodes.resize(node_count, None);
 
         // All of these primitives need to be defined by default.
         let int_id = type_checker.type_kinds.add_or_get(TypeKind::Int);
@@ -129,29 +140,39 @@ impl TypeChecker {
         type_checker
     }
 
-    fn type_error(&mut self, message: &str) -> Option<Type> {
+    fn add_node(&mut self, typed_node: TypedNode) -> usize {
+        let index = self.typed_nodes.len();
+        self.typed_nodes.push(typed_node);
+        index
+    }
+
+    fn type_error(&mut self, message: &str) -> usize {
         self.had_error = true;
         self.nodes[self.node_index_stack.last().copied().unwrap_or(0)]
             .start
             .error("Type", message, &self.files);
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
     }
 
-    pub fn check(&mut self, start_index: usize) {
-        self.check_node(start_index);
+    pub fn check(&mut self, start_index: usize) -> usize {
+        self.check_node(start_index)
     }
 
-    fn check_node(&mut self, index: usize) -> Option<Type> {
+    fn check_optional_node(&mut self, index: Option<usize>) -> Option<usize> {
+        index.map(|index| self.check_node(index))
+    }
+
+    fn check_node(&mut self, index: usize) -> usize {
         self.node_index_stack.push(index);
 
-        let node_type = match self.nodes[index].kind.clone() {
+        let typed_index = match self.nodes[index].kind.clone() {
             NodeKind::TopLevel {
                 functions,
                 structs,
                 enums,
             } => self.top_level(functions, structs, enums),
-            NodeKind::ExternFunction { declaration } => self.extern_function(declaration, index),
+            NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
             NodeKind::Param { name, type_name } => self.param(name, type_name),
             NodeKind::Block { statements } => self.block(statements),
             NodeKind::Statement { inner } => self.statement(inner),
@@ -211,11 +232,11 @@ impl TypeChecker {
             NodeKind::StructLiteral { left, fields } => self.struct_literal(left, fields),
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
             NodeKind::TypeSize { type_name } => self.type_size(type_name),
-            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => self.struct_definition(name, fields, generic_params, functions, is_union, None, index),
-            NodeKind::EnumDefinition { name, variant_names } => self.enum_definition(name, variant_names, index),
+            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => self.struct_definition(name, fields, generic_params, functions, is_union, None),
+            NodeKind::EnumDefinition { name, variant_names } => self.enum_definition(name, variant_names),
             NodeKind::Field { name, type_name } => self.field(name, type_name),
             NodeKind::FunctionDeclaration { name, params, generic_params, return_type_name } => self.function_declaration(name, params, generic_params, return_type_name),
-            NodeKind::Function { declaration, statement } => self.function(declaration, statement, None, index),
+            NodeKind::Function { declaration, statement } => self.function(declaration, statement, None),
             NodeKind::GenericSpecifier { name_text, generic_arg_type_names } => self.generic_specifier(name_text, generic_arg_type_names),
             NodeKind::TypeName { text } => self.type_name(text),
             NodeKind::TypeNamePointer { inner, is_inner_mutable } => self.type_name_pointer(inner, is_inner_mutable),
@@ -225,39 +246,29 @@ impl TypeChecker {
             NodeKind::Error => type_error!(self, "cannot generate error node"),
         };
 
-        self.typed_nodes[index] = Some(TypedNode {
-            node_kind: self.nodes[index].kind.clone(),
-            node_type: node_type.clone(),
-        });
-
         self.node_index_stack.pop();
 
-        node_type
+        typed_index
     }
 
-    fn check_node_with_generic_args(&mut self, index: usize, generic_arg_type_kind_ids: Arc<Vec<usize>>) -> Option<Type> {
+    fn check_node_with_generic_args(&mut self, index: usize, generic_arg_type_kind_ids: Arc<Vec<usize>>) -> usize {
         self.node_index_stack.push(index);
 
-        let node_type = match self.nodes[index].kind.clone() {
-            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => self.struct_definition(name, fields, generic_params, functions, is_union, Some(generic_arg_type_kind_ids), index),
-            NodeKind::Function { declaration, statement } => self.function(declaration, statement, Some(generic_arg_type_kind_ids), index),
+        let typed_index = match self.nodes[index].kind.clone() {
+            NodeKind::StructDefinition { name, fields, generic_params, functions, is_union } => self.struct_definition(name, fields, generic_params, functions, is_union, Some(generic_arg_type_kind_ids)),
+            NodeKind::Function { declaration, statement } => self.function(declaration, statement, Some(generic_arg_type_kind_ids)),
             _ => type_error!(self, "tried to generate unexpected node with generic args")
         };
 
-        self.typed_nodes[index] = Some(TypedNode {
-            node_kind: self.nodes[index].kind.clone(),
-            node_type: node_type.clone(),
-        });
-
         self.node_index_stack.pop();
 
-        node_type
+        typed_index
     }
 
-    fn check_const_node(&mut self, index: usize) -> Option<Type> {
+    fn check_const_node(&mut self, index: usize) -> usize {
         self.node_index_stack.push(index);
 
-        let node_type = match self.nodes[index].kind.clone() {
+        let typed_index = match self.nodes[index].kind.clone() {
             NodeKind::Binary { left, op, right } => self.const_binary(left, op, right, index),
             NodeKind::UnaryPrefix { op, right } => self.const_unary_prefix(op, right, index),
             NodeKind::Cast { left, type_name } => self.const_cast(left, type_name, index),
@@ -270,19 +281,13 @@ impl TypeChecker {
             NodeKind::TypeSize { type_name } => self.const_type_size(type_name, index),
             _ => {
                 println!("{:?}", self.nodes[index].kind);
-                self.type_error("non-constant in constant expression");
-                None
+                self.type_error("non-constant in constant expression")
             }
         };
 
-        self.typed_nodes[index] = Some(TypedNode {
-            node_kind: self.nodes[index].kind.clone(),
-            node_type: node_type.clone(),
-        });
-
         self.node_index_stack.pop();
 
-        node_type
+        typed_index
     }
 
     fn top_level(
@@ -290,28 +295,78 @@ impl TypeChecker {
         functions: Arc<Vec<usize>>,
         structs: Arc<Vec<usize>>,
         enums: Arc<Vec<usize>>,
-    ) -> Option<Type> {
+    ) -> usize {
+        let mut typed_structs = Vec::new();
         for struct_definition in structs.iter() {
-            self.check_node(*struct_definition);
+            let NodeKind::StructDefinition { name, .. } = &self.nodes[*struct_definition].kind else {
+                panic!("invalid struct definition");
+            };
+
+            let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
+                panic!("invalid struct name");
+            };
+
+            let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
+
+            if self.type_kind_environment.get(&identifier).is_some() {
+                continue;
+            }
+
+            typed_structs.push(self.check_node(*struct_definition));
         }
 
+        let mut typed_enums = Vec::new();
         for enum_definition in enums.iter() {
-            self.check_node(*enum_definition);
+            let NodeKind::EnumDefinition { name, .. } = &self.nodes[*enum_definition].kind else {
+                panic!("invalid enum definition");
+            };
+
+            let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
+                panic!("invalid enum name");
+            };
+
+            let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
+
+            if self.type_kind_environment.get(&identifier).is_some() {
+                continue;
+            }
+
+            typed_enums.push(self.check_node(*enum_definition));
         }
 
+        let mut typed_functions = Vec::new();
         for function in functions.iter() {
-            self.check_node(*function);
+            let declaration = if let NodeKind::Function { declaration, .. } = &self.nodes[*function].kind {
+                *declaration
+            } else {
+                let NodeKind::ExternFunction { declaration } = &self.nodes[*function].kind else {
+                    panic!("invalid function");
+                };
+
+                *declaration
+            };
+
+            let NodeKind::FunctionDeclaration { name, .. } = &self.nodes[declaration].kind else {
+                panic!("invalid function declaration");
+            };
+
+            let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
+                panic!("invalid function name");
+            };
+
+            let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
+
+            if self.function_type_kinds.get(&identifier).is_some() {
+                continue;
+            }
+
+            typed_functions.push(self.check_node(*function));
         }
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::TopLevel { functions: Arc::new(typed_functions), structs: Arc::new(typed_structs), enums: Arc::new(typed_enums) }, node_type: None })
     }
 
-    fn extern_function(&mut self, declaration: usize, index: usize) -> Option<Type> {
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            generic_arg_type_kind_ids: None,
-        });
-
+    fn extern_function(&mut self, declaration: usize) -> usize {
         let NodeKind::FunctionDeclaration { name, generic_params, .. } = &self.nodes[declaration].kind
         else {
             type_error!(self, "invalid function declaration");
@@ -321,64 +376,70 @@ impl TypeChecker {
             type_error!(self, "invalid function name");
         };
 
-        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
-        if let Some(existing_type_kind_id) = self.function_type_kinds.get(&identifier) {
-            return Some(Type { type_kind_id: *existing_type_kind_id, instance_kind: InstanceKind::Name });
-        }
-
         if !generic_params.is_empty() {
             type_error!(self, "extern function cannot be generic");
         }
 
         self.environment.push(false);
 
-        let declaration_type = self.check_node(declaration)?;
+        let typed_declaration = self.check_node(declaration);
 
         self.environment.pop();
 
-        self.function_type_kinds.insert(identifier, declaration_type.type_kind_id);
+        let type_kind_id = assert_typed!(self, typed_declaration).type_kind_id;
+        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
+        self.function_type_kinds.insert(identifier, type_kind_id);
 
-        Some(Type { type_kind_id: declaration_type.type_kind_id, instance_kind: InstanceKind::Val })
+        let node_type = Some(Type { type_kind_id, instance_kind: InstanceKind::Val });
+        let index = self.add_node(TypedNode { node_kind: NodeKind::ExternFunction { declaration: typed_declaration }, node_type });
+
+        self.typed_definitions.push(TypedDefinition {
+            index,
+            generic_arg_type_kind_ids: None,
+        });
+
+        index
     }
 
-    fn param(&mut self, name: usize, type_name: usize) -> Option<Type> {
-        self.check_node(name);
-
-        let type_name_type = self.check_node(type_name)?;
+    fn param(&mut self, name: usize, type_name: usize) -> usize {
+        let typed_name = self.check_node(name);
+        let typed_type_name = self.check_node(type_name);
+        let type_name_type = assert_typed!(self, typed_type_name);
 
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid parameter name");
         };
 
-        let param_type = Type {
+        let node_type = Type {
             type_kind_id: type_name_type.type_kind_id,
             instance_kind: InstanceKind::Var,
         };
-        self.environment.insert(name_text, param_type.clone(), false);
+        self.environment.insert(name_text, node_type.clone(), false);
 
-        Some(param_type)
+        self.add_node(TypedNode { node_kind: NodeKind::Param { name: typed_name, type_name: typed_type_name }, node_type: Some(node_type) })
     }
 
-    fn block(&mut self, statements: Arc<Vec<usize>>) -> Option<Type> {
+    fn block(&mut self, statements: Arc<Vec<usize>>) -> usize {
         if !self.has_function_opened_block {
             self.environment.push(true);
         } else {
             self.has_function_opened_block = false;
         }
 
+        let mut typed_statements = Vec::new();
         for statement in statements.iter() {
-            self.check_node(*statement);
+            typed_statements.push(self.check_node(*statement));
         }
 
         self.environment.pop();
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::Block { statements: Arc::new(typed_statements) }, node_type: None })
     }
 
-    fn statement(&mut self, inner: Option<usize>) -> Option<Type> {
-        self.check_node(inner?);
+    fn statement(&mut self, inner: Option<usize>) -> usize {
+        let typed_inner = self.check_optional_node(inner);
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::Statement { inner: typed_inner }, node_type: None })
     }
 
     fn variable_declaration(
@@ -387,17 +448,19 @@ impl TypeChecker {
         name: usize,
         type_name: Option<usize>,
         expression: usize,
-    ) -> Option<Type> {
-        self.check_node(name);
+    ) -> usize {
+        let typed_name = self.check_node(name);
 
-        let expression_type = self.check_node(expression)?;
+        let typed_expression = self.check_node(expression);
+        let expression_type = assert_typed!(self, typed_expression);
 
         if expression_type.instance_kind == InstanceKind::Name {
             type_error!(self, "only instances of types can be stored in variables");
         }
 
-        let mut variable_type = if let Some(type_name) = type_name {
-            let variable_type = self.check_node(type_name)?;
+        let typed_type_name = self.check_optional_node(type_name);
+        let mut variable_type = if let Some(typed_type_name) = typed_type_name {
+            let variable_type = assert_typed!(self, typed_type_name);
             if variable_type.type_kind_id != expression_type.type_kind_id {
                 type_error!(self, "mismatched types in variable declaration");
             }
@@ -432,19 +495,19 @@ impl TypeChecker {
 
         self.environment.insert(name_text, variable_type.clone(), false);
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::VariableDeclaration { declaration_kind, name: typed_name, type_name: typed_type_name, expression: typed_expression }, node_type: None })
     }
 
-    fn return_statement(&mut self, expression: Option<usize>) -> Option<Type> {
-        self.check_node(expression?);
+    fn return_statement(&mut self, expression: Option<usize>) -> usize {
+        let typed_expression = self.check_optional_node(expression);
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::ReturnStatement { expression: typed_expression }, node_type: None })
     }
 
-    fn defer_statement(&mut self, statement: usize) -> Option<Type> {
-        self.check_node(statement);
+    fn defer_statement(&mut self, statement: usize) -> usize {
+        let typed_statement = self.check_node(statement);
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::DeferStatement { statement: typed_statement }, node_type: None })
     }
 
     fn if_statement(
@@ -452,22 +515,19 @@ impl TypeChecker {
         expression: usize,
         statement: usize,
         next: Option<usize>,
-    ) -> Option<Type> {
-        self.check_node(expression);
-        self.check_node(statement);
+    ) -> usize {
+        let typed_expression = self.check_node(expression);
+        let typed_statement = self.check_node(statement);
+        let typed_next = self.check_optional_node(next);
 
-        if let Some(next) = next {
-            self.check_node(next);
-        }
-
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::IfStatement { expression: typed_expression, statement: typed_statement, next: typed_next }, node_type: None })
     }
 
-    fn switch_statement(&mut self, expression: usize, case_statement: usize) -> Option<Type> {
-        self.check_node(expression);
-        self.check_node(case_statement);
+    fn switch_statement(&mut self, expression: usize, case_statement: usize) -> usize {
+        let typed_expression = self.check_node(expression);
+        let typed_case_statement = self.check_node(case_statement);
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::SwitchStatement { expression: typed_expression, case_statement: typed_case_statement }, node_type: None })
     }
 
     fn case_statement(
@@ -475,51 +535,50 @@ impl TypeChecker {
         expression: usize,
         statement: usize,
         next: Option<usize>,
-    ) -> Option<Type> {
-        self.check_node(expression);
-        self.check_node(statement);
+    ) -> usize {
+        let typed_expression = self.check_node(expression);
+        let typed_statement = self.check_node(statement);
+        let typed_next = self.check_optional_node(next);
 
-        if let Some(next) = next {
-            self.check_node(next);
-        }
-
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::CaseStatement { expression: typed_expression, statement: typed_statement, next: typed_next }, node_type: None })
     }
 
-    fn while_loop(&mut self, expression: usize, statement: usize) -> Option<Type> {
-        self.check_node(expression);
-        self.check_node(statement);
+    fn while_loop(&mut self, expression: usize, statement: usize) -> usize {
+        let typed_expression = self.check_node(expression);
+        let typed_statement = self.check_node(statement);
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::WhileLoop { expression: typed_expression, statement: typed_statement }, node_type: None })
     }
 
     fn for_loop(
         &mut self,
         iterator: usize,
-        _op: Op,
+        op: Op,
         from: usize,
         to: usize,
         by: Option<usize>,
         statement: usize,
-    ) -> Option<Type> {
-        self.check_node(iterator);
-        self.check_node(from);
-        self.check_node(to);
-        if let Some(by) = by {
-            self.check_node(by);
-        }
-        self.check_node(statement);
+    ) -> usize {
+        let typed_iterator = self.check_node(iterator);
+        let typed_from = self.check_node(from);
+        let typed_to = self.check_node(to);
+        let typed_by = self.check_optional_node(by);
+        let typed_statement = self.check_node(statement);
 
-        None
+        self.add_node(TypedNode { node_kind: NodeKind::ForLoop { iterator: typed_iterator, op, from: typed_from, to: typed_to, by: typed_by, statement: typed_statement }, node_type: None })
     }
 
-    fn const_expression(&mut self, inner: usize) -> Option<Type> {
+    fn const_expression(&mut self, inner: usize) -> usize {
         self.check_const_node(inner)
     }
 
-    fn binary(&mut self, left: usize, op: Op, right: usize) -> Option<Type> {
-        let left_type = self.check_node(left)?;
-        let right_type = self.check_node(right)?;
+    fn binary(&mut self, left: usize, op: Op, right: usize) -> usize {
+        let typed_left = self.check_node(left);
+        let left_type = assert_typed!(self, typed_left);
+        let typed_right = self.check_node(right);
+        let right_type = assert_typed!(self, typed_right);
+
+        let node_kind = NodeKind::Binary { left: typed_left, op, right: typed_right };
 
         if left_type.type_kind_id != right_type.type_kind_id {
             type_error!(self, "type mismatch");
@@ -557,16 +616,18 @@ impl TypeChecker {
                     type_error!(self, "expected comparable types");
                 }
 
-                return Some(Type {
-                    type_kind_id: self.type_kinds.add_or_get(TypeKind::Bool),
+                let type_kind_id = self.type_kinds.add_or_get(TypeKind::Bool);
+                return self.add_node(TypedNode { node_kind, node_type: Some(Type {
+                    type_kind_id,
                     instance_kind: InstanceKind::Literal,
-                });
+                }) });
             }
             Op::Equal | Op::NotEqual => {
-                return Some(Type {
-                    type_kind_id: self.type_kinds.add_or_get(TypeKind::Bool),
+                let type_kind_id = self.type_kinds.add_or_get(TypeKind::Bool);
+                return self.add_node(TypedNode { node_kind, node_type: Some(Type {
+                    type_kind_id,
                     instance_kind: InstanceKind::Literal,
-                });
+                }) });
             }
             Op::And | Op::Or => {
                 if self.type_kinds.get_by_id(left_type.type_kind_id) != TypeKind::Bool {
@@ -576,20 +637,24 @@ impl TypeChecker {
             _ => {}
         }
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind, node_type: Some(Type {
             type_kind_id: left_type.type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn const_binary(&mut self, left: usize, op: Op, right: usize, index: usize) -> Option<Type> {
-        let binary_type = self.check_node(index)?;
+    fn const_binary(&mut self, left: usize, op: Op, right: usize, index: usize) -> usize {
+        let typed_binary = self.check_node(index);
+        let binary_type = assert_typed!(self, typed_binary);
 
-        let InstanceKind::Const(left_const_value) = self.check_const_node(left)?.instance_kind
+        let typed_left = self.check_const_node(left);
+        let InstanceKind::Const(left_const_value) = assert_typed!(self, typed_left).instance_kind
         else {
             type_error!(self, "expected const operand")
         };
-        let InstanceKind::Const(right_const_value) = self.check_const_node(right)?.instance_kind
+
+        let typed_right = self.check_const_node(right);
+        let InstanceKind::Const(right_const_value) = assert_typed!(self, typed_right).instance_kind
         else {
             type_error!(self, "expected const operand")
         };
@@ -618,14 +683,16 @@ impl TypeChecker {
             type_error!(self, "unexpected const types for operator");
         };
 
-        Some(Type {
+
+        self.add_node(TypedNode { node_kind: NodeKind::Binary { left: typed_left, op, right: typed_right }, node_type: Some(Type {
             type_kind_id: binary_type.type_kind_id,
             instance_kind: InstanceKind::Const(result_value),
-        })
+        }) })
     }
 
-    fn unary_prefix(&mut self, op: Op, right: usize) -> Option<Type> {
-        let right_type = self.check_node(right)?;
+    fn unary_prefix(&mut self, op: Op, right: usize) -> usize {
+        let typed_right = self.check_node(right);
+        let right_type = assert_typed!(self, typed_right);
 
         if right_type.instance_kind == InstanceKind::Name {
             println!("u.p.: {:?}, {:?}", self.type_kinds.get_by_id(right_type.type_kind_id), self.nodes[right].kind);
@@ -640,20 +707,22 @@ impl TypeChecker {
             );
         }
 
+        let node_kind = NodeKind::UnaryPrefix { op, right: typed_right };
+
         match op {
             Op::Plus | Op::Minus => {
                 if !self.type_kinds.get_by_id(right_type.type_kind_id).is_numeric() {
                     type_error!(self, "expected numeric type");
                 }
 
-                Some(right_type)
+                self.add_node(TypedNode { node_kind, node_type: Some(right_type) })
             }
             Op::Not => {
                 if self.type_kinds.get_by_id(right_type.type_kind_id) != TypeKind::Bool {
                     type_error!(self, "expected bool");
                 }
 
-                Some(right_type)
+                self.add_node(TypedNode { node_kind, node_type: Some(right_type) })
             }
             Op::Reference => {
                 let is_mutable = match right_type.instance_kind {
@@ -664,19 +733,21 @@ impl TypeChecker {
 
                 let type_kind_id = self.type_kinds.add_or_get(TypeKind::Pointer { inner_type_kind_id: right_type.type_kind_id, is_inner_mutable: is_mutable });
 
-                Some(Type {
+                self.add_node(TypedNode { node_kind, node_type: Some(Type {
                     type_kind_id,
                     instance_kind: InstanceKind::Literal,
-                })
+                }) })
             }
             _ => type_error!(self, "unknown unary prefix operator"),
         }
     }
 
-    fn const_unary_prefix(&mut self, op: Op, right: usize, index: usize) -> Option<Type> {
-        let unary_type = self.check_node(index)?;
+    fn const_unary_prefix(&mut self, op: Op, right: usize, index: usize) -> usize {
+        let typed_unary = self.check_node(index);
+        let unary_type = assert_typed!(self, typed_unary);
 
-        let InstanceKind::Const(right_const_value) = self.check_const_node(right)?.instance_kind
+        let typed_right = self.check_const_node(right);
+        let InstanceKind::Const(right_const_value) = assert_typed!(self, typed_right).instance_kind
         else {
             type_error!(self, "expected const operand")
         };
@@ -695,14 +766,15 @@ impl TypeChecker {
             type_error!(self, "unexpected const types for operator");
         };
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::UnaryPrefix { op, right: typed_right }, node_type: Some(Type {
             type_kind_id: unary_type.type_kind_id,
             instance_kind: InstanceKind::Const(result_value),
-        })
+        }) })
     }
 
-    fn unary_suffix(&mut self, left: usize, op: Op) -> Option<Type> {
-        let left_type = self.check_node(left)?;
+    fn unary_suffix(&mut self, left: usize, op: Op) -> usize {
+        let typed_left = self.check_node(left);
+        let left_type = assert_typed!(self, typed_left);
 
         if let Op::Dereference = op {
             let TypeKind::Pointer {
@@ -723,17 +795,18 @@ impl TypeChecker {
                 InstanceKind::Val
             };
 
-            Some(Type {
+            self.add_node(TypedNode { node_kind: NodeKind::UnarySuffix { left: typed_left, op }, node_type: Some(Type {
                 type_kind_id: *inner_type_kind_id,
                 instance_kind,
-            })
+            }) })
         } else {
             type_error!(self, "unknown unary suffix operator")
         }
     }
 
-    fn call(&mut self, left: usize, args: Arc<Vec<usize>>) -> Option<Type> {
-        let left_type = self.check_node(left)?;
+    fn call(&mut self, left: usize, args: Arc<Vec<usize>>) -> usize {
+        let typed_left = self.check_node(left);
+        let left_type = assert_typed!(self, typed_left);
 
         let TypeKind::Function {
             return_type_kind_id,
@@ -748,22 +821,27 @@ impl TypeChecker {
             type_error!(self, "wrong number of arguments");
         }
 
+        let mut typed_args = Vec::new();
         for (arg, param_type_kind) in args.iter().zip(param_type_kind_ids.iter()) {
-            let arg_type = self.check_node(*arg)?;
+            let typed_arg = self.check_node(*arg);
+            typed_args.push(typed_arg);
+
+            let arg_type = assert_typed!(self, typed_arg);
 
             if arg_type.type_kind_id != *param_type_kind {
                 type_error!(self, "incorrect argument type");
             }
         }
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::Call { left: typed_left, args: Arc::new(typed_args) }, node_type: Some(Type {
             type_kind_id: return_type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn index_access(&mut self, left: usize, expression: usize) -> Option<Type> {
-        let left_type = self.check_node(left)?;
+    fn index_access(&mut self, left: usize, expression: usize) -> usize {
+        let typed_left = self.check_node(left);
+        let left_type = assert_typed!(self, typed_left);
 
         let element_type_kind_id = if let TypeKind::Array {
             element_type_kind_id, ..
@@ -774,32 +852,36 @@ impl TypeChecker {
             type_error!(self, "indexing is only allowed on arrays");
         };
 
-        let expression_type = self.check_node(expression)?;
+        let typed_expression = self.check_node(expression);
+        let expression_type = assert_typed!(self, typed_expression);
 
         let TypeKind::Int = &self.type_kinds.get_by_id(expression_type.type_kind_id) else {
             type_error!(self, "expected index to be of type int");
         };
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::IndexAccess { left: typed_left, expression: typed_expression }, node_type: Some(Type {
             type_kind_id: element_type_kind_id,
             instance_kind: InstanceKind::Var,
-        })
+        }) })
     }
 
-    fn field_access(&mut self, left: usize, name: usize) -> Option<Type> {
-        let parent_type = self.check_node(left)?;
-        self.check_node(name);
+    fn field_access(&mut self, left: usize, name: usize) -> usize {
+        let typed_left = self.check_node(left);
+        let left_type = assert_typed!(self, typed_left);
+        let typed_name = self.check_node(name);
 
         let NodeKind::Name { text: name_text } = &self.nodes[name].kind else {
             type_error!(self, "invalid field name");
         };
 
+        let node_kind = NodeKind::FieldAccess { left: typed_left, name: typed_name };
+
         let mut is_tag_access = false;
-        let (struct_type_kind_id, field_instance_kind) = match &self.type_kinds.get_by_id(parent_type.type_kind_id)
+        let (struct_type_kind_id, field_instance_kind) = match &self.type_kinds.get_by_id(left_type.type_kind_id)
         {
             TypeKind::Struct { is_union, .. } => {
-                is_tag_access = parent_type.instance_kind == InstanceKind::Name && *is_union;
-                (parent_type.type_kind_id, InstanceKind::Var)
+                is_tag_access = left_type.instance_kind == InstanceKind::Name && *is_union;
+                (left_type.type_kind_id, InstanceKind::Var)
             }
             TypeKind::Pointer {
                 inner_type_kind_id,
@@ -817,16 +899,16 @@ impl TypeChecker {
                 for variant_name in variant_names.iter() {
                     let NodeKind::Name {
                         text: variant_name_text,
-                    } = &self.nodes[*variant_name].kind
+                    } = &self.typed_nodes[*variant_name].node_kind
                     else {
                         type_error!(self, "invalid enum variant name");
                     };
 
                     if *variant_name_text == *name_text {
-                        return Some(Type {
-                            type_kind_id: parent_type.type_kind_id,
+                        return self.add_node(TypedNode { node_kind, node_type: Some(Type {
+                            type_kind_id: left_type.type_kind_id,
                             instance_kind: InstanceKind::Literal,
-                        });
+                        }) });
                     }
                 }
 
@@ -837,10 +919,11 @@ impl TypeChecker {
                     type_error!(self, "field not found on array");
                 }
 
-                return Some(Type {
-                    type_kind_id: self.type_kinds.add_or_get(TypeKind::UInt),
+                let type_kind_id = self.type_kinds.add_or_get(TypeKind::UInt);
+                return self.add_node(TypedNode { node_kind, node_type: Some(Type {
+                    type_kind_id,
                     instance_kind: InstanceKind::Literal,
-                });
+                }) });
             }
             _ => type_error!(
                 self,
@@ -859,7 +942,7 @@ impl TypeChecker {
         {
             let NodeKind::Name {
                 text: field_name_text,
-            } = &self.nodes[*field_name].kind
+            } = &self.typed_nodes[*field_name].node_kind
             else {
                 type_error!(self, "invalid field name on struct");
             };
@@ -869,34 +952,41 @@ impl TypeChecker {
             }
 
             if is_tag_access {
-                return Some(Type {
-                    type_kind_id: self.type_kinds.add_or_get(TypeKind::Tag),
+                let type_kind_id = self.type_kinds.add_or_get(TypeKind::Tag);
+                return self.add_node(TypedNode { node_kind, node_type: Some(Type {
+                    type_kind_id,
                     instance_kind: InstanceKind::Literal,
-                });
+                }) });
             }
 
-            return Some(Type {
+            return self.add_node(TypedNode { node_kind, node_type: Some(Type {
                 type_kind_id: *field_kind_id,
                 instance_kind: field_instance_kind,
-            });
+            }) });
         }
 
         type_error!(self, "field doesn't exist in struct");
     }
 
-    fn cast(&mut self, left: usize, type_name: usize) -> Option<Type> {
-        self.check_node(left);
-        let type_name_type = self.check_node(type_name)?;
+    fn cast(&mut self, left: usize, type_name: usize) -> usize {
+        let typed_left = self.check_node(left);
+        let typed_type_name = self.check_node(type_name);
+        let type_name_type = assert_typed!(self, typed_type_name);
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::Cast { left: typed_left, type_name: typed_type_name }, node_type: Some(Type {
             type_kind_id: type_name_type.type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn const_cast(&mut self, left: usize, _type_name: usize, index: usize) -> Option<Type> {
-        let const_type = self.check_node(index)?;
-        let left_type = self.check_const_node(left)?;
+    fn const_cast(&mut self, left: usize, type_name: usize, index: usize) -> usize {
+        let typed_const = self.check_node(index);
+        let const_type = assert_typed!(self, typed_const);
+
+        let typed_left = self.check_const_node(left);
+        let left_type = assert_typed!(self, typed_left);
+
+        let typed_type_name = self.check_node(type_name);
 
         let InstanceKind::Const(left_const_value) = left_type.instance_kind else {
             type_error!(self, "cannot cast non const in const expression");
@@ -923,25 +1013,26 @@ impl TypeChecker {
             type_error!(self, "value cannot be cast at compile time");
         };
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::Cast { left: typed_left, type_name: typed_type_name }, node_type: Some(Type {
             type_kind_id: const_type.type_kind_id,
             instance_kind: InstanceKind::Const(result_value),
-        })
+        }) })
     }
 
-    fn name(&mut self, _text: Arc<str>) -> Option<Type> {
-        None
+    fn name(&mut self, text: Arc<str>) -> usize {
+        self.add_node(TypedNode { node_kind: NodeKind::Name { text }, node_type: None })
     }
 
-    fn identifier(&mut self, name: usize) -> Option<Type> {
-        self.check_node(name);
+    fn identifier(&mut self, name: usize) -> usize {
+        let typed_name = self.check_node(name);
+        let node_kind = NodeKind::Identifier { name: typed_name };
 
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid identifier name");
         };
 
         if let Some(identifier_type) = self.environment.get(&name_text) {
-            return Some(identifier_type)
+            return self.add_node(TypedNode { node_kind, node_type: Some(identifier_type) });
         };
 
         let identifier = GenericIdentifier {
@@ -950,133 +1041,148 @@ impl TypeChecker {
         };
 
         if let Some(function_type_kind_id) = self.function_type_kinds.get(&identifier) {
-            return Some(Type { type_kind_id: *function_type_kind_id, instance_kind: InstanceKind::Val });
+            return self.add_node(TypedNode { node_kind, node_type: Some(Type { type_kind_id: *function_type_kind_id, instance_kind: InstanceKind::Val }) });
         }
 
         if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+            return self.add_node(TypedNode { node_kind, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) });
         }
 
         let Some(definition_index) = self.definition_indices.get(&vec![name_text]).copied() else {
             type_error!(self, "undeclared identifier");
         };
 
-        self.check_node(definition_index)
+        let typed_definition = self.check_node(definition_index);
+        let definition_type = assert_typed!(self, typed_definition);
+
+        self.add_node(TypedNode { node_kind, node_type: Some(definition_type) })
     }
 
-    fn const_identifier(&mut self, _name: usize, index: usize) -> Option<Type> {
-        let const_type = self.check_node(index)?;
+    fn const_identifier(&mut self, name: usize, index: usize) -> usize {
+        let typed_name = self.check_node(name);
+
+        let typed_const = self.check_node(index);
+        let const_type = assert_typed!(self, typed_const);
 
         if !matches!(const_type.instance_kind, InstanceKind::Const(..)) {
             type_error!(self, "expected identifier to refer to a const value");
         }
 
-        Some(const_type)
+        self.add_node(TypedNode { node_kind: NodeKind::Identifier { name: typed_name }, node_type: Some(const_type) })
     }
 
-    fn int_literal(&mut self, _text: Arc<str>) -> Option<Type> {
-        Some(Type {
-            type_kind_id: self.type_kinds.add_or_get(TypeKind::Int),
+    fn int_literal(&mut self, text: Arc<str>) -> usize {
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Int);
+        self.add_node(TypedNode { node_kind: NodeKind::IntLiteral { text }, node_type: Some(Type {
+            type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn const_int_literal(&mut self, text: Arc<str>, index: usize) -> Option<Type> {
-        let const_type = self.check_node(index)?;
+    fn const_int_literal(&mut self, text: Arc<str>, index: usize) -> usize {
+        let typed_const = self.check_node(index);
+        let const_type = assert_typed!(self, typed_const);
         let Ok(value) = text.parse::<i64>() else {
-            self.type_error("invalid value of int literal");
-            return None;
+            type_error!(self, "invalid value of int literal");
         };
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::IntLiteral { text }, node_type: Some(Type {
             type_kind_id: const_type.type_kind_id,
             instance_kind: InstanceKind::Const(ConstValue::Int { value }),
-        })
+        }) })
     }
 
-    fn float32_literal(&mut self, _text: Arc<str>) -> Option<Type> {
-        Some(Type {
-            type_kind_id: self.type_kinds.add_or_get(TypeKind::Float32),
+    fn float32_literal(&mut self, text: Arc<str>) -> usize {
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Float32);
+        self.add_node(TypedNode { node_kind: NodeKind::Float32Literal { text }, node_type: Some(Type {
+            type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn const_float32_literal(&mut self, text: Arc<str>, index: usize) -> Option<Type> {
-        let const_type = self.check_node(index)?;
+    fn const_float32_literal(&mut self, text: Arc<str>, index: usize) -> usize {
+        let typed_const = self.check_node(index);
+        let const_type = assert_typed!(self, typed_const);
         let Ok(value) = text.parse::<f32>() else {
-            self.type_error("invalid value of float32 literal");
-            return None;
+            type_error!(self, "invalid value of float32 literal");
         };
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::Float32Literal { text }, node_type: Some(Type {
             type_kind_id: const_type.type_kind_id,
             instance_kind: InstanceKind::Const(ConstValue::Float32 { value }),
-        })
+        }) })
     }
 
-    fn string_literal(&mut self, _text: Arc<str>) -> Option<Type> {
-        Some(Type {
-            type_kind_id: self.type_kinds.add_or_get(TypeKind::String),
+    fn string_literal(&mut self, text: Arc<str>) -> usize {
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::String);
+        self.add_node(TypedNode { node_kind: NodeKind::StringLiteral { text }, node_type: Some(Type {
+            type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn const_string_literal(&mut self, text: Arc<str>, index: usize) -> Option<Type> {
-        let const_type = self.check_node(index)?;
+    fn const_string_literal(&mut self, text: Arc<str>, index: usize) -> usize {
+        let typed_const = self.check_node(index);
+        let const_type = assert_typed!(self, typed_const);
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::StringLiteral { text: text.clone() }, node_type: Some(Type {
             type_kind_id: const_type.type_kind_id,
             instance_kind: InstanceKind::Const(ConstValue::String { value: text }),
-        })
+        }) })
     }
 
-    fn bool_literal(&mut self, _value: bool) -> Option<Type> {
-        Some(Type {
-            type_kind_id: self.type_kinds.add_or_get(TypeKind::Bool),
+    fn bool_literal(&mut self, value: bool) -> usize {
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Bool);
+        self.add_node(TypedNode { node_kind: NodeKind::BoolLiteral { value }, node_type: Some(Type {
+            type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn const_bool_literal(&mut self, value: bool, index: usize) -> Option<Type> {
-        let const_type = self.check_node(index)?;
+    fn const_bool_literal(&mut self, value: bool, index: usize) -> usize {
+        let typed_const = self.check_node(index);
+        let const_type = assert_typed!(self, typed_const);
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::BoolLiteral { value }, node_type: Some(Type {
             type_kind_id: const_type.type_kind_id,
             instance_kind: InstanceKind::Const(ConstValue::Bool { value }),
-        })
+        }) })
     }
 
-    fn char_literal(&mut self, _value: char) -> Option<Type> {
-        Some(Type {
-            type_kind_id: self.type_kinds.add_or_get(TypeKind::Char),
+    fn char_literal(&mut self, value: char) -> usize {
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Char);
+        self.add_node(TypedNode { node_kind: NodeKind::CharLiteral { value }, node_type: Some(Type {
+            type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn const_char_literal(&mut self, value: char, index: usize) -> Option<Type> {
-        let const_type = self.check_node(index)?;
+    fn const_char_literal(&mut self, value: char, index: usize) -> usize {
+        let typed_const = self.check_node(index);
+        let const_type = assert_typed!(self, typed_const);
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::CharLiteral { value }, node_type: Some(Type {
             type_kind_id: const_type.type_kind_id,
             instance_kind: InstanceKind::Const(ConstValue::Char { value }),
-        })
+        }) })
     }
 
     fn array_literal(
         &mut self,
         elements: Arc<Vec<usize>>,
         repeat_count_const_expression: Option<usize>,
-    ) -> Option<Type> {
+    ) -> usize {
+        let mut typed_elements = Vec::new();
         for element in elements.iter() {
-            self.check_node(*element);
+            typed_elements.push(self.check_node(*element));
         }
 
         let repeat_count = if let Some(const_expression) = repeat_count_const_expression {
             let mut repeat_count = 0;
-            if let Some(error_type) =
+            if let Some(error_node) =
                 self.const_expression_to_uint(const_expression, &mut repeat_count)
             {
-                return Some(error_type);
+                return error_node;
             }
 
             repeat_count
@@ -1084,20 +1190,27 @@ impl TypeChecker {
             1
         };
 
-        let node_type = self.check_node(*elements.first()?)?;
-        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Array { element_type_kind_id: node_type.type_kind_id, element_count: elements.len() * repeat_count });
+        let node_type = if let Some(first_element) = elements.first() {
+            let typed_element = self.check_node(*first_element);
+            let element_type = assert_typed!(self, typed_element).clone();
+            let type_kind_id = self.type_kinds.add_or_get(TypeKind::Array { element_type_kind_id: element_type.type_kind_id, element_count: elements.len() * repeat_count });
 
-        Some(Type {
-            type_kind_id,
-            instance_kind: InstanceKind::Literal,
-        })
+            Some(Type { type_kind_id, instance_kind: InstanceKind::Literal })
+        } else {
+            None
+        };
+
+        let typed_repeat_count_const_expression = self.check_optional_node(repeat_count_const_expression);
+        self.add_node(TypedNode { node_kind: NodeKind::ArrayLiteral { elements: Arc::new(typed_elements), repeat_count_const_expression: typed_repeat_count_const_expression }, node_type })
     }
 
-    fn struct_literal(&mut self, left: usize, fields: Arc<Vec<usize>>) -> Option<Type> {
-        let struct_type = self.check_node(left)?;
+    fn struct_literal(&mut self, left: usize, fields: Arc<Vec<usize>>) -> usize {
+        let typed_left = self.check_node(left);
+        let struct_type = assert_typed!(self, typed_left);
 
+        let mut typed_fields = Vec::new();
         for field in fields.iter() {
-            self.check_node(*field);
+            typed_fields.push(self.check_node(*field));
         }
 
         if !matches!(
@@ -1111,29 +1224,35 @@ impl TypeChecker {
             );
         }
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::StructLiteral { left: typed_left, fields: Arc::new(typed_fields) }, node_type: Some(Type {
             type_kind_id: struct_type.type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn field_literal(&mut self, name: usize, expression: usize) -> Option<Type> {
-        self.check_node(name);
-        self.check_node(expression)
+    fn field_literal(&mut self, name: usize, expression: usize) -> usize {
+        let typed_name = self.check_node(name);
+        let typed_expression = self.check_node(expression);
+        let expression_type = assert_typed!(self, typed_expression);
+
+        self.add_node(TypedNode { node_kind: NodeKind::FieldLiteral { name: typed_name, expression: typed_expression }, node_type: Some(expression_type) })
     }
 
-    fn type_size(&mut self, type_name: usize) -> Option<Type> {
-        self.check_node(type_name);
+    fn type_size(&mut self, type_name: usize) -> usize {
+        let typed_type_name = self.check_node(type_name);
 
-        Some(Type {
-            type_kind_id: self.type_kinds.add_or_get(TypeKind::UInt),
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::UInt);
+        self.add_node(TypedNode { node_kind: NodeKind::TypeSize { type_name: typed_type_name }, node_type: Some(Type {
+            type_kind_id,
             instance_kind: InstanceKind::Literal,
-        })
+        }) })
     }
 
-    fn const_type_size(&mut self, type_name: usize, index: usize) -> Option<Type> {
-        let type_name_type = self.check_node(type_name)?;
-        let const_type = self.check_node(index)?;
+    fn const_type_size(&mut self, type_name: usize, index: usize) -> usize {
+        let typed_type_name = self.check_node(type_name);
+        let type_name_type = assert_typed!(self, typed_type_name);
+        let typed_const = self.check_node(index);
+        let const_type = assert_typed!(self, typed_const);
 
         let native_size = mem::size_of::<usize>() as u64;
 
@@ -1159,26 +1278,23 @@ impl TypeChecker {
             _ => type_error!(self, "size unknown at compile time"),
         };
 
-        Some(Type {
+        self.add_node(TypedNode { node_kind: NodeKind::TypeSize { type_name: typed_type_name }, node_type: Some(Type {
             type_kind_id: const_type.type_kind_id,
             instance_kind: InstanceKind::Const(ConstValue::UInt { value }),
-        })
+        }) })
     }
 
-    fn struct_definition(&mut self, name: usize, fields: Arc<Vec<usize>>, generic_params: Arc<Vec<usize>>, functions: Arc<Vec<usize>>, is_union: bool, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>, index: usize) -> Option<Type> {
+    fn struct_definition(&mut self, name: usize, fields: Arc<Vec<usize>>, generic_params: Arc<Vec<usize>>, functions: Arc<Vec<usize>>, is_union: bool, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>) -> usize {
+        if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
+            return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None });
+        }
+
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid name");
         };
 
+        let typed_name = self.check_node(name);
         let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone() };
-
-        if let Some(existing_type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return Some(Type { type_kind_id: existing_type_kind_id, instance_kind: InstanceKind::Name });
-        }
-
-        if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
-            return None;
-        }
 
         let type_kind_id = self.type_kinds.add_placeholder();
         self.type_kind_environment.insert(identifier, type_kind_id, true);
@@ -1199,16 +1315,22 @@ impl TypeChecker {
             }
         }
 
+        let mut typed_fields = Vec::new();
         let mut field_kinds = Vec::new();
 
         for field in fields.iter() {
-            let field_type_kind_id = self.check_node(*field)?.type_kind_id;
+            let typed_field = self.check_node(*field);
+            typed_fields.push(typed_field);
+
+            let field_type_kind_id = assert_typed!(self, typed_field).type_kind_id;
 
             let NodeKind::Field { name: field_name, .. } = self.nodes[*field].kind else {
                 type_error!(self, "invalid field");
             };
 
-            field_kinds.push(Field { name: field_name, type_kind_id: field_type_kind_id })
+            let typed_field_name = self.check_node(field_name);
+
+            field_kinds.push(Field { name: typed_field_name, type_kind_id: field_type_kind_id })
         }
 
         if !functions.is_empty() {
@@ -1218,51 +1340,69 @@ impl TypeChecker {
 
         self.type_kind_environment.pop();
 
-        self.type_kinds.replace_placeholder(type_kind_id, TypeKind::Struct { name, field_kinds: Arc::new(field_kinds), is_union });
+        self.type_kinds.replace_placeholder(type_kind_id, TypeKind::Struct { name: typed_name, field_kinds: Arc::new(field_kinds), is_union });
+
+        let index = self.add_node(TypedNode { node_kind: NodeKind::StructDefinition { name: typed_name, fields: Arc::new(typed_fields), generic_params: Arc::new(Vec::new()), functions: Arc::new(Vec::new()), is_union }, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) });
 
         self.typed_definitions.push(TypedDefinition {
             index,
             generic_arg_type_kind_ids,
         });
 
-        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+        index
     }
 
-    fn enum_definition(&mut self, name: usize, variant_names: Arc<Vec<usize>>, index: usize) -> Option<Type> {
+    fn enum_definition(&mut self, name: usize, variant_names: Arc<Vec<usize>>) -> usize {
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid enum name");
         };
 
-        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
+        let typed_name = self.check_node(name);
 
-        if let Some(existing_type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return Some(Type { type_kind_id: existing_type_kind_id, instance_kind: InstanceKind::Name });
+        let mut typed_variant_names = Vec::new();
+        for variant_name in variant_names.iter() {
+            typed_variant_names.push(self.check_node(*variant_name));
         }
+        let typed_variant_names = Arc::new(typed_variant_names);
 
-        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Enum { name, variant_names });
+        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Enum { name: typed_name, variant_names: typed_variant_names.clone() });
 
+        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: None };
         self.type_kind_environment.insert(identifier, type_kind_id, true);
+
+        let index = self.add_node(TypedNode { node_kind: NodeKind::EnumDefinition { name: typed_name, variant_names: typed_variant_names }, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) });
 
         self.typed_definitions.push(TypedDefinition {
             index,
             generic_arg_type_kind_ids: None,
         });
 
-        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+        index
     }
 
-    fn field(&mut self, _name: usize, type_name: usize) -> Option<Type> {
-        self.check_node(type_name)
+    fn field(&mut self, name: usize, type_name: usize) -> usize {
+        let typed_name = self.check_node(name);
+        let typed_type_name = self.check_node(type_name);
+        let type_name_type = assert_typed!(self, typed_type_name);
+
+        self.add_node(TypedNode { node_kind: NodeKind::Field { name: typed_name, type_name: typed_type_name }, node_type: Some(type_name_type) })
     }
 
-    fn function_declaration(&mut self, _name: usize, params: Arc<Vec<usize>>, _generic_params: Arc<Vec<usize>>, return_type_name: usize) -> Option<Type> {
+    fn function_declaration(&mut self, name: usize, params: Arc<Vec<usize>>, _generic_params: Arc<Vec<usize>>, return_type_name: usize) -> usize {
+        let typed_name = self.check_node(name);
+
+        let mut typed_params = Vec::new();
         let mut param_type_kind_ids = Vec::new();
         for param in params.iter() {
-            let param_type = self.check_node(*param)?;
+            let typed_param = self.check_node(*param);
+            typed_params.push(typed_param);
+
+            let param_type = assert_typed!(self, typed_param);
             param_type_kind_ids.push(param_type.type_kind_id);
         }
 
-        let return_type = self.check_node(return_type_name)?;
+        let typed_return_type_name = self.check_node(return_type_name);
+        let return_type = assert_typed!(self, typed_return_type_name);
         if return_type.instance_kind != InstanceKind::Name {
             type_error!(self, "expected type name");
         }
@@ -1270,10 +1410,10 @@ impl TypeChecker {
         let type_kind = TypeKind::Function { param_type_kind_ids: Arc::new(param_type_kind_ids), return_type_kind_id: return_type.type_kind_id };
         let type_kind_id = self.type_kinds.add_or_get(type_kind);
 
-        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+        self.add_node(TypedNode { node_kind: NodeKind::FunctionDeclaration { name: typed_name, params: Arc::new(typed_params), generic_params: Arc::new(Vec::new()), return_type_name: typed_return_type_name }, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) })
     }
 
-    fn function(&mut self, declaration: usize, statement: usize, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>, index: usize) -> Option<Type> {
+    fn function(&mut self, declaration: usize, statement: usize, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>) -> usize {
         let NodeKind::FunctionDeclaration { name, generic_params, .. } = self.nodes[declaration].kind.clone() else {
             type_error!(self, "invalid function declaration");
         };
@@ -1282,13 +1422,8 @@ impl TypeChecker {
             type_error!(self, "invalid function name");
         };
 
-        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone() };
-        if let Some(existing_type_kind_id) = self.function_type_kinds.get(&identifier) {
-            return Some(Type { type_kind_id: *existing_type_kind_id, instance_kind: InstanceKind::Name });
-        }
-
         if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
-            return None;
+            return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None });
         }
 
         self.type_kind_environment.push(false);
@@ -1308,26 +1443,31 @@ impl TypeChecker {
             }
         }
 
-        let declaration_type = self.check_node(declaration)?;
+        let typed_declaration = self.check_node(declaration);
+        let declaration_type = assert_typed!(self, typed_declaration);
+        let identifier = GenericIdentifier { name: name_text, generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone() };
         self.function_type_kinds.insert(identifier, declaration_type.type_kind_id);
 
-        self.check_node(statement);
+        let typed_statement = self.check_node(statement);
 
         self.environment.pop();
         self.type_kind_environment.pop();
+
+        let index = self.add_node(TypedNode { node_kind: NodeKind::Function { declaration: typed_declaration, statement: typed_statement }, node_type: Some(Type { type_kind_id: declaration_type.type_kind_id, instance_kind: InstanceKind::Val }) });
 
         self.typed_definitions.push(TypedDefinition {
             index,
             generic_arg_type_kind_ids,
         });
 
-        Some(Type { type_kind_id: declaration_type.type_kind_id, instance_kind: InstanceKind::Val })
+        index
     }
 
-    fn generic_specifier(&mut self, name_text: Arc<str>, generic_arg_type_names: Arc<Vec<usize>>) -> Option<Type> {
+    fn generic_specifier(&mut self, name_text: Arc<str>, generic_arg_type_names: Arc<Vec<usize>>) -> usize {
         let mut generic_arg_type_kind_ids = Vec::new();
         for generic_arg_type_name in generic_arg_type_names.iter() {
-            let generic_arg_type = self.check_node(*generic_arg_type_name)?;
+            let typed_generic_arg = self.check_node(*generic_arg_type_name);
+            let generic_arg_type = assert_typed!(self, typed_generic_arg);
             if generic_arg_type.instance_kind != InstanceKind::Name {
                 type_error!(self, "expected type name");
             }
@@ -1338,55 +1478,66 @@ impl TypeChecker {
 
         let identifier = GenericIdentifier { name: name_text.clone(), generic_arg_type_kind_ids: Some(generic_arg_type_kind_ids.clone()) };
 
+        let node_kind = NodeKind::GenericSpecifier { name_text: name_text.clone(), generic_arg_type_names: Arc::new(Vec::new()) };
+
         if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+            return self.add_node(TypedNode { node_kind, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) });
         }
 
         if let Some(type_kind_id) = self.function_type_kinds.get(&identifier).copied() {
-            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+            return self.add_node(TypedNode { node_kind, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) });
         }
 
         let Some(definition_index) = self.definition_indices.get(&vec![name_text]).copied() else {
             type_error!(self, "type with this name was not found");
         };
 
-        self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids)
+        let typed_definition = self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids);
+        let definition_type = assert_typed!(self, typed_definition);
+
+        self.add_node(TypedNode { node_kind, node_type: Some(definition_type) })
     }
 
-    fn type_name(&mut self, text: Arc<str>) -> Option<Type> {
+    fn type_name(&mut self, text: Arc<str>) -> usize {
+        let node_kind = NodeKind::TypeName { text: text.clone() };
+
         let identifier = GenericIdentifier { name: text.clone(), generic_arg_type_kind_ids: None };
 
         if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+            return self.add_node(TypedNode { node_kind, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) });
         }
 
         let Some(definition_index) = self.definition_indices.get(&vec![text]) else {
             type_error!(self, "type with this name was not found");
         };
 
-        let definition_type = self.check_node(*definition_index)?;
+        let typed_definition = self.check_node(*definition_index);
+        let definition_type = assert_typed!(self, typed_definition);
 
-        Some(Type { type_kind_id: definition_type.type_kind_id, instance_kind: InstanceKind::Name })
+        self.add_node(TypedNode { node_kind, node_type: Some(Type { type_kind_id: definition_type.type_kind_id, instance_kind: InstanceKind::Name }) })
     }
 
-    fn type_name_pointer(&mut self, inner: usize, is_inner_mutable: bool) -> Option<Type> {
-        let inner_type = self.check_node(inner)?;
+    fn type_name_pointer(&mut self, inner: usize, is_inner_mutable: bool) -> usize {
+        let typed_inner = self.check_node(inner);
+        let inner_type = assert_typed!(self, typed_inner);
         if inner_type.instance_kind != InstanceKind::Name {
             type_error!(self, "expected type name");
         }
 
         let type_kind_id = self.type_kinds.add_or_get(TypeKind::Pointer { inner_type_kind_id: inner_type.type_kind_id, is_inner_mutable });
 
-        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+        self.add_node(TypedNode { node_kind: NodeKind::TypeNamePointer { inner: typed_inner, is_inner_mutable }, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) })
     }
 
-    fn type_name_array(&mut self, inner: usize, element_count_const_expression: usize) -> Option<Type> {
-        let inner_type = self.check_node(inner)?;
+    fn type_name_array(&mut self, inner: usize, element_count_const_expression: usize) -> usize {
+        let typed_inner = self.check_node(inner);
+        let inner_type = assert_typed!(self, typed_inner);
         if inner_type.instance_kind != InstanceKind::Name {
             type_error!(self, "expected type name");
         }
 
-        let element_count_const_type = self.check_node(element_count_const_expression)?;
+        let typed_element_count_const_expression = self.check_node(element_count_const_expression);
+        let element_count_const_type = assert_typed!(self, typed_element_count_const_expression);
 
         let InstanceKind::Const(ConstValue::Int { value: element_count }) = element_count_const_type.instance_kind else {
             type_error!(self, "expected int for element count");
@@ -1394,13 +1545,14 @@ impl TypeChecker {
 
         let type_kind_id = self.type_kinds.add_or_get(TypeKind::Array { element_type_kind_id: inner_type.type_kind_id, element_count: element_count as usize });
 
-        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+        self.add_node(TypedNode { node_kind: NodeKind::TypeNameArray { inner: typed_inner, element_count_const_expression: typed_element_count_const_expression }, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) })
     }
 
-    fn type_name_function(&mut self, param_type_names: Arc<Vec<usize>>, return_type_name: usize) -> Option<Type> {
+    fn type_name_function(&mut self, param_type_names: Arc<Vec<usize>>, return_type_name: usize) -> usize {
         let mut param_type_kind_ids = Vec::new();
         for param_type_name in param_type_names.iter() {
-            let param_type = self.check_node(*param_type_name)?;
+            let typed_param = self.check_node(*param_type_name);
+            let param_type = assert_typed!(self, typed_param);
             if param_type.instance_kind != InstanceKind::Name {
                 type_error!(self, "expected type name");
             }
@@ -1408,7 +1560,8 @@ impl TypeChecker {
             param_type_kind_ids.push(param_type.type_kind_id);
         }
 
-        let return_type = self.check_node(return_type_name)?;
+        let typed_return_type_name = self.check_node(return_type_name);
+        let return_type = assert_typed!(self, typed_return_type_name);
         if return_type.instance_kind != InstanceKind::Name {
             type_error!(self, "expected type name");
         }
@@ -1416,13 +1569,14 @@ impl TypeChecker {
         let type_kind = TypeKind::Function { param_type_kind_ids: Arc::new(param_type_kind_ids), return_type_kind_id: return_type.type_kind_id };
         let type_kind_id = self.type_kinds.add_or_get(type_kind);
 
-        Some(Type { type_kind_id, instance_kind: InstanceKind::Name })
+        self.add_node(TypedNode { node_kind: NodeKind::TypeNameFunction { param_type_names: Arc::new(Vec::new()), return_type_name: typed_return_type_name }, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) })
     }
 
-    fn type_name_generic_specifier(&mut self, name_text: Arc<str>, generic_arg_type_names: Arc<Vec<usize>>) -> Option<Type> {
+    fn type_name_generic_specifier(&mut self, name_text: Arc<str>, generic_arg_type_names: Arc<Vec<usize>>) -> usize {
         let mut generic_arg_type_kind_ids = Vec::new();
         for generic_arg_type_name in generic_arg_type_names.iter() {
-            let generic_arg_type = self.check_node(*generic_arg_type_name)?;
+            let typed_generic_arg = self.check_node(*generic_arg_type_name);
+            let generic_arg_type = assert_typed!(self, typed_generic_arg);
             if generic_arg_type.instance_kind != InstanceKind::Name {
                 type_error!(self, "expected type name");
             }
@@ -1431,10 +1585,12 @@ impl TypeChecker {
         }
         let generic_arg_type_kind_ids = Arc::new(generic_arg_type_kind_ids);
 
+        let node_kind = NodeKind::TypeNameGenericSpecifier { name_text: name_text.clone(), generic_arg_type_names: Arc::new(Vec::new()) };
+
         let identifier = GenericIdentifier { name: name_text.clone(), generic_arg_type_kind_ids: Some(generic_arg_type_kind_ids.clone()) };
 
         if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return Some(Type { type_kind_id, instance_kind: InstanceKind::Name });
+            return self.add_node(TypedNode { node_kind, node_type: Some(Type { type_kind_id, instance_kind: InstanceKind::Name }) });
         }
 
         let Some(definition_index) = self.definition_indices.get(&vec![name_text]).copied() else {
@@ -1442,41 +1598,44 @@ impl TypeChecker {
         };
 
         let definition_type = if let NodeKind::StructDefinition { .. } = self.nodes[definition_index].kind.clone() {
-            self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids)?
+            let typed_definition = self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids);
+            assert_typed!(self, typed_definition)
         } else {
             type_error!(self, "expected struct/union before generic specifier in type name");
         };
 
-        Some(Type { type_kind_id: definition_type.type_kind_id, instance_kind: InstanceKind::Name })
+        self.add_node(TypedNode { node_kind, node_type: Some(Type { type_kind_id: definition_type.type_kind_id, instance_kind: InstanceKind::Name }) })
     }
 
     fn const_expression_to_uint(
         &mut self,
         const_expression: usize,
         result: &mut usize,
-    ) -> Option<Type> {
+    ) -> Option<usize> {
         let NodeKind::ConstExpression { inner } = self.nodes[const_expression].kind else {
-            return self.type_error("expected const expression");
+            return Some(self.type_error("expected const expression"));
         };
+
+        let const_expression = self.const_expression(inner);
 
         let Some(Type {
             instance_kind: InstanceKind::Const(const_value),
             ..
-        }) = self.const_expression(inner)
+        }) = &self.typed_nodes[const_expression].node_type
         else {
-            return self.type_error("expected const value from const expression");
+            return Some(self.type_error("expected const value from const expression"));
         };
 
         *result = match const_value {
             ConstValue::Int { value } => {
-                if value < 0 {
-                    return self.type_error("expected positive integer");
+                if *value < 0 {
+                    return Some(self.type_error("expected positive integer"));
                 } else {
-                    value as usize
+                    *value as usize
                 }
             }
-            ConstValue::UInt { value } => value as usize,
-            _ => return self.type_error("expected integer"),
+            ConstValue::UInt { value } => *value as usize,
+            _ => return Some(self.type_error("expected integer")),
         };
 
         None

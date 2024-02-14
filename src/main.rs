@@ -15,7 +15,7 @@ use crate::{
     code_generator::CodeGenerator,
     lexer::Lexer,
     parser::Parser,
-    typer::{TypeChecker, TypedNode},
+    typer::Typer,
 };
 
 mod code_generator;
@@ -91,60 +91,39 @@ fn main() -> ExitCode {
 
     let mut parser = Parser::new(files.clone());
 
-    let mut start_indices = Vec::with_capacity(file_lexers.len());
+    let mut parser_start_indices = Vec::with_capacity(file_lexers.len());
     for lexer in file_lexers {
         let start_index = parser.parse(lexer.tokens);
-        start_indices.push(start_index);
+        parser_start_indices.push(start_index);
     }
 
     if parser.had_error {
         return ExitCode::FAILURE;
     }
 
-    let mut typer = TypeChecker::new(
+    let mut typer = Typer::new(
         parser.nodes,
         parser.definition_indices,
         files.clone(),
     );
-    for start_index in &start_indices {
-        typer.check(*start_index);
+
+    let mut typer_start_indices = Vec::with_capacity(parser_start_indices.len());
+    for start_index in &parser_start_indices {
+        let start_index = typer.check(*start_index);
+        typer_start_indices.push(start_index);
     }
 
     if typer.had_error {
         return ExitCode::FAILURE;
     }
 
-    // let typed_nodes: Vec<TypedNode> = typer
-    //     .typed_nodes
-    //     .iter()
-    //     .map(|n| match n.clone() {
-    //         Some(n) => n,
-    //         None => TypedNode {
-    //             node_kind: NodeKind::Error,
-    //             node_type: None,
-    //         },
-    //     })
-    //     .collect();
-
-    let mut typed_nodes = Vec::with_capacity(typer.nodes.len());
-
-    // TODO: Now with this system it's not necessary to pointlessly type check nodes that don't need types, check to see if there are any instances of this we can get rid of.
-    for i in 0..typer.nodes.len() {
-        if let Some(typed_node) = typer.typed_nodes[i].clone() {
-            typed_nodes.push(typed_node);
-            continue;
-        }
-
-        typed_nodes.push(TypedNode { node_kind: typer.nodes[i].kind.clone(), node_type: None });
-    }
-
     let mut code_generator = CodeGenerator::new(
-        typed_nodes,
+        typer.typed_nodes,
         typer.type_kinds,
         typer.typed_definitions,
         is_debug_mode,
     );
-    for start_index in &start_indices {
+    for start_index in &typer_start_indices {
         code_generator.gen(*start_index);
     }
 

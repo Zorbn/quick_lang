@@ -280,12 +280,12 @@ impl CodeGenerator {
         for i in 0..self.typed_definitions.len() {
             let TypedNode { node_kind, node_type } = self.typed_nodes[self.typed_definitions[i].index].clone();
 
-            if node_type.is_none() {
-                panic!("node type is non for: {:?}", node_kind);
-            }
-
-            if node_type.as_ref().unwrap().type_kind_id == 84 {
-                println!("!!!!!!!!!!!! 84 !!!!!!!!!!!!!!!");
+            if let NodeKind::Function { declaration, statement } = node_kind.clone() {
+                if let NodeKind::FunctionDeclaration { name, params, generic_params, return_type_name } = self.typed_nodes[declaration].node_kind.clone() {
+                    if let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() {
+                        println!("function: {:?}", text);
+                    }
+                }
             }
 
             match node_kind {
@@ -1391,7 +1391,7 @@ impl CodeGenerator {
                 panic!("invalid field name text in union literal");
             };
 
-            let Some(tag) = get_field_index_by_name(name_text, &self.typed_nodes, &field_kinds)
+            let Some(tag) = get_field_index_by_name(name_text, &self.typed_nodes, field_kinds)
             else {
                 panic!("tag not found in union literal");
             };
