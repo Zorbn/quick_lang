@@ -32,7 +32,7 @@ union Maybe<T>
     none None;
 }
 
-func main() Int32
+func Main(argc Int, argv *val String) Int
 {
     val myBool = 1;
     val mySome = Maybe.<Int> { some = 5 };
@@ -224,6 +224,7 @@ func main() Int32
     val genericResult3 = genericFunction.<Bool, Bool>(false, true);
 
     val nonGenericPtr = &genericFunction.<Int, Int>;
+    val nonGenericDoublePtr = &nonGenericPtr;
 
     val genericStruct = GenericStruct.<Int, Int> { a = 5, b = 6 };
     val genericStruct2 = GenericStruct.<Bool, Int> { a = true, b = 6 };

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::{HashMap, HashSet}, sync::Arc};
 
 use crate::{
     file_data::FileData,
@@ -51,7 +51,6 @@ pub enum NodeKind {
         name: usize,
         fields: Arc<Vec<usize>>,
         generic_params: Arc<Vec<usize>>,
-        functions: Arc<Vec<usize>>,
         is_union: bool,
     },
     EnumDefinition {
@@ -243,11 +242,11 @@ pub struct Parser {
     pub position: usize,
 
     pub nodes: Vec<Node>,
-    pub definition_indices: HashMap<Vec<Arc<str>>, usize>,
+    pub definition_indices: HashMap<Arc<str>, usize>,
+    pub extern_function_names: HashSet<Arc<str>>,
     pub had_error: bool,
 
     files: Arc<Vec<FileData>>,
-    current_namespace_names: Vec<Arc<str>>,
 }
 
 impl Parser {
@@ -257,9 +256,9 @@ impl Parser {
             tokens: None,
             nodes: Vec::new(),
             definition_indices: HashMap::new(),
+            extern_function_names: HashSet::new(),
             had_error: false,
             position: 0,
-            current_namespace_names: Vec::new(),
         }
     }
 
@@ -413,8 +412,6 @@ impl Parser {
             parse_error!(self, "invalid struct name", start, self.node_end(name));
         };
 
-        self.current_namespace_names.push(name_text.clone());
-
         let mut generic_params = Vec::new();
 
         if *self.token_kind() == TokenKind::Less {
@@ -427,16 +424,8 @@ impl Parser {
         self.position += 1;
 
         let mut fields = Vec::new();
-        let mut functions = Vec::new();
 
         while *self.token_kind() != TokenKind::RBrace {
-            if *self.token_kind() == TokenKind::Func {
-                let function = self.function();
-                functions.push(function);
-
-                continue;
-            }
-
             let field = self.field();
             fields.push(field);
 
@@ -452,22 +441,18 @@ impl Parser {
         assert_token!(self, TokenKind::RBrace, start, end);
         self.position += 1;
 
-        self.current_namespace_names.pop();
-
         let index = self.add_node(Node {
             kind: NodeKind::StructDefinition {
                 name,
                 fields: Arc::new(fields),
                 generic_params: Arc::new(generic_params),
-                functions: Arc::new(functions),
                 is_union,
             },
             start,
             end,
         });
 
-        let namespaced_name = self.get_namespaced_name(name_text);
-        self.definition_indices.insert(namespaced_name, index);
+        self.definition_indices.insert(name_text, index);
 
         index
     }
@@ -511,8 +496,7 @@ impl Parser {
             end,
         });
 
-        let namespaced_name = self.get_namespaced_name(name_text);
-        self.definition_indices.insert(namespaced_name, index);
+        self.definition_indices.insert(name_text, index);
 
         index
     }
@@ -650,8 +634,7 @@ impl Parser {
             end,
         });
 
-        let namespaced_name = self.get_namespaced_name(name_text);
-        self.definition_indices.insert(namespaced_name, index);
+        self.definition_indices.insert(name_text, index);
 
         index
     }
@@ -678,8 +661,8 @@ impl Parser {
             end,
         });
 
-        let namespaced_name = self.get_namespaced_name(name_text);
-        self.definition_indices.insert(namespaced_name, index);
+        self.definition_indices.insert(name_text.clone(), index);
+        self.extern_function_names.insert(name_text);
 
         index
     }
@@ -1774,17 +1757,5 @@ impl Parser {
             }
             _ => parse_error!(self, "expected type name", start, self.token_end()),
         }
-    }
-
-    fn get_namespaced_name(&mut self, name_text: Arc<str>) -> Vec<Arc<str>> {
-        let mut namespaced_name = Vec::new();
-
-        for namespace in &self.current_namespace_names {
-            namespaced_name.push(namespace.clone());
-        }
-
-        namespaced_name.push(name_text);
-
-        namespaced_name
     }
 }

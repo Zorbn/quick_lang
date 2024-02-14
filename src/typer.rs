@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem, sync::Arc};
+use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
 use crate::{
     const_value::ConstValue,
@@ -7,12 +7,6 @@ use crate::{
     parser::{DeclarationKind, Node, NodeKind, Op},
     type_kinds::{Field, TypeKind, TypeKinds},
 };
-
-#[derive(Clone, Debug)]
-pub struct TypedDefinition {
-    pub index: usize,
-    pub generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
-}
 
 #[derive(Clone, Debug)]
 pub struct TypedNode {
@@ -67,11 +61,12 @@ pub struct GenericIdentifier {
 
 pub struct Typer {
     pub nodes: Vec<Node>,
-    pub definition_indices: HashMap<Vec<Arc<str>>, usize>,
+    pub definition_indices: HashMap<Arc<str>, usize>,
 
     pub typed_nodes: Vec<TypedNode>,
-    pub typed_definitions: Vec<TypedDefinition>,
+    pub typed_definition_indices: Vec<usize>,
     pub type_kinds: TypeKinds,
+    pub main_function_type_kind_id: Option<usize>,
     pub had_error: bool,
 
     type_kind_environment: Environment<GenericIdentifier, usize>,
@@ -86,15 +81,16 @@ impl Typer {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         nodes: Vec<Node>,
-        definition_indices: HashMap<Vec<Arc<str>>, usize>,
+        definition_indices: HashMap<Arc<str>, usize>,
         files: Arc<Vec<FileData>>,
     ) -> Self {
         let mut type_checker = Self {
             files,
             typed_nodes: Vec::new(),
-            typed_definitions: Vec::new(),
+            typed_definition_indices: Vec::new(),
             nodes,
             type_kinds: TypeKinds::new(),
+            main_function_type_kind_id: None,
             definition_indices,
             had_error: false,
             environment: Environment::new(),
@@ -361,9 +357,8 @@ impl Typer {
                 name,
                 fields,
                 generic_params,
-                functions,
                 is_union,
-            } => self.struct_definition(name, fields, generic_params, functions, is_union, None),
+            } => self.struct_definition(name, fields, generic_params, is_union, None),
             NodeKind::EnumDefinition {
                 name,
                 variant_names,
@@ -420,13 +415,11 @@ impl Typer {
                 name,
                 fields,
                 generic_params,
-                functions,
                 is_union,
             } => self.struct_definition(
                 name,
                 fields,
                 generic_params,
-                functions,
                 is_union,
                 Some(generic_arg_type_kind_ids),
             ),
@@ -549,8 +542,6 @@ impl Typer {
                 continue;
             }
 
-            println!("top level > typing fn: {:?}", name_text);
-
             typed_functions.push(self.check_node(*function));
         }
 
@@ -590,7 +581,7 @@ impl Typer {
 
         let type_kind_id = assert_typed!(self, typed_declaration).type_kind_id;
         let identifier = GenericIdentifier {
-            name: name_text,
+            name: name_text.clone(),
             generic_arg_type_kind_ids: None,
         };
         self.function_type_kinds.insert(identifier, type_kind_id);
@@ -606,10 +597,7 @@ impl Typer {
             node_type,
         });
 
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            generic_arg_type_kind_ids: None,
-        });
+        self.typed_definition_indices.push(index);
 
         index
     }
@@ -926,7 +914,7 @@ impl Typer {
             }
             Op::And | Op::Or => {
                 if self.type_kinds.get_by_id(left_type.type_kind_id) != TypeKind::Bool {
-                    type_error!(self, "expected bool");
+                    type_error!(self, "expected Bool");
                 }
             }
             _ => {}
@@ -999,16 +987,6 @@ impl Typer {
         let right_type = assert_typed!(self, typed_right);
 
         if right_type.instance_kind == InstanceKind::Name {
-            println!(
-                "u.p.: {:?}, {:?}",
-                self.type_kinds.get_by_id(right_type.type_kind_id),
-                self.nodes[right].kind
-            );
-            if let NodeKind::Identifier { name } = self.nodes[right].kind.clone() {
-                if let NodeKind::Name { text } = self.nodes[name].kind.clone() {
-                    println!("u.p. identifier name: {:?}", text);
-                }
-            }
             type_error!(
                 self,
                 "unary prefix operators can only be applied to instances"
@@ -1037,7 +1015,7 @@ impl Typer {
             }
             Op::Not => {
                 if self.type_kinds.get_by_id(right_type.type_kind_id) != TypeKind::Bool {
-                    type_error!(self, "expected bool");
+                    type_error!(self, "expected Bool");
                 }
 
                 self.add_node(TypedNode {
@@ -1446,7 +1424,7 @@ impl Typer {
             });
         }
 
-        let Some(definition_index) = self.definition_indices.get(&vec![name_text]).copied() else {
+        let Some(definition_index) = self.definition_indices.get(&name_text).copied() else {
             type_error!(self, "undeclared identifier");
         };
 
@@ -1758,7 +1736,6 @@ impl Typer {
         name: usize,
         fields: Arc<Vec<usize>>,
         generic_params: Arc<Vec<usize>>,
-        functions: Arc<Vec<usize>>,
         is_union: bool,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
     ) -> usize {
@@ -1832,11 +1809,6 @@ impl Typer {
             })
         }
 
-        if !functions.is_empty() {
-            // TODO:
-            panic!("Methods are not currently supported");
-        }
-
         self.type_kind_environment.pop();
 
         self.type_kinds.replace_placeholder(
@@ -1853,7 +1825,6 @@ impl Typer {
                 name: typed_name,
                 fields: Arc::new(typed_fields),
                 generic_params: Arc::new(Vec::new()),
-                functions: Arc::new(Vec::new()),
                 is_union,
             },
             node_type: Some(Type {
@@ -1862,10 +1833,7 @@ impl Typer {
             }),
         });
 
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            generic_arg_type_kind_ids,
-        });
+        self.typed_definition_indices.push(index);
 
         index
     }
@@ -1906,10 +1874,7 @@ impl Typer {
             }),
         });
 
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            generic_arg_type_kind_ids: None,
-        });
+        self.typed_definition_indices.push(index);
 
         index
     }
@@ -1936,7 +1901,7 @@ impl Typer {
         return_type_name: usize,
     ) -> usize {
         let typed_name = self.check_node(name);
-
+        
         let mut typed_params = Vec::new();
         let mut param_type_kind_ids = Vec::new();
         for param in params.iter() {
@@ -1946,6 +1911,7 @@ impl Typer {
             let param_type = assert_typed!(self, typed_param);
             param_type_kind_ids.push(param_type.type_kind_id);
         }
+        let param_type_kind_ids = Arc::new(param_type_kind_ids);
 
         let typed_return_type_name = self.check_node(return_type_name);
         let return_type = assert_typed!(self, typed_return_type_name);
@@ -1954,10 +1920,42 @@ impl Typer {
         }
 
         let type_kind = TypeKind::Function {
-            param_type_kind_ids: Arc::new(param_type_kind_ids),
+            param_type_kind_ids: param_type_kind_ids.clone(),
             return_type_kind_id: return_type.type_kind_id,
         };
         let type_kind_id = self.type_kinds.add_or_get(type_kind);
+
+        let NodeKind::Name { text: name_text } = &self.typed_nodes[typed_name].node_kind else {
+            type_error!(self, "invalid name in function declaration");
+        };
+        
+        if name_text.as_ref() == "Main" {
+            self.main_function_type_kind_id = Some(type_kind_id);
+            
+            if self.type_kinds.get_by_id(return_type.type_kind_id) != TypeKind::Int {
+                type_error!(self, "expected Main to return an Int");
+            }
+            
+            if param_type_kind_ids.len() > 0 {
+                if param_type_kind_ids.len() < 2 {
+                    type_error!(self, "invalid parameters for Main function");
+                }
+
+                let first_type_kind = self.type_kinds.get_by_id(param_type_kind_ids[0]);
+                if first_type_kind != TypeKind::Int {
+                    type_error!(self, "expected first argument of Main to be an Int");
+                }
+
+                let second_type_kind = self.type_kinds.get_by_id(param_type_kind_ids[1]);
+                let TypeKind::Pointer { inner_type_kind_id, is_inner_mutable: false } = second_type_kind else {
+                    type_error!(self, "expected second argument of Main to be *String");
+                };
+
+                let TypeKind::String = self.type_kinds.get_by_id(inner_type_kind_id) else {
+                    type_error!(self, "expected second argument of Main to be *String");
+                };
+            }
+        }
 
         self.add_node(TypedNode {
             node_kind: NodeKind::FunctionDeclaration {
@@ -1991,8 +1989,6 @@ impl Typer {
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid function name");
         };
-
-        println!("typing fn: {:?}", name_text);
 
         if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
             return self.add_node(TypedNode {
@@ -2052,10 +2048,7 @@ impl Typer {
             }),
         });
 
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            generic_arg_type_kind_ids,
-        });
+        self.typed_definition_indices.push(index);
 
         index
     }
@@ -2107,7 +2100,7 @@ impl Typer {
             });
         }
 
-        let Some(definition_index) = self.definition_indices.get(&vec![name_text]).copied() else {
+        let Some(definition_index) = self.definition_indices.get(&name_text).copied() else {
             type_error!(self, "type with this name was not found");
         };
 
@@ -2139,7 +2132,7 @@ impl Typer {
             });
         }
 
-        let Some(definition_index) = self.definition_indices.get(&vec![text]) else {
+        let Some(definition_index) = self.definition_indices.get(&text) else {
             type_error!(self, "type with this name was not found");
         };
 
@@ -2193,7 +2186,7 @@ impl Typer {
             value: element_count,
         }) = element_count_const_type.instance_kind
         else {
-            type_error!(self, "expected int for element count");
+            type_error!(self, "expected Int for element count");
         };
 
         let type_kind_id = self.type_kinds.add_or_get(TypeKind::Array {
@@ -2290,7 +2283,7 @@ impl Typer {
             });
         }
 
-        let Some(definition_index) = self.definition_indices.get(&vec![name_text]).copied() else {
+        let Some(definition_index) = self.definition_indices.get(&name_text).copied() else {
             type_error!(self, "type with this name was not found");
         };
 

@@ -99,7 +99,7 @@ fn main() -> ExitCode {
     let mut typer = Typer::new(parser.nodes, parser.definition_indices, files.clone());
 
     for start_index in &parser_start_indices {
-        let start_index = typer.check(*start_index);
+        typer.check(*start_index);
     }
 
     if typer.had_error {
@@ -109,7 +109,9 @@ fn main() -> ExitCode {
     let mut code_generator = CodeGenerator::new(
         typer.typed_nodes,
         typer.type_kinds,
-        typer.typed_definitions,
+        typer.main_function_type_kind_id,
+        typer.typed_definition_indices,
+        parser.extern_function_names,
         is_debug_mode,
     );
     code_generator.gen();
