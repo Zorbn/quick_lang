@@ -239,12 +239,12 @@ macro_rules! parse_error {
 }
 
 pub struct Parser {
+    pub tokens: Option<Vec<Token>>,
+    pub position: usize,
+
     pub nodes: Vec<Node>,
     pub definition_indices: HashMap<Vec<Arc<str>>, usize>,
     pub had_error: bool,
-
-    pub tokens: Option<Vec<Token>>,
-    pub position: usize,
 
     files: Arc<Vec<FileData>>,
     current_namespace_names: Vec<Arc<str>>,

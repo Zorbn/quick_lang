@@ -36,14 +36,11 @@ pub enum TypeKind {
     Struct {
         name: usize,
         field_kinds: Arc<Vec<Field>>,
-        // generic_type_kind_ids: Arc<Vec<usize>>,
-        // generic_param_type_kind_ids: Arc<Vec<usize>>,
         is_union: bool,
     },
     Placeholder,
     Function {
         param_type_kind_ids: Arc<Vec<usize>>,
-        // generic_type_kind_ids: Arc<Vec<usize>>,
         return_type_kind_id: usize,
     },
     Enum {

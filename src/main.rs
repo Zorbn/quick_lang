@@ -129,7 +129,7 @@ fn main() -> ExitCode {
     let mut code_generator = CodeGenerator::new(
         typed_nodes,
         typer.type_kinds,
-        typer.generic_usages,
+        typer.typed_definitions,
         is_debug_mode,
     );
     for start_index in &start_indices {
