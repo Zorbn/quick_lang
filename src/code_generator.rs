@@ -283,8 +283,8 @@ impl CodeGenerator {
                 elements,
                 repeat_count_const_expression,
             } => self.array_literal(elements, repeat_count_const_expression, node_type),
-            NodeKind::StructLiteral { left, fields } => {
-                self.struct_literal(left, fields, node_type)
+            NodeKind::StructLiteral { left, field_literals } => {
+                self.struct_literal(left, field_literals, node_type)
             }
             NodeKind::FieldLiteral { name, expression } => {
                 self.field_literal(name, expression, node_type)
@@ -1293,7 +1293,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn struct_literal(&mut self, _left: usize, fields: Arc<Vec<usize>>, node_type: Option<Type>) {
+    fn struct_literal(&mut self, _left: usize, field_literals: Arc<Vec<usize>>, node_type: Option<Type>) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         self.body_emitters.top().body.emit("(");
@@ -1315,11 +1315,11 @@ impl CodeGenerator {
             self.body_emitters.top().body.emitln("{");
             self.body_emitters.top().body.indent();
 
-            if fields.len() != 1 {
+            if field_literals.len() != 1 {
                 panic!("expected union literal to contain a single field");
             }
 
-            let NodeKind::FieldLiteral { name, .. } = &self.typed_nodes[fields[0]].node_kind else {
+            let NodeKind::FieldLiteral { name, .. } = &self.typed_nodes[field_literals[0]].node_kind else {
                 panic!("invalid field in union literal");
             };
 
@@ -1342,14 +1342,14 @@ impl CodeGenerator {
         self.body_emitters.top().body.emitln("{");
         self.body_emitters.top().body.indent();
 
-        if fields.is_empty() {
+        if field_literals.is_empty() {
             // Since empty structs aren't allowed in C, we generate a placeholder field
             // in structs that would be empty otherwise. We also have to initialize it here.
             self.body_emitters.top().body.emitln("0,");
         }
 
-        for field in fields.iter() {
-            self.gen_node(*field);
+        for field_literal in field_literals.iter() {
+            self.gen_node(*field_literal);
             self.body_emitters.top().body.emitln(",");
         }
 

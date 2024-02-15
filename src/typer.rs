@@ -54,11 +54,6 @@ pub struct GenericIdentifier {
     pub generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
 }
 
-/*
- * Typer refactor WIP:
- * Need to add an add_node function like in the parser. Can't just reuse the old tree because we need to expand the tree with generics and such.
- */
-
 pub struct Typer {
     pub nodes: Vec<Node>,
     pub definition_indices: HashMap<Arc<str>, usize>,
@@ -67,7 +62,7 @@ pub struct Typer {
     pub typed_definition_indices: Vec<usize>,
     pub type_kinds: TypeKinds,
     pub main_function_type_kind_id: Option<usize>,
-    pub had_error: bool,
+    pub error_count: usize,
 
     type_kind_environment: Environment<GenericIdentifier, usize>,
     function_type_kinds: HashMap<GenericIdentifier, usize>,
@@ -92,7 +87,7 @@ impl Typer {
             type_kinds: TypeKinds::new(),
             main_function_type_kind_id: None,
             definition_indices,
-            had_error: false,
+            error_count: 0,
             environment: Environment::new(),
             type_kind_environment: Environment::new(),
             function_type_kinds: HashMap::new(),
@@ -265,7 +260,7 @@ impl Typer {
     }
 
     fn type_error(&mut self, message: &str) -> usize {
-        self.had_error = true;
+        self.error_count += 1;
         self.nodes[self.node_index_stack.last().copied().unwrap_or(0)]
             .start
             .error("Type", message, &self.files);
@@ -350,7 +345,7 @@ impl Typer {
                 elements,
                 repeat_count_const_expression,
             } => self.array_literal(elements, repeat_count_const_expression),
-            NodeKind::StructLiteral { left, fields } => self.struct_literal(left, fields),
+            NodeKind::StructLiteral { left, field_literals } => self.struct_literal(left, field_literals),
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
             NodeKind::TypeSize { type_name } => self.type_size(type_name),
             NodeKind::StructDefinition {
@@ -724,6 +719,14 @@ impl Typer {
 
     fn return_statement(&mut self, expression: Option<usize>) -> usize {
         let typed_expression = self.check_optional_node(expression);
+
+        if let Some(typed_expression) = typed_expression {
+            let expression_type = assert_typed!(self, typed_expression);
+
+            if expression_type.instance_kind == InstanceKind::Name {
+                type_error!(self, "cannot return type name");
+            }
+        }
 
         self.add_node(TypedNode {
             node_kind: NodeKind::ReturnStatement {
@@ -1642,7 +1645,7 @@ impl Typer {
         })
     }
 
-    fn struct_literal(&mut self, left: usize, fields: Arc<Vec<usize>>) -> usize {
+    fn struct_literal(&mut self, left: usize, field_literals: Arc<Vec<usize>>) -> usize {
         let typed_left = self.check_node(left);
         let struct_type = assert_typed!(self, typed_left);
 
@@ -1660,20 +1663,20 @@ impl Typer {
             );
         };
 
-        let mut typed_fields = Vec::new();
+        let mut typed_field_literals = Vec::new();
 
         if is_union {
-            if fields.len() != 1 && expected_fields.len() != 0 {
+            if field_literals.len() != 1 && expected_fields.len() != 0 {
                 type_error!(self, "incorrect number of fields, expected one field to initialize a union");
             }
 
-            if fields.len() > 0 {
-                let typed_field = self.check_node(fields[0]);
-                typed_fields.push(typed_field);
+            if field_literals.len() > 0 {
+                let typed_field_literal = self.check_node(field_literals[0]);
+                typed_field_literals.push(typed_field_literal);
 
-                let field_type = assert_typed!(self, typed_field);
+                let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                let NodeKind::FieldLiteral { name: field_name, .. } = &self.typed_nodes[typed_field].node_kind else {
+                let NodeKind::FieldLiteral { name: field_name, .. } = &self.typed_nodes[typed_field_literal].node_kind else {
                     type_error!(self, "invalid field literal");
                 };
 
@@ -1685,22 +1688,22 @@ impl Typer {
                     type_error!(self, "union doesn't contain a field with this name");
                 };
 
-                if field_type.type_kind_id != expected_fields[expected_field_index].type_kind_id {
+                if field_literal_type.type_kind_id != expected_fields[expected_field_index].type_kind_id {
                     type_error!(self, "incorrect field type");
                 }
             }
         } else {
-            if fields.len() != expected_fields.len() {
+            if field_literals.len() != expected_fields.len() {
                 type_error!(self, "incorrect number of fields");
             }
 
-            for (field, expected_field) in fields.iter().zip(expected_fields.iter()) {
-                let typed_field = self.check_node(*field);
-                typed_fields.push(typed_field);
+            for (field, expected_field) in field_literals.iter().zip(expected_fields.iter()) {
+                let typed_field_literal = self.check_node(*field);
+                typed_field_literals.push(typed_field_literal);
 
-                let field_type = assert_typed!(self, typed_field);
+                let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                if field_type.type_kind_id != expected_field.type_kind_id {
+                if field_literal_type.type_kind_id != expected_field.type_kind_id {
                     type_error!(self, "incorrect field type");
                 }
             }
@@ -1709,7 +1712,7 @@ impl Typer {
         self.add_node(TypedNode {
             node_kind: NodeKind::StructLiteral {
                 left: typed_left,
-                fields: Arc::new(typed_fields),
+                field_literals: Arc::new(typed_field_literals),
             },
             node_type: Some(Type {
                 type_kind_id: struct_type.type_kind_id,
@@ -2034,6 +2037,30 @@ impl Typer {
         statement: usize,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
     ) -> usize {
+        let pre_error_count = self.error_count;
+
+        let is_generic = generic_arg_type_kind_ids.is_some();
+
+        let index = self.function_impl(declaration, statement, generic_arg_type_kind_ids);
+
+        if self.error_count <= pre_error_count || !is_generic {
+            return index;
+        }
+
+        // The place this node was used must have been the node before it in the stack.
+        if let Some(usage_index) = self.node_index_stack.get(self.node_index_stack.len() - 2) {
+            self.nodes[*usage_index].start.usage_error(&self.files);
+        }
+
+        index
+    }
+
+    fn function_impl(
+        &mut self,
+        declaration: usize,
+        statement: usize,
+        generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
+    ) -> usize {
         let NodeKind::FunctionDeclaration {
             name,
             generic_params,
@@ -2083,13 +2110,25 @@ impl Typer {
         let typed_declaration = self.check_node(declaration);
         let declaration_type = assert_typed!(self, typed_declaration);
         let identifier = GenericIdentifier {
-            name: name_text,
+            name: name_text.clone(),
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
         };
         self.function_type_kinds
             .insert(identifier, declaration_type.type_kind_id);
 
         let typed_statement = self.check_node(statement);
+
+        let TypeKind::Function { return_type_kind_id: expected_return_type_kind_id, .. } = self.type_kinds.get_by_id(declaration_type.type_kind_id) else {
+            type_error!(self, "invalid function type");
+        };
+
+        if let Some(return_type) = self.ensure_typed_statement_returns(typed_statement) {
+            if return_type.type_kind_id != expected_return_type_kind_id {
+                type_error!(self, "function does not return the right type");
+            }
+        } else if self.type_kinds.get_by_id(expected_return_type_kind_id) != TypeKind::Void {
+            type_error!(self, "function does not return the correct type of value on all execution paths");
+        }
 
         self.environment.pop();
         self.type_kind_environment.pop();
@@ -2395,6 +2434,43 @@ impl Typer {
             ConstValue::UInt { value } => *value as usize,
             _ => return Some(self.type_error("expected integer")),
         };
+
+        None
+    }
+
+    fn ensure_typed_statement_returns(&self, statement: usize) -> Option<Type> {
+        match &self.typed_nodes[statement].node_kind {
+            NodeKind::Block { statements } => {
+                for statement in statements.iter() {
+                    if let Some(return_type) = self.ensure_typed_statement_returns(*statement) {
+                        return Some(return_type);
+                    }
+                }
+
+                None
+            },
+            NodeKind::Statement { inner: Some(inner) } => self.ensure_typed_statement_returns(*inner),
+            NodeKind::ReturnStatement { expression: Some(expression) } => self.typed_nodes[*expression].node_type.clone(),
+            NodeKind::DeferStatement { statement } => self.ensure_typed_statement_returns(*statement),
+            NodeKind::IfStatement { statement, next: Some(next), .. } => self.ensure_both_typed_statements_return(*statement, *next),
+            NodeKind::SwitchStatement { case_statement, .. } => self.ensure_typed_statement_returns(*case_statement),
+            NodeKind::CaseStatement { statement, next: Some(next), .. } => self.ensure_both_typed_statements_return(*statement, *next),
+            _ => None,
+        }
+    }
+
+    fn ensure_both_typed_statements_return(&self, statement: usize, next: usize) -> Option<Type> {
+        let Some(statement_type) = self.ensure_typed_statement_returns(statement) else {
+            return None;
+        };
+
+        let Some(next_type) = self.ensure_typed_statement_returns(next) else {
+            return None;
+        };
+
+        if statement_type.type_kind_id == next_type.type_kind_id {
+            return Some(statement_type);
+        }
 
         None
     }

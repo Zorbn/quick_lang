@@ -193,8 +193,7 @@ pub enum NodeKind {
     },
     StructLiteral {
         left: usize,
-        // TODO: Should these be renamed field_literals? They are FieldLiterals, not Fields...
-        fields: Arc<Vec<usize>>,
+        field_literals: Arc<Vec<usize>>,
     },
     FieldLiteral {
         name: usize,
@@ -257,7 +256,7 @@ pub struct Parser {
     pub nodes: Vec<Node>,
     pub definition_indices: HashMap<Arc<str>, usize>,
     pub extern_function_names: HashSet<Arc<str>>,
-    pub had_error: bool,
+    pub error_count: usize,
 
     files: Arc<Vec<FileData>>,
 }
@@ -270,7 +269,7 @@ impl Parser {
             nodes: Vec::new(),
             definition_indices: HashMap::new(),
             extern_function_names: HashSet::new(),
-            had_error: false,
+            error_count: 0,
             position: 0,
         }
     }
@@ -350,7 +349,7 @@ impl Parser {
     }
 
     fn error(&mut self, message: &str) {
-        self.had_error = true;
+        self.error_count += 1;
         self.token_start().error("Syntax", message, &self.files);
     }
 
@@ -1446,10 +1445,10 @@ impl Parser {
         assert_token!(self, TokenKind::LBrace, start, self.token_end());
         self.position += 1;
 
-        let mut fields = Vec::new();
+        let mut field_literals = Vec::new();
 
         while *self.token_kind() != TokenKind::RBrace {
-            fields.push(self.field_literal());
+            field_literals.push(self.field_literal());
 
             if *self.token_kind() != TokenKind::Comma {
                 break;
@@ -1466,7 +1465,7 @@ impl Parser {
         self.add_node(Node {
             kind: NodeKind::StructLiteral {
                 left,
-                fields: Arc::new(fields),
+                field_literals: Arc::new(field_literals),
             },
             start,
             end,

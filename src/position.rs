@@ -40,7 +40,16 @@ impl Position {
             files[self.file_index].path.to_str().unwrap_or("?"),
             self.line,
             self.column,
-            message
+            message,
+        );
+    }
+
+    pub fn usage_error(&self, files: &[FileData]) {
+        println!(
+            "^ From usage at {}:{}:{}",
+            files[self.file_index].path.to_str().unwrap_or("?"),
+            self.line,
+            self.column,
         );
     }
 }

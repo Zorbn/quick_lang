@@ -11,7 +11,6 @@
 ### TODOs
 
 #### Type Checking
-- Make sure all non-void functions return, and that all returns have the correct type.
 - Check for duplicate names of variables, functions, types, fields, etc.
 
 #### Project Structure
@@ -33,6 +32,7 @@
 - Allow `sizeof` on complex types at compile time.
 - Generics are currently handled like "templates", they get type checked once for each usage. This is nice for flexibility, eg. a generic function that contains `genericFoo.bar()` will only cause an error if that generic function is called with a type parameter that doesn't have a `.bar()` method. However, it means that a generic function has to get used for it to get type checked.
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
+- Prevent using Void as the type of variables/params/etc (*Void is ok).
 
 #### Standard Library
 - `func alloc<T>(value T) *T` alternative to malloc for simple situations.

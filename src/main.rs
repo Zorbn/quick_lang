@@ -92,7 +92,7 @@ fn main() -> ExitCode {
         parser_start_indices.push(start_index);
     }
 
-    if parser.had_error {
+    if parser.error_count > 0 {
         return ExitCode::FAILURE;
     }
 
@@ -102,7 +102,7 @@ fn main() -> ExitCode {
         typer.check(*start_index);
     }
 
-    if typer.had_error {
+    if typer.error_count > 0 {
         return ExitCode::FAILURE;
     }
 
