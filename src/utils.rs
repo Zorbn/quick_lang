@@ -13,10 +13,10 @@ pub fn is_typed_expression_array_literal(typed_nodes: &[TypedNode], expression: 
 pub fn get_field_index_by_name(
     name_text: &Arc<str>,
     typed_nodes: &[TypedNode],
-    field_kinds: &Arc<Vec<Field>>,
+    fields: &Arc<Vec<Field>>,
 ) -> Option<usize> {
     let mut tag = None;
-    for (i, field) in field_kinds.iter().enumerate() {
+    for (i, field) in fields.iter().enumerate() {
         let NodeKind::Name {
             text: field_name_text,
         } = &typed_nodes[field.name].node_kind

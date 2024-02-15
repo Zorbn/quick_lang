@@ -11,7 +11,6 @@
 ### TODOs
 
 #### Type Checking
-- Check struct literal fields.
 - Make sure all non-void functions return, and that all returns have the correct type.
 - Check for duplicate names of variables, functions, types, fields, etc.
 

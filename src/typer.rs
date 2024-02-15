@@ -5,7 +5,7 @@ use crate::{
     environment::Environment,
     file_data::FileData,
     parser::{DeclarationKind, Node, NodeKind, Op},
-    type_kinds::{Field, TypeKind, TypeKinds},
+    type_kinds::{Field, TypeKind, TypeKinds}, utils::get_field_index_by_name,
 };
 
 #[derive(Clone, Debug)]
@@ -1283,7 +1283,7 @@ impl Typer {
                 ),
             };
 
-        let TypeKind::Struct { field_kinds, .. } = &self.type_kinds.get_by_id(struct_type_kind_id)
+        let TypeKind::Struct { fields, .. } = &self.type_kinds.get_by_id(struct_type_kind_id)
         else {
             type_error!(self, "field access is only allowed on struct types");
         };
@@ -1291,7 +1291,7 @@ impl Typer {
         for Field {
             name: field_name,
             type_kind_id: field_kind_id,
-        } in field_kinds.iter()
+        } in fields.iter()
         {
             let NodeKind::Name {
                 text: field_name_text,
@@ -1646,20 +1646,64 @@ impl Typer {
         let typed_left = self.check_node(left);
         let struct_type = assert_typed!(self, typed_left);
 
-        let mut typed_fields = Vec::new();
-        for field in fields.iter() {
-            typed_fields.push(self.check_node(*field));
-        }
-
-        if !matches!(
-            self.type_kinds.get_by_id(struct_type.type_kind_id),
-            TypeKind::Struct { .. }
-        ) || struct_type.instance_kind != InstanceKind::Name
-        {
+        if struct_type.instance_kind != InstanceKind::Name {
             type_error!(
                 self,
                 "expected struct literal to start with the name of a struct type"
             );
+        }
+
+        let TypeKind::Struct { fields: expected_fields, is_union, .. } = self.type_kinds.get_by_id(struct_type.type_kind_id) else {
+            type_error!(
+                self,
+                "expected struct type in struct literal"
+            );
+        };
+
+        let mut typed_fields = Vec::new();
+
+        if is_union {
+            if fields.len() != 1 && expected_fields.len() != 0 {
+                type_error!(self, "incorrect number of fields, expected one field to initialize a union");
+            }
+
+            if fields.len() > 0 {
+                let typed_field = self.check_node(fields[0]);
+                typed_fields.push(typed_field);
+
+                let field_type = assert_typed!(self, typed_field);
+
+                let NodeKind::FieldLiteral { name: field_name, .. } = &self.typed_nodes[typed_field].node_kind else {
+                    type_error!(self, "invalid field literal");
+                };
+
+                let NodeKind::Name { text: field_name_text } = &self.typed_nodes[*field_name].node_kind else {
+                    type_error!(self, "invalid field name");
+                };
+
+                let Some(expected_field_index) = get_field_index_by_name(field_name_text, &self.typed_nodes, &expected_fields) else {
+                    type_error!(self, "union doesn't contain a field with this name");
+                };
+
+                if field_type.type_kind_id != expected_fields[expected_field_index].type_kind_id {
+                    type_error!(self, "incorrect field type");
+                }
+            }
+        } else {
+            if fields.len() != expected_fields.len() {
+                type_error!(self, "incorrect number of fields");
+            }
+
+            for (field, expected_field) in fields.iter().zip(expected_fields.iter()) {
+                let typed_field = self.check_node(*field);
+                typed_fields.push(typed_field);
+
+                let field_type = assert_typed!(self, typed_field);
+
+                if field_type.type_kind_id != expected_field.type_kind_id {
+                    type_error!(self, "incorrect field type");
+                }
+            }
         }
 
         self.add_node(TypedNode {
@@ -1799,7 +1843,7 @@ impl Typer {
         }
 
         let mut typed_fields = Vec::new();
-        let mut field_kinds = Vec::new();
+        let mut type_kind_fields = Vec::new();
 
         for field in fields.iter() {
             let typed_field = self.check_node(*field);
@@ -1816,7 +1860,7 @@ impl Typer {
 
             let typed_field_name = self.check_node(field_name);
 
-            field_kinds.push(Field {
+            type_kind_fields.push(Field {
                 name: typed_field_name,
                 type_kind_id: field_type_kind_id,
             })
@@ -1828,7 +1872,7 @@ impl Typer {
             type_kind_id,
             TypeKind::Struct {
                 name: typed_name,
-                field_kinds: Arc::new(field_kinds),
+                fields: Arc::new(type_kind_fields),
                 is_union,
             },
         );

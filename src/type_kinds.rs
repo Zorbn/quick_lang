@@ -35,7 +35,7 @@ pub enum TypeKind {
     },
     Struct {
         name: usize,
-        field_kinds: Arc<Vec<Field>>,
+        fields: Arc<Vec<Field>>,
         is_union: bool,
     },
     Placeholder,

@@ -141,11 +141,11 @@ impl CodeGenerator {
         code_generator.header_emitter.newline();
         code_generator.body_emitters.push(1);
 
-        code_generator.emit_main_function();
-
         if is_debug_mode {
             code_generator.emit_bounds_check();
         }
+
+        code_generator.emit_main_function();
 
         code_generator
     }
@@ -883,7 +883,7 @@ impl CodeGenerator {
                     };
 
                 if let TypeKind::Struct {
-                    field_kinds,
+                    fields,
                     is_union,
                     ..
                 } = &self.type_kinds.get_by_id(dereferenced_left_type_kind_id)
@@ -896,7 +896,7 @@ impl CodeGenerator {
                         };
 
                         let Some(tag) =
-                            get_field_index_by_name(&name_text, &self.typed_nodes, field_kinds)
+                            get_field_index_by_name(&name_text, &self.typed_nodes, fields)
                         else {
                             panic!("tag not found in union assignment");
                         };
@@ -1045,7 +1045,7 @@ impl CodeGenerator {
 
         if let TypeKind::Tag = self.type_kinds.get_by_id(node_type.unwrap().type_kind_id) {
             let TypeKind::Struct {
-                field_kinds,
+                fields,
                 is_union,
                 ..
             } = &self.type_kinds.get_by_id(left_type.type_kind_id)
@@ -1059,7 +1059,7 @@ impl CodeGenerator {
                     panic!("invalid tag name in tag access");
                 };
 
-                let Some(tag) = get_field_index_by_name(&name_text, &self.typed_nodes, field_kinds)
+                let Some(tag) = get_field_index_by_name(&name_text, &self.typed_nodes, fields)
                 else {
                     panic!("tag not found in field access");
                 };
@@ -1081,7 +1081,7 @@ impl CodeGenerator {
             };
 
         if let TypeKind::Struct {
-            field_kinds,
+            fields,
             is_union,
             ..
         } = &self.type_kinds.get_by_id(dereferenced_left_type_kind_id)
@@ -1092,7 +1092,7 @@ impl CodeGenerator {
                     panic!("invalid field name in field access");
                 };
 
-                let Some(tag) = get_field_index_by_name(&name_text, &self.typed_nodes, field_kinds)
+                let Some(tag) = get_field_index_by_name(&name_text, &self.typed_nodes, fields)
                 else {
                     panic!("tag not found in field access");
                 };
@@ -1302,7 +1302,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(") ");
 
         let TypeKind::Struct {
-            field_kinds,
+            fields: type_kind_fields,
             is_union,
             ..
         } = &self.type_kinds.get_by_id(type_kind_id)
@@ -1327,7 +1327,7 @@ impl CodeGenerator {
                 panic!("invalid field name text in union literal");
             };
 
-            let Some(tag) = get_field_index_by_name(name_text, &self.typed_nodes, field_kinds)
+            let Some(tag) = get_field_index_by_name(name_text, &self.typed_nodes, type_kind_fields)
             else {
                 panic!("tag not found in union literal");
             };

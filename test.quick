@@ -55,7 +55,7 @@ func Main(argc Int, argv *val String) Int
 
     val someonesName = Name.Carson;
 
-    var genericUnion = GenericUnion.<Int32, Int64> { b = 0 };
+    var genericUnion = GenericUnion.<Int32, Int64> { b = 0 as Int64 };
     genericUnion.a = 5 as Int32;
     genericUnion.b = 8 as Int64;
     val testUnionAccess = genericUnion.b;
