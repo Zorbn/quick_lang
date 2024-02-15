@@ -24,3 +24,10 @@ func genericFunction2<C, D>(a C, b D) C
 
     return arrayA[2];
 }
+
+func callsMain() Void
+{
+    val argc = 5;
+    val argv = "hello";
+    Main(argc, &argv);
+}

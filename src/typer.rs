@@ -1161,13 +1161,13 @@ impl Typer {
         }
 
         let mut typed_args = Vec::new();
-        for (arg, param_type_kind) in args.iter().zip(param_type_kind_ids.iter()) {
+        for (arg, param_type_kind_id) in args.iter().zip(param_type_kind_ids.iter()) {
             let typed_arg = self.check_node(*arg);
             typed_args.push(typed_arg);
 
             let arg_type = assert_typed!(self, typed_arg);
 
-            if arg_type.type_kind_id != *param_type_kind {
+            if arg_type.type_kind_id != *param_type_kind_id {
                 type_error!(self, "incorrect argument type");
             }
         }
