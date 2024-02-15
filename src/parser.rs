@@ -17,14 +17,27 @@ pub enum DeclarationKind {
 pub enum Op {
     Plus,
     Minus,
+    BitwiseOr,
+    Xor,
     Multiply,
     Divide,
+    Modulo,
+    BitwiseAnd,
+    LeftShift,
+    RightShift,
     Not,
+    BitwiseNot,
     Assign,
     PlusAssign,
     MinusAssign,
     MultiplyAssign,
     DivideAssign,
+    LeftShiftAssign,
+    RightShiftAssign,
+    ModuloAssign,
+    BitwiseAndAssign,
+    BitwiseOrAssign,
+    XorAssign,
     Equal,
     NotEqual,
     Less,
@@ -1032,16 +1045,16 @@ impl Parser {
      *
      * (Nestable, eg. &pointer^)
      * UnarySuffix: .<, .*, [], (), ., as, {}
-     * UnaryPrefix: &, !, +, -
+     * UnaryPrefix: &, !, ~, +, -
      *
      * (Chainable, eg. a * b / c)
-     * Factor: *, /
-     * Term: +, -
+     * Factor: *, /, %, &, <<, >>
+     * Term: +, -, |, ^
      * Inequality: <, <=, >, >=
      * Equality: ==, !=
      * BooleanAnd: &&
      * BooleanOr: ||
-     * Assignment: =, +=, -=, /=, *=
+     * Assignment: =, +=, -=, /=, *=, %=, <<=, >>=, &=, ^=, |=
      */
     fn expression(&mut self) -> usize {
         self.assignment()
@@ -1072,6 +1085,12 @@ impl Parser {
                 TokenKind::MinusEqual => Op::MinusAssign,
                 TokenKind::MultiplyEqual => Op::MultiplyAssign,
                 TokenKind::DivideEqual => Op::DivideAssign,
+                TokenKind::LessLessEqual => Op::LeftShiftAssign,
+                TokenKind::GreaterGreaterEqual => Op::RightShiftAssign,
+                TokenKind::PercentEqual => Op::ModuloAssign,
+                TokenKind::AmpersandEqual => Op::BitwiseAndAssign,
+                TokenKind::PipeEqual => Op::BitwiseOrAssign,
+                TokenKind::CaretEqual => Op::XorAssign,
                 _ => break,
             };
 
@@ -1190,6 +1209,8 @@ impl Parser {
             let op = match *self.token_kind() {
                 TokenKind::Plus => Op::Plus,
                 TokenKind::Minus => Op::Minus,
+                TokenKind::Pipe => Op::BitwiseOr,
+                TokenKind::Caret => Op::Xor,
                 _ => break,
             };
             self.position += 1;
@@ -1214,6 +1235,10 @@ impl Parser {
             let op = match *self.token_kind() {
                 TokenKind::Asterisk => Op::Multiply,
                 TokenKind::Divide => Op::Divide,
+                TokenKind::Percent => Op::Modulo,
+                TokenKind::Ampersand => Op::BitwiseAnd,
+                TokenKind::LessLess => Op::LeftShift,
+                TokenKind::GreaterGreater => Op::RightShift,
                 _ => break,
             };
             self.position += 1;
@@ -1234,6 +1259,7 @@ impl Parser {
         let start = self.token_start();
         let op = match *self.token_kind() {
             TokenKind::Not => Op::Not,
+            TokenKind::Tilde => Op::BitwiseNot,
             TokenKind::Plus => Op::Plus,
             TokenKind::Minus => Op::Minus,
             TokenKind::Ampersand => Op::Reference,

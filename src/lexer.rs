@@ -24,6 +24,18 @@ pub enum TokenKind {
     Dereference,
     GenericSpecifier,
     Divide,
+    LessLess,
+    GreaterGreater,
+    Percent,
+    Pipe,
+    Caret,
+    Tilde,
+    LessLessEqual,
+    GreaterGreaterEqual,
+    PercentEqual,
+    AmpersandEqual,
+    CaretEqual,
+    PipeEqual,
     Equal,
     PlusEqual,
     MinusEqual,
@@ -90,6 +102,18 @@ impl Display for TokenKind {
             TokenKind::Dereference => ".*",
             TokenKind::GenericSpecifier => ".<",
             TokenKind::Divide => "/",
+            TokenKind::LessLess => "<<",
+            TokenKind::GreaterGreater => ">>",
+            TokenKind::Percent => "%",
+            TokenKind::Pipe => "|",
+            TokenKind::Caret => "^",
+            TokenKind::Tilde => "~",
+            TokenKind::LessLessEqual => "<<=",
+            TokenKind::GreaterGreaterEqual => ">>=",
+            TokenKind::PercentEqual => "%=",
+            TokenKind::AmpersandEqual => "&=",
+            TokenKind::CaretEqual => "^=",
+            TokenKind::PipeEqual => "|=",
             TokenKind::Equal => "=",
             TokenKind::PlusEqual => "+=",
             TokenKind::MinusEqual => "-=",
@@ -192,6 +216,14 @@ fn two_char_ops() -> &'static HashMap<String, TokenKind> {
         ops.insert("||".into(), TokenKind::Or);
         ops.insert(".*".into(), TokenKind::Dereference);
         ops.insert(".<".into(), TokenKind::GenericSpecifier);
+        ops.insert("<<".into(), TokenKind::LessLess);
+        ops.insert(">>".into(), TokenKind::GreaterGreater);
+        ops.insert("<<=".into(), TokenKind::LessLessEqual);
+        ops.insert(">>=".into(), TokenKind::GreaterGreaterEqual);
+        ops.insert("%=".into(), TokenKind::PercentEqual);
+        ops.insert("&=".into(), TokenKind::AmpersandEqual);
+        ops.insert("^=".into(), TokenKind::CaretEqual);
+        ops.insert("|=".into(), TokenKind::PipeEqual);
         ops
     })
 }
@@ -334,9 +366,30 @@ impl Lexer {
                 continue;
             }
 
+            let start = self.position;
+
+            if self.try_consume_string("<<=") {
+                self.tokens.push(Token {
+                    kind: TokenKind::LessLessEqual,
+                    start,
+                    end: self.position,
+                });
+
+                continue;
+            }
+
+            if self.try_consume_string(">>=") {
+                self.tokens.push(Token {
+                    kind: TokenKind::GreaterGreaterEqual,
+                    start,
+                    end: self.position,
+                });
+
+                continue;
+            }
+
             if self.char().is_alphabetic() || self.char() == '_' {
                 let mut c = self.char();
-                let start = self.position;
 
                 while Lexer::is_char_valid_in_identifier(c) {
                     self.position.advance();
@@ -367,7 +420,6 @@ impl Lexer {
             if self.char().is_numeric() {
                 let mut c = self.char();
                 let mut has_decimal_point = false;
-                let start = self.position;
 
                 while c.is_numeric() || (c == '.' && !has_decimal_point) {
                     if c == '.' {
@@ -408,151 +460,29 @@ impl Lexer {
                 continue;
             }
 
-            match self.char() {
-                '(' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::LParen,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                ')' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::RParen,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '{' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::LBrace,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '}' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::RBrace,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '[' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::LBracket,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                ']' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::RBracket,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                ',' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Comma,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                ';' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Semicolon,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '.' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Period,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '+' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Plus,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '-' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Minus,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '*' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Asterisk,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '&' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Ampersand,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '/' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Divide,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '=' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Equal,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '<' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Less,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '>' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Greater,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
-                '!' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Not,
-                        start: self.position,
-                        end: self.position,
-                    });
-                    self.position.advance();
-                }
+            let kind = match self.char() {
+                '(' => TokenKind::LParen,
+                ')' => TokenKind::RParen,
+                '{' => TokenKind::LBrace,
+                '}' => TokenKind::RBrace,
+                '[' => TokenKind::LBracket,
+                ']' => TokenKind::RBracket,
+                ',' => TokenKind::Comma,
+                ';' => TokenKind::Semicolon,
+                '.' => TokenKind::Period,
+                '+' => TokenKind::Plus,
+                '-' => TokenKind::Minus,
+                '*' => TokenKind::Asterisk,
+                '&' => TokenKind::Ampersand,
+                '/' => TokenKind::Divide,
+                '=' => TokenKind::Equal,
+                '<' => TokenKind::Less,
+                '>' => TokenKind::Greater,
+                '!' => TokenKind::Not,
+                '^' => TokenKind::Caret,
+                '~' => TokenKind::Tilde,
+                '%' => TokenKind::Percent,
+                '|' => TokenKind::Pipe,
                 '\'' => {
                     let start = self.position;
                     self.position.advance();
@@ -576,6 +506,8 @@ impl Lexer {
                         start,
                         end: self.position,
                     });
+
+                    continue;
                 }
                 '"' => {
                     self.position.advance();
@@ -618,17 +550,21 @@ impl Lexer {
                         end,
                     });
                     self.position.advance();
+
+                    continue;
                 }
                 _ => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Error,
-                        start: self.position,
-                        end: self.position,
-                    });
                     self.error(&format!("unexpected character \"{}\"", self.char()));
-                    self.position.advance();
+                    TokenKind::Error
                 }
             };
+
+            self.tokens.push(Token {
+                kind,
+                start: self.position,
+                end: self.position,
+            });
+            self.position.advance();
         }
     }
 }

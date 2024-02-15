@@ -24,7 +24,6 @@
 - Default parameters.
 - Variadic arguments.
 - `for elem in array {}`
-- Bitwise operations (with more intuitive precedence than C).
 - Possibly generic type inference, so specifiers aren't required?
 - Bring back methods, implemented better than they were originally.
 - Enum methods.

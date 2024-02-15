@@ -861,7 +861,7 @@ impl Typer {
 
         if matches!(
             op,
-            Op::Assign | Op::PlusAssign | Op::MinusAssign | Op::MultiplyAssign | Op::DivideAssign
+            Op::Assign | Op::PlusAssign | Op::MinusAssign | Op::MultiplyAssign | Op::DivideAssign | Op::BitwiseAndAssign | Op::BitwiseOrAssign | Op::XorAssign | Op::LeftShiftAssign | Op::RightShiftAssign | Op::ModuloAssign
         ) && left_type.instance_kind != InstanceKind::Var
         {
             type_error!(self, "only variables can be assigned to");
@@ -872,10 +872,23 @@ impl Typer {
             | Op::Minus
             | Op::Multiply
             | Op::Divide
+            | Op::Modulo
             | Op::PlusAssign
             | Op::MinusAssign
             | Op::MultiplyAssign
-            | Op::DivideAssign => {
+            | Op::DivideAssign
+            | Op::LeftShiftAssign
+            | Op::RightShiftAssign
+            | Op::ModuloAssign
+            | Op::BitwiseAndAssign
+            | Op::BitwiseOrAssign
+            | Op::XorAssign
+            | Op::LeftShift
+            | Op::RightShift
+            | Op::BitwiseAnd
+            | Op::BitwiseOr
+            | Op::BitwiseNot
+            | Op::Xor => {
                 if !self
                     .type_kinds
                     .get_by_id(left_type.type_kind_id)
@@ -1901,7 +1914,7 @@ impl Typer {
         return_type_name: usize,
     ) -> usize {
         let typed_name = self.check_node(name);
-        
+
         let mut typed_params = Vec::new();
         let mut param_type_kind_ids = Vec::new();
         for param in params.iter() {
@@ -1928,14 +1941,14 @@ impl Typer {
         let NodeKind::Name { text: name_text } = &self.typed_nodes[typed_name].node_kind else {
             type_error!(self, "invalid name in function declaration");
         };
-        
+
         if name_text.as_ref() == "Main" {
             self.main_function_type_kind_id = Some(type_kind_id);
-            
+
             if self.type_kinds.get_by_id(return_type.type_kind_id) != TypeKind::Int {
                 type_error!(self, "expected Main to return an Int");
             }
-            
+
             if param_type_kind_ids.len() > 0 {
                 if param_type_kind_ids.len() < 2 {
                     type_error!(self, "invalid parameters for Main function");

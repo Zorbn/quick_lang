@@ -4,7 +4,13 @@ use std::{
 };
 
 use crate::{
-    const_value::ConstValue, emitter::Emitter, emitter_stack::EmitterStack, parser::{DeclarationKind, NodeKind, Op}, type_kinds::{TypeKind, TypeKinds}, typer::{InstanceKind, Type, TypedNode}, utils::{get_field_index_by_name, is_typed_expression_array_literal}
+    const_value::ConstValue,
+    emitter::Emitter,
+    emitter_stack::EmitterStack,
+    parser::{DeclarationKind, NodeKind, Op},
+    type_kinds::{TypeKind, TypeKinds},
+    typer::{InstanceKind, Type, TypedNode},
+    utils::{get_field_index_by_name, is_typed_expression_array_literal},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -157,12 +163,7 @@ impl CodeGenerator {
                     fields,
                     is_union,
                     ..
-                } => self.struct_definition(
-                    name,
-                    fields,
-                    is_union,
-                    node_type,
-                ),
+                } => self.struct_definition(name, fields, is_union, node_type),
                 NodeKind::EnumDefinition {
                     name,
                     variant_names,
@@ -170,11 +171,7 @@ impl CodeGenerator {
                 NodeKind::Function {
                     declaration,
                     statement,
-                } => self.function(
-                    declaration,
-                    statement,
-                    node_type,
-                ),
+                } => self.function(declaration, statement, node_type),
                 NodeKind::ExternFunction { declaration } => {
                     self.extern_function(declaration, node_type)
                 }
@@ -457,12 +454,7 @@ impl CodeGenerator {
         self.type_prototype_emitter.emitln(";");
     }
 
-    fn function(
-        &mut self,
-        declaration: usize,
-        statement: usize,
-        _node_type: Option<Type>,
-    ) {
+    fn function(&mut self, declaration: usize, statement: usize, _node_type: Option<Type>) {
         self.gen_node(declaration);
         self.function_declaration_needing_init = Some(declaration);
         self.emit_scoped_statement(statement);
@@ -945,9 +937,22 @@ impl CodeGenerator {
             }
         }
 
+        let needs_increased_precedence = matches!(
+            op,
+            Op::BitwiseOr | Op::Xor | Op::BitwiseAnd | Op::LeftShift | Op::RightShift
+        );
+
+        if needs_increased_precedence {
+            self.body_emitters.top().body.emit("(")
+        }
+
         self.gen_node(left);
         self.emit_binary_op(op);
         self.gen_node(right);
+
+        if needs_increased_precedence {
+            self.body_emitters.top().body.emit(")")
+        }
     }
 
     fn unary_prefix(&mut self, op: Op, right: usize, _node_type: Option<Type>) {
@@ -1580,13 +1585,25 @@ impl CodeGenerator {
             Op::Minus => " - ",
             Op::Multiply => " * ",
             Op::Divide => " / ",
+            Op::Modulo => " % ",
             Op::Assign => " = ",
             Op::And => " && ",
             Op::Or => " || ",
+            Op::BitwiseOr => " | ",
+            Op::Xor => " ^ ",
+            Op::BitwiseAnd => " & ",
+            Op::LeftShift => " << ",
+            Op::RightShift => " >> ",
             Op::PlusAssign => " += ",
             Op::MinusAssign => " -= ",
             Op::MultiplyAssign => " *= ",
             Op::DivideAssign => " /= ",
+            Op::ModuloAssign => " %= ",
+            Op::LeftShiftAssign => " <<= ",
+            Op::RightShiftAssign => " >>= ",
+            Op::BitwiseAndAssign => " &= ",
+            Op::BitwiseOrAssign => " |= ",
+            Op::XorAssign => " ^= ",
             _ => panic!("expected binary operator"),
         });
     }
@@ -1774,16 +1791,26 @@ impl CodeGenerator {
             return;
         };
 
-        let TypeKind::Function { param_type_kind_ids, .. } = &self.type_kinds.get_by_id(main_function_type_kind_id) else {
+        let TypeKind::Function {
+            param_type_kind_ids,
+            ..
+        } = &self.type_kinds.get_by_id(main_function_type_kind_id)
+        else {
             panic!("invalid main function");
         };
 
         if param_type_kind_ids.len() > 0 {
-            self.body_emitters.top().body.emitln("int main(int argc, char** argv) {");
+            self.body_emitters
+                .top()
+                .body
+                .emitln("int main(int argc, char** argv) {");
             self.body_emitters.top().body.indent();
             self.body_emitters.top().body.emit("return (int)Main");
             self.emit_number_backwards(main_function_type_kind_id, EmitterKind::Body);
-            self.body_emitters.top().body.emitln("((intptr_t)argv, (const char *const *)argv);");
+            self.body_emitters
+                .top()
+                .body
+                .emitln("((intptr_t)argv, (const char *const *)argv);");
             self.body_emitters.top().body.unindent();
             self.body_emitters.top().body.emitln("}");
             self.body_emitters.top().body.newline();
