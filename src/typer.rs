@@ -602,6 +602,10 @@ impl Typer {
         let typed_type_name = self.check_node(type_name);
         let type_name_type = assert_typed!(self, typed_type_name);
 
+        if let TypeKind::Void = self.type_kinds.get_by_id(type_name_type.type_kind_id) {
+            type_error!(self, "parameter cannot be of type Void");
+        }
+
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
             type_error!(self, "invalid parameter name");
         };
@@ -686,11 +690,13 @@ impl Typer {
             type_error!(self, "cannot declare a const with a non-const value");
         }
 
-        if let TypeKind::Function { .. } = self.type_kinds.get_by_id(variable_type.type_kind_id) {
-            type_error!(
+        match self.type_kinds.get_by_id(variable_type.type_kind_id) {
+            TypeKind::Function { .. } => type_error!(
                 self,
                 "variables can't have a function type, try a function pointer instead"
-            );
+            ),
+            TypeKind::Void => type_error!(self, "variables cannot be of type Void"),
+            _ => {}
         }
 
         let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
@@ -1943,6 +1949,10 @@ impl Typer {
         let typed_name = self.check_node(name);
         let typed_type_name = self.check_node(type_name);
         let type_name_type = assert_typed!(self, typed_type_name);
+
+        if let TypeKind::Void = self.type_kinds.get_by_id(type_name_type.type_kind_id) {
+            type_error!(self, "field cannot be of type Void");
+        }
 
         self.add_node(TypedNode {
             node_kind: NodeKind::Field {
