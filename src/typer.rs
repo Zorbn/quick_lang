@@ -1637,7 +1637,7 @@ impl Typer {
                 instance_kind: InstanceKind::Literal,
             })
         } else {
-            None
+            type_error!(self, "array literal must contain at least one element");
         };
 
         let typed_repeat_count_const_expression =
