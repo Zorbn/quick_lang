@@ -1,0 +1,7 @@
+extern func puts(string String) UInt
+
+func Main() Int
+{
+    puts("Hello, World!");
+    return 0;
+}

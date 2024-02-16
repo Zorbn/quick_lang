@@ -250,15 +250,16 @@ macro_rules! parse_error {
 }
 
 pub struct Parser {
-    pub tokens: Option<Vec<Token>>,
-    pub position: usize,
+    tokens: Option<Vec<Token>>,
 
     pub nodes: Vec<Node>,
     pub definition_indices: HashMap<Arc<str>, usize>,
     pub extern_function_names: HashSet<Arc<str>>,
+    pub start_index: usize,
     pub error_count: usize,
 
     files: Arc<Vec<FileData>>,
+    position: usize,
 }
 
 impl Parser {
@@ -270,6 +271,7 @@ impl Parser {
             definition_indices: HashMap::new(),
             extern_function_names: HashSet::new(),
             error_count: 0,
+            start_index: 0,
             position: 0,
         }
     }
@@ -353,10 +355,10 @@ impl Parser {
         self.token_start().error("Syntax", message, &self.files);
     }
 
-    pub fn parse(&mut self, tokens: Vec<Token>) -> usize {
+    pub fn parse(&mut self, tokens: Vec<Token>) {
         self.position = 0;
         self.tokens = Some(tokens);
-        self.top_level()
+        self.start_index = self.top_level();
     }
 
     fn top_level(&mut self) -> usize {

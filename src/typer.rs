@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
+use std::{collections::{HashMap, HashSet}, hash::Hash, mem, sync::Arc};
 
 use crate::{
     const_value::ConstValue,
@@ -55,8 +55,9 @@ pub struct GenericIdentifier {
 }
 
 pub struct Typer {
-    pub nodes: Vec<Node>,
-    pub definition_indices: HashMap<Arc<str>, usize>,
+    nodes: Vec<Node>,
+    definition_indices: HashMap<Arc<str>, usize>,
+    pub extern_function_names: HashSet<Arc<str>>,
 
     pub typed_nodes: Vec<TypedNode>,
     pub typed_definition_indices: Vec<usize>,
@@ -77,16 +78,18 @@ impl Typer {
     pub fn new(
         nodes: Vec<Node>,
         definition_indices: HashMap<Arc<str>, usize>,
+        extern_function_names: HashSet<Arc<str>>,
         files: Arc<Vec<FileData>>,
     ) -> Self {
         let mut type_checker = Self {
+            nodes,
+            definition_indices,
+            extern_function_names,
             files,
             typed_nodes: Vec::new(),
             typed_definition_indices: Vec::new(),
-            nodes,
             type_kinds: TypeKinds::new(),
             main_function_type_kind_id: None,
-            definition_indices,
             error_count: 0,
             environment: Environment::new(),
             type_kind_environment: Environment::new(),

@@ -22,91 +22,137 @@ pub fn compile(project_path: &str, is_debug_mode: bool, c_flags: &[String]) -> E
 
     let frontend_start = Instant::now();
 
-    let mut file_lexers = Vec::with_capacity(files.len());
-    let mut had_lexing_error = false;
-
-    for i in 0..files.len() {
-        let mut lexer = Lexer::new(i, files.clone());
-        lexer.lex();
-        had_lexing_error = had_lexing_error || lexer.had_error;
-        file_lexers.push(lexer);
-    }
-
-    if had_lexing_error {
+    let lexers = if let Some(lexers) = lex(&files) {
+        lexers
+    } else {
         return ExitCode::FAILURE;
-    }
+    };
 
-    let mut parser = Parser::new(files.clone());
-
-    let mut parser_start_indices = Vec::with_capacity(file_lexers.len());
-    for lexer in file_lexers {
-        let start_index = parser.parse(lexer.tokens);
-        parser_start_indices.push(start_index);
-    }
-
-    if parser.error_count > 0 {
+    let parsers = if let Some(parsers) = parse(lexers, &files) {
+        parsers
+    } else {
         return ExitCode::FAILURE;
-    }
+    };
 
-    let mut typer = Typer::new(parser.nodes, parser.definition_indices, files.clone());
+    let typers = if let Some(typers) = check(parsers, &files) {
+        typers
+    } else {
+        return ExitCode::FAILURE
+    };
 
-    for start_index in &parser_start_indices {
-        typer.check(*start_index);
-    }
-
-    if typer.error_count > 0 {
-        return ExitCode::FAILURE;
-    }
-
-    let mut code_generator = CodeGenerator::new(
-        typer.typed_nodes,
-        typer.type_kinds,
-        typer.main_function_type_kind_id,
-        typer.typed_definition_indices,
-        parser.extern_function_names,
-        is_debug_mode,
-    );
-    code_generator.gen();
-
-    let mut output_file = fs::File::create("bin/out.c").unwrap();
-
-    code_generator.header_emitter.write(&mut output_file);
-    code_generator
-        .type_prototype_emitter
-        .write(&mut output_file);
-    code_generator
-        .function_prototype_emitter
-        .write(&mut output_file);
-    code_generator.body_emitters.write(&mut output_file);
+    gen(typers, &files, is_debug_mode);
 
     println!(
         "Frontend finished in: {:.2?}ms",
         frontend_start.elapsed().as_millis()
     );
 
-    let backend_start = Instant::now();
-
-    match Command::new("clang")
-        .args(["bin/out.c", "-o", "bin/out.exe"])
-        .args(c_flags)
-        .output()
-    {
-        Err(_) => panic!("couldn't compile using the system compiler!"),
-        Ok(output) => {
-            if !output.stderr.is_empty() {
-                println!("System compiler error:\n");
-                io::stdout().write_all(&output.stderr).unwrap();
-                return ExitCode::FAILURE;
-            }
-        }
-    }
-
-    println!(
-        "Backend finished in: {:.2?}ms",
-        backend_start.elapsed().as_millis()
-    );
+//     let backend_start = Instant::now();
+//
+//     match Command::new("clang")
+//         .args(["bin/out.c", "-o", "bin/out.exe"])
+//         .args(c_flags)
+//         .output()
+//     {
+//         Err(_) => panic!("couldn't compile using the system compiler!"),
+//         Ok(output) => {
+//             if !output.stderr.is_empty() {
+//                 println!("System compiler error:\n");
+//                 io::stdout().write_all(&output.stderr).unwrap();
+//                 return ExitCode::FAILURE;
+//             }
+//         }
+//     }
+//
+//     println!(
+//         "Backend finished in: {:.2?}ms",
+//         backend_start.elapsed().as_millis()
+//     );
 
     ExitCode::SUCCESS
+}
+
+fn lex(files: &Arc<Vec<FileData>>) -> Option<Vec<Lexer>> {
+    let mut lexers = Vec::with_capacity(files.len());
+    let mut had_lexing_error = false;
+
+    for i in 0..files.len() {
+        let mut lexer = Lexer::new(i, files.clone());
+        lexer.lex();
+        had_lexing_error = had_lexing_error || lexer.had_error;
+        lexers.push(lexer);
+    }
+
+    if had_lexing_error {
+        None
+    } else {
+        Some(lexers)
+    }
+}
+
+fn parse(lexers: Vec<Lexer>, files: &Arc<Vec<FileData>>) -> Option<Vec<Parser>> {
+    let mut parsers = Vec::with_capacity(lexers.len());
+    let mut had_parsing_error = false;
+
+    for lexer in lexers {
+        let mut parser = Parser::new(files.clone());
+        parser.parse(lexer.tokens);
+        had_parsing_error = had_parsing_error || parser.error_count > 0;
+        parsers.push(parser);
+    }
+
+    if had_parsing_error {
+        None
+    } else {
+        Some(parsers)
+    }
+}
+
+fn check(parsers: Vec<Parser>, files: &Arc<Vec<FileData>>) -> Option<Vec<Typer>> {
+    let mut typers = Vec::with_capacity(parsers.len());
+    let mut had_typing_error = false;
+
+    for parser in parsers {
+        // TODO: Create a list of each parsers definition indices and pass that to the typer,
+        // since each typer will need to be able to find definitions in every file, not just it's own file.
+        let mut typer = Typer::new(parser.nodes, parser.definition_indices, parser.extern_function_names, files.clone());
+        typer.check(parser.start_index);
+        had_typing_error = had_typing_error || typer.error_count > 0;
+        typers.push(typer);
+    }
+
+    if had_typing_error {
+        None
+    } else {
+        Some(typers)
+    }
+}
+
+fn gen(typers: Vec<Typer>, files: &Arc<Vec<FileData>>, is_debug_mode: bool) {
+    for (i, typer) in typers.into_iter().enumerate() {
+        let mut code_generator = CodeGenerator::new(
+            typer.typed_nodes,
+            typer.type_kinds,
+            typer.main_function_type_kind_id,
+            typer.typed_definition_indices,
+            typer.extern_function_names,
+            is_debug_mode,
+        );
+        code_generator.gen();
+
+        let mut output_path = Path::new("bin/").join(&files[i].path);
+        output_path.set_extension("c");
+        let mut output_file = fs::File::create(output_path).unwrap();
+
+        code_generator.header_emitter.write(&mut output_file);
+        code_generator
+            .type_prototype_emitter
+            .write(&mut output_file);
+        code_generator
+            .function_prototype_emitter
+            .write(&mut output_file);
+        code_generator.body_emitters.write(&mut output_file);
+    }
 }
 
 fn collect_source_files(directory: &Path, files: &mut Vec<FileData>) -> io::Result<()> {
