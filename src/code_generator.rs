@@ -7,10 +7,10 @@ use crate::{
     const_value::ConstValue,
     emitter::Emitter,
     emitter_stack::EmitterStack,
-    parser::{DeclarationKind, NodeKind, Op},
-    type_kinds::{TypeKind, TypeKinds},
+    parser::{DeclarationKind, NodeIndex, NodeKind, Op},
+    type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
     typer::{InstanceKind, Type, TypedNode},
-    utils::{get_field_index_by_name, is_typed_expression_array_literal},
+    utils::is_typed_expression_array_literal,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -95,15 +95,15 @@ pub struct CodeGenerator {
     typed_nodes: Vec<TypedNode>,
     type_kinds: TypeKinds,
     main_function_type_kind_id: Option<usize>,
-    typed_definition_indices: Vec<usize>,
-    extern_function_names: HashSet<Arc<str>>,
+    typed_definition_indices: Vec<NodeIndex>,
+    extern_function_names: Arc<HashSet<Arc<str>>>,
 
     pub header_emitter: Emitter,
     pub type_prototype_emitter: Emitter,
     pub function_prototype_emitter: Emitter,
     pub body_emitters: EmitterStack,
 
-    function_declaration_needing_init: Option<usize>,
+    function_declaration_needing_init: Option<NodeIndex>,
     temp_variable_count: usize,
     is_debug_mode: bool,
 }
@@ -113,8 +113,8 @@ impl CodeGenerator {
         typed_nodes: Vec<TypedNode>,
         type_kinds: TypeKinds,
         main_function_type_kind_id: Option<usize>,
-        typed_definition_indices: Vec<usize>,
-        extern_function_names: HashSet<Arc<str>>,
+        typed_definition_indices: Vec<NodeIndex>,
+        extern_function_names: Arc<HashSet<Arc<str>>>,
         is_debug_mode: bool,
     ) -> Self {
         let mut code_generator = Self {
@@ -150,12 +150,16 @@ impl CodeGenerator {
         code_generator
     }
 
+    fn get_typer_node(&self, index: NodeIndex) -> &TypedNode {
+        &self.typed_nodes[index.node_index]
+    }
+
     pub fn gen(&mut self) {
         for i in 0..self.typed_definition_indices.len() {
             let TypedNode {
                 node_kind,
                 node_type,
-            } = self.typed_nodes[self.typed_definition_indices[i]].clone();
+            } = self.get_typer_node(self.typed_definition_indices[i]).clone();
 
             match node_kind {
                 NodeKind::StructDefinition {
@@ -172,19 +176,17 @@ impl CodeGenerator {
                     declaration,
                     statement,
                 } => self.function(declaration, statement, node_type),
-                NodeKind::ExternFunction { declaration } => {
-                    self.extern_function(declaration, node_type)
-                }
+                NodeKind::ExternFunction { declaration } => self.extern_function(declaration, node_type),
                 _ => panic!("unexpected definition kind: {:?}", node_kind),
             }
         }
     }
 
-    fn gen_node(&mut self, index: usize) {
+    fn gen_node(&mut self, index: NodeIndex) {
         let TypedNode {
             node_kind,
             node_type,
-        } = self.typed_nodes[index].clone();
+        } = self.get_typer_node(index).clone();
 
         match node_kind {
             NodeKind::TopLevel {
@@ -303,17 +305,17 @@ impl CodeGenerator {
 
     fn top_level(
         &mut self,
-        _functions: Arc<Vec<usize>>,
-        _structs: Arc<Vec<usize>>,
-        _enums: Arc<Vec<usize>>,
+        _functions: Arc<Vec<NodeIndex>>,
+        _structs: Arc<Vec<NodeIndex>>,
+        _enums: Arc<Vec<NodeIndex>>,
         _node_type: Option<Type>,
     ) {
     }
 
     fn struct_definition(
         &mut self,
-        _name: usize,
-        fields: Arc<Vec<usize>>,
+        _name: NodeIndex,
+        fields: Arc<Vec<NodeIndex>>,
         is_union: bool,
         node_type: Option<Type>,
     ) {
@@ -417,8 +419,8 @@ impl CodeGenerator {
 
     fn enum_definition(
         &mut self,
-        name: usize,
-        variant_names: Arc<Vec<usize>>,
+        name: NodeIndex,
+        variant_names: Arc<Vec<NodeIndex>>,
         _node_type: Option<Type>,
     ) {
         self.type_prototype_emitter.emit("enum ");
@@ -438,7 +440,7 @@ impl CodeGenerator {
         self.type_prototype_emitter.newline();
     }
 
-    fn field(&mut self, name: usize, _type_name: usize, node_type: Option<Type>) {
+    fn field(&mut self, name: NodeIndex, _type_name: NodeIndex, node_type: Option<Type>) {
         self.emit_type_kind_left(
             node_type.clone().unwrap().type_kind_id,
             EmitterKind::TypePrototype,
@@ -454,18 +456,33 @@ impl CodeGenerator {
         self.type_prototype_emitter.emitln(";");
     }
 
-    fn function(&mut self, declaration: usize, statement: usize, _node_type: Option<Type>) {
-        self.gen_node(declaration);
-        self.function_declaration_needing_init = Some(declaration);
-        self.emit_scoped_statement(statement);
-        self.body_emitters.top().body.newline();
+    fn function(&mut self, declaration: NodeIndex, statement: NodeIndex, node_type: Option<Type>) {
+        if matches!(self.get_typer_node(statement).node_kind, NodeKind::Statement { .. }) {
+            self.gen_node(declaration);
+            self.function_declaration_needing_init = Some(declaration);
+            self.emit_scoped_statement(statement);
+            self.body_emitters.top().body.newline();
+        } else {
+            let NodeKind::FunctionDeclaration { name, params, .. } =
+                self.get_typer_node(declaration).node_kind.clone()
+            else {
+                panic!("invalid function declaration");
+            };
+
+            let type_kind_id = node_type.unwrap().type_kind_id;
+
+            self.emit_function_declaration(EmitterKind::FunctionPrototype, name, &params, type_kind_id);
+
+            self.function_prototype_emitter.emitln(";");
+            self.function_prototype_emitter.newline();
+        }
     }
 
     fn function_declaration(
         &mut self,
-        name: usize,
-        params: Arc<Vec<usize>>,
-        _return_type_name: usize,
+        name: NodeIndex,
+        params: Arc<Vec<NodeIndex>>,
+        _return_type_name: NodeIndex,
         node_type: Option<Type>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
@@ -478,11 +495,11 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(" ");
     }
 
-    fn extern_function(&mut self, declaration: usize, node_type: Option<Type>) {
+    fn extern_function(&mut self, declaration: NodeIndex, node_type: Option<Type>) {
         self.function_prototype_emitter.emit("extern ");
 
         let NodeKind::FunctionDeclaration { name, params, .. } =
-            self.typed_nodes[declaration].node_kind.clone()
+            self.get_typer_node(declaration).node_kind.clone()
         else {
             panic!("invalid function declaration");
         };
@@ -495,13 +512,13 @@ impl CodeGenerator {
         self.function_prototype_emitter.newline();
     }
 
-    fn param(&mut self, name: usize, _type_name: usize, node_type: Option<Type>) {
+    fn param(&mut self, name: NodeIndex, _type_name: NodeIndex, node_type: Option<Type>) {
         self.emit_param(name, node_type.unwrap().type_kind_id, EmitterKind::Body);
     }
 
-    fn copy_array_params(&mut self, function_declaration: usize) {
+    fn copy_array_params(&mut self, function_declaration: NodeIndex) {
         let NodeKind::FunctionDeclaration { params, .. } =
-            self.typed_nodes[function_declaration].node_kind.clone()
+            self.get_typer_node(function_declaration).node_kind.clone()
         else {
             panic!("invalid function declaration needing init");
         };
@@ -510,7 +527,7 @@ impl CodeGenerator {
             let TypedNode {
                 node_kind: NodeKind::Param { name, .. },
                 node_type,
-            } = self.typed_nodes[*param].clone()
+            } = self.get_typer_node(*param).clone()
             else {
                 panic!("invalid param in function declaration needing init");
             };
@@ -524,7 +541,7 @@ impl CodeGenerator {
                 continue;
             }
 
-            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
+            let NodeKind::Name { text: name_text } = self.get_typer_node(name).node_kind.clone()
             else {
                 panic!("invalid parameter name");
             };
@@ -545,7 +562,7 @@ impl CodeGenerator {
         }
     }
 
-    fn block(&mut self, statements: Arc<Vec<usize>>, _node_type: Option<Type>) {
+    fn block(&mut self, statements: Arc<Vec<NodeIndex>>, _node_type: Option<Type>) {
         self.body_emitters.top().body.emitln("{");
         self.body_emitters.push(1);
 
@@ -564,7 +581,7 @@ impl CodeGenerator {
             let TypedNode {
                 node_kind: NodeKind::Statement { inner },
                 ..
-            } = self.typed_nodes[*statement]
+            } = self.get_typer_node(*statement)
             else {
                 panic!("last statement is not a statement");
             };
@@ -574,7 +591,7 @@ impl CodeGenerator {
             };
 
             was_last_statement_return = matches!(
-                self.typed_nodes[inner],
+                self.get_typer_node(*inner),
                 TypedNode {
                     node_kind: NodeKind::ReturnStatement { .. },
                     ..
@@ -588,14 +605,14 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn statement(&mut self, inner: Option<usize>, _node_type: Option<Type>) {
+    fn statement(&mut self, inner: Option<NodeIndex>, _node_type: Option<Type>) {
         let Some(inner) = inner else {
             self.body_emitters.top().body.emitln(";");
             return;
         };
 
         let needs_semicolon = !matches!(
-            self.typed_nodes[inner],
+            self.get_typer_node(inner),
             TypedNode {
                 node_kind: NodeKind::DeferStatement { .. },
                 ..
@@ -618,7 +635,7 @@ impl CodeGenerator {
         );
 
         let needs_newline = matches!(
-            self.typed_nodes[inner],
+            self.get_typer_node(inner),
             TypedNode {
                 node_kind: NodeKind::Block { .. },
                 ..
@@ -639,12 +656,12 @@ impl CodeGenerator {
     fn variable_declaration(
         &mut self,
         declaration_kind: DeclarationKind,
-        name: usize,
-        _type_name: Option<usize>,
-        expression: usize,
+        name: NodeIndex,
+        _type_name: Option<NodeIndex>,
+        expression: NodeIndex,
         _node_type: Option<Type>,
     ) {
-        let type_kind_id = self.typed_nodes[expression]
+        let type_kind_id = self.get_typer_node(expression)
             .node_type
             .as_ref()
             .unwrap()
@@ -666,7 +683,7 @@ impl CodeGenerator {
         if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
             self.body_emitters.top().body.emitln(";");
 
-            let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
+            let NodeKind::Name { text: name_text } = self.get_typer_node(name).node_kind.clone()
             else {
                 panic!("invalid variable name");
             };
@@ -677,7 +694,7 @@ impl CodeGenerator {
         }
     }
 
-    fn return_statement(&mut self, expression: Option<usize>, _node_type: Option<Type>) {
+    fn return_statement(&mut self, expression: Option<NodeIndex>, _node_type: Option<Type>) {
         self.body_emitters.exiting_all_scopes();
 
         let expression = if let Some(expression) = expression {
@@ -687,7 +704,7 @@ impl CodeGenerator {
             return;
         };
 
-        let type_kind_id = self.typed_nodes[expression]
+        let type_kind_id = self.get_typer_node(expression)
             .node_type
             .as_ref()
             .unwrap()
@@ -721,7 +738,7 @@ impl CodeGenerator {
         }
     }
 
-    fn defer_statement(&mut self, statement: usize, _node_type: Option<Type>) {
+    fn defer_statement(&mut self, statement: NodeIndex, _node_type: Option<Type>) {
         self.body_emitters.push(0);
         self.gen_node(statement);
         self.body_emitters.pop_to_bottom();
@@ -729,9 +746,9 @@ impl CodeGenerator {
 
     fn if_statement(
         &mut self,
-        expression: usize,
-        statement: usize,
-        next: Option<usize>,
+        expression: NodeIndex,
+        statement: NodeIndex,
+        next: Option<NodeIndex>,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("if (");
@@ -747,8 +764,8 @@ impl CodeGenerator {
 
     fn switch_statement(
         &mut self,
-        expression: usize,
-        case_statement: usize,
+        expression: NodeIndex,
+        case_statement: NodeIndex,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("switch (");
@@ -760,9 +777,9 @@ impl CodeGenerator {
 
     fn case_statement(
         &mut self,
-        expression: usize,
-        statement: usize,
-        next: Option<usize>,
+        expression: NodeIndex,
+        statement: NodeIndex,
+        next: Option<NodeIndex>,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("case ");
@@ -773,7 +790,7 @@ impl CodeGenerator {
 
         if let Some(next) = next {
             if !matches!(
-                self.typed_nodes[next].node_kind,
+                self.get_typer_node(next).node_kind,
                 NodeKind::CaseStatement { .. }
             ) {
                 self.body_emitters.top().body.emit("default: ");
@@ -785,7 +802,7 @@ impl CodeGenerator {
         }
     }
 
-    fn while_loop(&mut self, expression: usize, statement: usize, _node_type: Option<Type>) {
+    fn while_loop(&mut self, expression: NodeIndex, statement: NodeIndex, _node_type: Option<Type>) {
         self.body_emitters.top().body.emit("while (");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
@@ -795,12 +812,12 @@ impl CodeGenerator {
     #[allow(clippy::too_many_arguments)]
     fn for_loop(
         &mut self,
-        iterator: usize,
+        iterator: NodeIndex,
         op: Op,
-        from: usize,
-        to: usize,
-        by: Option<usize>,
-        statement: usize,
+        from: NodeIndex,
+        to: NodeIndex,
+        by: Option<NodeIndex>,
+        statement: NodeIndex,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("for (intptr_t ");
@@ -826,7 +843,7 @@ impl CodeGenerator {
         self.gen_node(statement);
     }
 
-    fn const_expression(&mut self, _inner: usize, node_type: Option<Type>) {
+    fn const_expression(&mut self, _inner: NodeIndex, node_type: Option<Type>) {
         let Some(Type {
             instance_kind: InstanceKind::Const(const_value),
             ..
@@ -855,7 +872,7 @@ impl CodeGenerator {
         }
     }
 
-    fn binary(&mut self, left: usize, op: Op, right: usize, node_type: Option<Type>) {
+    fn binary(&mut self, left: NodeIndex, op: Op, right: NodeIndex, node_type: Option<Type>) {
         if op == Op::Assign {
             let type_kind_id = node_type.unwrap().type_kind_id;
             let is_array = matches!(
@@ -869,8 +886,8 @@ impl CodeGenerator {
             }
 
             // TODO: Needs refactor into it's own fn, also consider the similar code that exists in field access.
-            if let NodeKind::FieldAccess { left, name } = self.typed_nodes[left].node_kind {
-                let left_type = self.typed_nodes[left].node_type.as_ref().unwrap();
+            if let NodeKind::FieldAccess { left, name } = self.get_typer_node(left).node_kind {
+                let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
 
                 let (dereferenced_left_type_kind_id, is_left_pointer) =
                     if let TypeKind::Pointer {
@@ -890,13 +907,13 @@ impl CodeGenerator {
                 {
                     if *is_union {
                         let NodeKind::Name { text: name_text } =
-                            self.typed_nodes[name].node_kind.clone()
+                            self.get_typer_node(name).node_kind.clone()
                         else {
                             panic!("invalid field name in field access");
                         };
 
                         let Some(tag) =
-                            get_field_index_by_name(&name_text, &self.typed_nodes, fields)
+                            get_field_index_by_name(&self.typed_nodes, &name_text, fields)
                         else {
                             panic!("tag not found in union assignment");
                         };
@@ -955,7 +972,7 @@ impl CodeGenerator {
         }
     }
 
-    fn unary_prefix(&mut self, op: Op, right: usize, _node_type: Option<Type>) {
+    fn unary_prefix(&mut self, op: Op, right: NodeIndex, _node_type: Option<Type>) {
         self.body_emitters.top().body.emit(match op {
             Op::Plus => "+",
             Op::Minus => "-",
@@ -967,7 +984,7 @@ impl CodeGenerator {
         self.gen_node(right);
     }
 
-    fn unary_suffix(&mut self, left: usize, op: Op, _node_type: Option<Type>) {
+    fn unary_suffix(&mut self, left: NodeIndex, op: Op, _node_type: Option<Type>) {
         self.body_emitters.top().body.emit("(");
         self.body_emitters.top().body.emit(match op {
             Op::Dereference => "*",
@@ -978,7 +995,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn call(&mut self, left: usize, args: Arc<Vec<usize>>, node_type: Option<Type>) {
+    fn call(&mut self, left: NodeIndex, args: Arc<Vec<NodeIndex>>, node_type: Option<Type>) {
         self.gen_node(left);
 
         self.body_emitters.top().body.emit("(");
@@ -1012,12 +1029,12 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn index_access(&mut self, left: usize, expression: usize, _node_type: Option<Type>) {
+    fn index_access(&mut self, left: NodeIndex, expression: NodeIndex, _node_type: Option<Type>) {
         self.gen_node(left);
         self.body_emitters.top().body.emit("[");
 
         if self.is_debug_mode {
-            let left_type = self.typed_nodes[left].node_type.as_ref().unwrap();
+            let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
             let TypeKind::Array { element_count, .. } =
                 &self.type_kinds.get_by_id(left_type.type_kind_id)
             else {
@@ -1040,8 +1057,8 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("]");
     }
 
-    fn field_access(&mut self, left: usize, name: usize, node_type: Option<Type>) {
-        let left_type = self.typed_nodes[left].node_type.as_ref().unwrap();
+    fn field_access(&mut self, left: NodeIndex, name: NodeIndex, node_type: Option<Type>) {
+        let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
 
         if let TypeKind::Tag = self.type_kinds.get_by_id(node_type.unwrap().type_kind_id) {
             let TypeKind::Struct {
@@ -1054,12 +1071,12 @@ impl CodeGenerator {
             };
 
             if left_type.instance_kind == InstanceKind::Name && *is_union {
-                let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
+                let NodeKind::Name { text: name_text } = self.get_typer_node(name).node_kind.clone()
                 else {
                     panic!("invalid tag name in tag access");
                 };
 
-                let Some(tag) = get_field_index_by_name(&name_text, &self.typed_nodes, fields)
+                let Some(tag) = get_field_index_by_name(&self.typed_nodes, &name_text, fields)
                 else {
                     panic!("tag not found in field access");
                 };
@@ -1087,12 +1104,12 @@ impl CodeGenerator {
         } = &self.type_kinds.get_by_id(dereferenced_left_type_kind_id)
         {
             if *is_union {
-                let NodeKind::Name { text: name_text } = self.typed_nodes[name].node_kind.clone()
+                let NodeKind::Name { text: name_text } = self.get_typer_node(name).node_kind.clone()
                 else {
                     panic!("invalid field name in field access");
                 };
 
-                let Some(tag) = get_field_index_by_name(&name_text, &self.typed_nodes, fields)
+                let Some(tag) = get_field_index_by_name(&self.typed_nodes, &name_text, fields)
                 else {
                     panic!("tag not found in field access");
                 };
@@ -1153,11 +1170,11 @@ impl CodeGenerator {
         self.gen_node(name);
     }
 
-    fn cast(&mut self, left: usize, _type_name: usize, node_type: Option<Type>) {
+    fn cast(&mut self, left: NodeIndex, _type_name: NodeIndex, node_type: Option<Type>) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         if let TypeKind::Tag { .. } = &self.type_kinds.get_by_id(type_kind_id) {
-            let left_type_kind_id = self.typed_nodes[left]
+            let left_type_kind_id = self.get_typer_node(left)
                 .node_type
                 .as_ref()
                 .unwrap()
@@ -1189,7 +1206,7 @@ impl CodeGenerator {
     fn generic_specifier(
         &mut self,
         name_text: Arc<str>,
-        _generic_arg_type_names: Arc<Vec<usize>>,
+        _generic_arg_type_names: Arc<Vec<NodeIndex>>,
         node_type: Option<Type>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
@@ -1207,13 +1224,13 @@ impl CodeGenerator {
         self.emit_name(text, EmitterKind::Body);
     }
 
-    fn identifier(&mut self, name: usize, node_type: Option<Type>) {
+    fn identifier(&mut self, name: NodeIndex, node_type: Option<Type>) {
         self.gen_node(name);
 
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         if let TypeKind::Function { .. } = self.type_kinds.get_by_id(type_kind_id) {
-            let NodeKind::Name { text: name_text } = &self.typed_nodes[name].node_kind else {
+            let NodeKind::Name { text: name_text } = &self.get_typer_node(name).node_kind else {
                 panic!("invalid name in identifier");
             };
 
@@ -1265,8 +1282,8 @@ impl CodeGenerator {
 
     fn array_literal(
         &mut self,
-        elements: Arc<Vec<usize>>,
-        _repeat_count_const_expression: Option<usize>,
+        elements: Arc<Vec<NodeIndex>>,
+        _repeat_count_const_expression: Option<NodeIndex>,
         node_type: Option<Type>,
     ) {
         let TypeKind::Array { element_count, .. } =
@@ -1293,7 +1310,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn struct_literal(&mut self, _left: usize, field_literals: Arc<Vec<usize>>, node_type: Option<Type>) {
+    fn struct_literal(&mut self, _left: NodeIndex, field_literals: Arc<Vec<NodeIndex>>, node_type: Option<Type>) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         self.body_emitters.top().body.emit("(");
@@ -1319,15 +1336,15 @@ impl CodeGenerator {
                 panic!("expected union literal to contain a single field");
             }
 
-            let NodeKind::FieldLiteral { name, .. } = &self.typed_nodes[field_literals[0]].node_kind else {
+            let NodeKind::FieldLiteral { name, .. } = &self.get_typer_node(field_literals[0]).node_kind else {
                 panic!("invalid field in union literal");
             };
 
-            let NodeKind::Name { text: name_text } = &self.typed_nodes[*name].node_kind else {
+            let NodeKind::Name { text: name_text } = &self.get_typer_node(*name).node_kind else {
                 panic!("invalid field name text in union literal");
             };
 
-            let Some(tag) = get_field_index_by_name(name_text, &self.typed_nodes, type_kind_fields)
+            let Some(tag) = get_field_index_by_name(&self.typed_nodes, name_text, type_kind_fields)
             else {
                 panic!("tag not found in union literal");
             };
@@ -1363,14 +1380,14 @@ impl CodeGenerator {
         }
     }
 
-    fn field_literal(&mut self, name: usize, expression: usize, _node_type: Option<Type>) {
+    fn field_literal(&mut self, name: NodeIndex, expression: NodeIndex, _node_type: Option<Type>) {
         self.body_emitters.top().body.emit(".");
         self.gen_node(name);
         self.body_emitters.top().body.emit(" = ");
         self.gen_node(expression);
     }
 
-    fn type_size(&mut self, _type_name: usize, node_type: Option<Type>) {
+    fn type_size(&mut self, _type_name: NodeIndex, node_type: Option<Type>) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         self.body_emitters.top().body.emit("sizeof(");
@@ -1381,8 +1398,8 @@ impl CodeGenerator {
 
     fn emit_memmove_expression_to_variable(
         &mut self,
-        destination: usize,
-        source: usize,
+        destination: NodeIndex,
+        source: NodeIndex,
         type_kind_id: usize,
     ) {
         self.body_emitters.top().body.emit("memmove(");
@@ -1397,7 +1414,7 @@ impl CodeGenerator {
     fn emit_memmove_expression_to_name(
         &mut self,
         destination: &str,
-        source: usize,
+        source: NodeIndex,
         type_kind_id: usize,
     ) {
         self.body_emitters.top().body.emit("memmove(");
@@ -1478,7 +1495,7 @@ impl CodeGenerator {
             }
             TypeKind::Enum { name, .. } => {
                 self.emitter(kind).emit("enum ");
-                let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
+                let NodeKind::Name { text } = self.get_typer_node(name).node_kind.clone() else {
                     panic!("invalid enum name");
                 };
                 self.emit_name(text, kind);
@@ -1611,8 +1628,8 @@ impl CodeGenerator {
     fn emit_function_declaration(
         &mut self,
         kind: EmitterKind,
-        name: usize,
-        params: &Arc<Vec<usize>>,
+        name: NodeIndex,
+        params: &Arc<Vec<NodeIndex>>,
         type_kind_id: usize,
     ) {
         let TypeKind::Function {
@@ -1626,7 +1643,7 @@ impl CodeGenerator {
         self.emit_type_kind_left(return_type_kind_id, kind, true, true);
         self.emit_name_node(name, kind);
 
-        let NodeKind::Name { text: name_text } = &self.typed_nodes[name].node_kind else {
+        let NodeKind::Name { text: name_text } = &self.get_typer_node(name).node_kind else {
             panic!("invalid name in function declaration");
         };
 
@@ -1669,20 +1686,20 @@ impl CodeGenerator {
         self.emit_type_kind_right(return_type_kind_id, kind, true);
     }
 
-    fn emit_param_node(&mut self, param: usize, kind: EmitterKind) {
-        let type_kind_id = self.typed_nodes[param]
+    fn emit_param_node(&mut self, param: NodeIndex, kind: EmitterKind) {
+        let type_kind_id = self.get_typer_node(param)
             .node_type
             .as_ref()
             .unwrap()
             .type_kind_id;
-        let NodeKind::Param { name, .. } = self.typed_nodes[param].node_kind else {
+        let NodeKind::Param { name, .. } = self.get_typer_node(param).node_kind else {
             panic!("invalid param");
         };
 
         self.emit_param(name, type_kind_id, kind);
     }
 
-    fn emit_param(&mut self, name: usize, type_kind_id: usize, kind: EmitterKind) {
+    fn emit_param(&mut self, name: NodeIndex, type_kind_id: usize, kind: EmitterKind) {
         self.emit_type_kind_left(type_kind_id, kind, false, true);
         self.emit_name_node(name, kind);
         self.emit_type_kind_right(type_kind_id, kind, false);
@@ -1694,8 +1711,8 @@ impl CodeGenerator {
         self.emit_type_kind_right(type_kind_id, kind, false);
     }
 
-    fn emit_name_node(&mut self, name: usize, kind: EmitterKind) {
-        let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
+    fn emit_name_node(&mut self, name: NodeIndex, kind: EmitterKind) {
+        let NodeKind::Name { text } = self.get_typer_node(name).node_kind.clone() else {
             panic!("invalid name");
         };
 
@@ -1720,14 +1737,14 @@ impl CodeGenerator {
         }
     }
 
-    fn emit_scoped_statement(&mut self, statement: usize) {
-        let NodeKind::Statement { inner } = self.typed_nodes[statement].node_kind else {
+    fn emit_scoped_statement(&mut self, statement: NodeIndex) {
+        let NodeKind::Statement { inner } = self.get_typer_node(statement).node_kind else {
             panic!("invalid statement in scoped statement");
         };
 
         let needs_scope = inner.is_none()
             || !matches!(
-                self.typed_nodes[inner.unwrap()].node_kind,
+                self.get_typer_node(inner.unwrap()).node_kind,
                 NodeKind::Block { .. }
             );
 
@@ -1769,10 +1786,10 @@ impl CodeGenerator {
             panic!("invalid struct");
         };
 
-        let NodeKind::Name { text } = self.typed_nodes[name].node_kind.clone() else {
+        let NodeKind::Name { text } = self.get_typer_node(name).node_kind.clone() else {
             panic!(
                 "invalid struct name: {:?}",
-                self.typed_nodes[name].node_kind
+                self.get_typer_node(name).node_kind
             );
         };
 
@@ -1782,12 +1799,14 @@ impl CodeGenerator {
 
     fn emit_main_function(&mut self) {
         let Some(main_function_type_kind_id) = self.main_function_type_kind_id else {
-            self.body_emitters.top().body.emitln("int main(void) {");
-            self.body_emitters.top().body.indent();
-            self.body_emitters.top().body.emitln("return 0;");
-            self.body_emitters.top().body.unindent();
-            self.body_emitters.top().body.emitln("}");
-            self.body_emitters.top().body.newline();
+            // TODO: It is good to emit a C main even if there is no main defined in the source,
+            // but doing it this way creates extra a main function in every generated C file which is not good ;).
+            // self.body_emitters.top().body.emitln("int main(void) {");
+            // self.body_emitters.top().body.indent();
+            // self.body_emitters.top().body.emitln("return 0;");
+            // self.body_emitters.top().body.unindent();
+            // self.body_emitters.top().body.emitln("}");
+            // self.body_emitters.top().body.newline();
             return;
         };
 

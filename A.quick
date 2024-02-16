@@ -2,6 +2,7 @@ extern func puts(string String) UInt
 
 func Main() Int
 {
+    BDoThing();
     puts("Hello, World!");
     return 0;
 }

@@ -1,9 +1,33 @@
 use std::sync::Arc;
 
+use crate::{parser::{NodeIndex, NodeKind}, typer::TypedNode};
+
 #[derive(Debug, PartialEq)]
 pub struct Field {
-    pub name: usize,
+    pub name: NodeIndex,
     pub type_kind_id: usize,
+}
+
+pub fn get_field_index_by_name(
+    typed_nodes: &[TypedNode],
+    name_text: &Arc<str>,
+    fields: &Arc<Vec<Field>>,
+) -> Option<usize> {
+    let mut tag = None;
+    for (i, field) in fields.iter().enumerate() {
+        let NodeKind::Name {
+            text: field_name_text,
+        } = &typed_nodes[field.name.node_index].node_kind
+        else {
+            panic!("invalid field name on accessed struct");
+        };
+
+        if *field_name_text == *name_text {
+            tag = Some(i);
+        }
+    }
+
+    tag
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -34,7 +58,7 @@ pub enum TypeKind {
         element_count: usize,
     },
     Struct {
-        name: usize,
+        name: NodeIndex,
         fields: Arc<Vec<Field>>,
         is_union: bool,
     },
@@ -44,8 +68,8 @@ pub enum TypeKind {
         return_type_kind_id: usize,
     },
     Enum {
-        name: usize,
-        variant_names: Arc<Vec<usize>>,
+        name: NodeIndex,
+        variant_names: Arc<Vec<NodeIndex>>,
     },
 }
 
@@ -94,7 +118,7 @@ impl TypeKinds {
         id
     }
 
-    pub fn get_by_id(&mut self, type_kind_id: usize) -> TypeKind {
+    pub fn get_by_id(&self, type_kind_id: usize) -> TypeKind {
         self.type_kinds[type_kind_id].clone()
     }
 

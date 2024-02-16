@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fs, io::{self, Write}, path::Path, process::{Command, ExitCode}, sync::Arc, time::Instant};
+use std::{collections::HashSet, ffi::OsStr, fs, io, path::Path, process::ExitCode, sync::Arc, time::Instant};
 
 use crate::{code_generator::CodeGenerator, file_data::FileData, lexer::Lexer, parser::Parser, typer::Typer};
 
@@ -57,8 +57,7 @@ pub fn compile(project_path: &str, is_debug_mode: bool, c_flags: &[String]) -> E
 //         Err(_) => panic!("couldn't compile using the system compiler!"),
 //         Ok(output) => {
 //             if !output.stderr.is_empty() {
-//                 println!("System compiler error:\n");
-//                 io::stdout().write_all(&output.stderr).unwrap();
+//                 println!("System compiler error: {}\n", output.stderr);
 //                 return ExitCode::FAILURE;
 //             }
 //         }
@@ -94,8 +93,8 @@ fn parse(lexers: Vec<Lexer>, files: &Arc<Vec<FileData>>) -> Option<Vec<Parser>> 
     let mut parsers = Vec::with_capacity(lexers.len());
     let mut had_parsing_error = false;
 
-    for lexer in lexers {
-        let mut parser = Parser::new(files.clone());
+    for (i, lexer) in lexers.into_iter().enumerate() {
+        let mut parser = Parser::new(i, files.clone());
         parser.parse(lexer.tokens);
         had_parsing_error = had_parsing_error || parser.error_count > 0;
         parsers.push(parser);
@@ -112,11 +111,25 @@ fn check(parsers: Vec<Parser>, files: &Arc<Vec<FileData>>) -> Option<Vec<Typer>>
     let mut typers = Vec::with_capacity(parsers.len());
     let mut had_typing_error = false;
 
+    let mut all_nodes = Vec::with_capacity(parsers.len());
+    let mut all_start_indices = Vec::with_capacity(parsers.len());
+    let mut all_definition_indices = Vec::with_capacity(parsers.len());
+    let mut extern_function_names = HashSet::new();
+
     for parser in parsers {
-        // TODO: Create a list of each parsers definition indices and pass that to the typer,
-        // since each typer will need to be able to find definitions in every file, not just it's own file.
-        let mut typer = Typer::new(parser.nodes, parser.definition_indices, parser.extern_function_names, files.clone());
-        typer.check(parser.start_index);
+        all_nodes.push(parser.nodes);
+        all_start_indices.push(parser.start_index);
+        all_definition_indices.push(parser.definition_indices);
+        extern_function_names.extend(parser.extern_function_names);
+    }
+
+    let all_nodes = Arc::new(all_nodes);
+    let all_definition_indices = Arc::new(all_definition_indices);
+    let extern_function_names = Arc::new(extern_function_names);
+
+    for (i, start_index) in all_start_indices.into_iter().enumerate() {
+        let mut typer = Typer::new(all_nodes.clone(), all_definition_indices.clone(), extern_function_names.clone(), files.clone(), i);
+        typer.check(start_index);
         had_typing_error = had_typing_error || typer.error_count > 0;
         typers.push(typer);
     }

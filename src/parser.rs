@@ -56,121 +56,121 @@ pub enum NodeKind {
         text: Arc<str>,
     },
     TopLevel {
-        functions: Arc<Vec<usize>>,
-        structs: Arc<Vec<usize>>,
-        enums: Arc<Vec<usize>>,
+        functions: Arc<Vec<NodeIndex>>,
+        structs: Arc<Vec<NodeIndex>>,
+        enums: Arc<Vec<NodeIndex>>,
     },
     StructDefinition {
-        name: usize,
-        fields: Arc<Vec<usize>>,
-        generic_params: Arc<Vec<usize>>,
+        name: NodeIndex,
+        fields: Arc<Vec<NodeIndex>>,
+        generic_params: Arc<Vec<NodeIndex>>,
         is_union: bool,
     },
     EnumDefinition {
-        name: usize,
-        variant_names: Arc<Vec<usize>>,
+        name: NodeIndex,
+        variant_names: Arc<Vec<NodeIndex>>,
     },
     Field {
-        name: usize,
-        type_name: usize,
+        name: NodeIndex,
+        type_name: NodeIndex,
     },
     FunctionDeclaration {
-        name: usize,
-        params: Arc<Vec<usize>>,
-        generic_params: Arc<Vec<usize>>,
-        return_type_name: usize,
+        name: NodeIndex,
+        params: Arc<Vec<NodeIndex>>,
+        generic_params: Arc<Vec<NodeIndex>>,
+        return_type_name: NodeIndex,
     },
     Function {
-        declaration: usize,
-        statement: usize,
+        declaration: NodeIndex,
+        statement: NodeIndex,
     },
     ExternFunction {
-        declaration: usize,
+        declaration: NodeIndex,
     },
     Param {
-        name: usize,
-        type_name: usize,
+        name: NodeIndex,
+        type_name: NodeIndex,
     },
     Block {
-        statements: Arc<Vec<usize>>,
+        statements: Arc<Vec<NodeIndex>>,
     },
     Statement {
-        inner: Option<usize>,
+        inner: Option<NodeIndex>,
     },
     VariableDeclaration {
         declaration_kind: DeclarationKind,
-        name: usize,
-        type_name: Option<usize>,
-        expression: usize,
+        name: NodeIndex,
+        type_name: Option<NodeIndex>,
+        expression: NodeIndex,
     },
     ReturnStatement {
-        expression: Option<usize>,
+        expression: Option<NodeIndex>,
     },
     DeferStatement {
-        statement: usize,
+        statement: NodeIndex,
     },
     IfStatement {
-        expression: usize,
-        statement: usize,
-        next: Option<usize>,
+        expression: NodeIndex,
+        statement: NodeIndex,
+        next: Option<NodeIndex>,
     },
     SwitchStatement {
-        expression: usize,
-        case_statement: usize,
+        expression: NodeIndex,
+        case_statement: NodeIndex,
     },
     CaseStatement {
-        expression: usize,
-        statement: usize,
-        next: Option<usize>,
+        expression: NodeIndex,
+        statement: NodeIndex,
+        next: Option<NodeIndex>,
     },
     WhileLoop {
-        expression: usize,
-        statement: usize,
+        expression: NodeIndex,
+        statement: NodeIndex,
     },
     ForLoop {
-        iterator: usize,
+        iterator: NodeIndex,
         op: Op,
-        from: usize,
-        to: usize,
-        by: Option<usize>,
-        statement: usize,
+        from: NodeIndex,
+        to: NodeIndex,
+        by: Option<NodeIndex>,
+        statement: NodeIndex,
     },
     Binary {
-        left: usize,
+        left: NodeIndex,
         op: Op,
-        right: usize,
+        right: NodeIndex,
     },
     UnaryPrefix {
         op: Op,
-        right: usize,
+        right: NodeIndex,
     },
     UnarySuffix {
-        left: usize,
+        left: NodeIndex,
         op: Op,
     },
     Call {
-        left: usize,
-        args: Arc<Vec<usize>>,
+        left: NodeIndex,
+        args: Arc<Vec<NodeIndex>>,
     },
     IndexAccess {
-        left: usize,
-        expression: usize,
+        left: NodeIndex,
+        expression: NodeIndex,
     },
     FieldAccess {
-        left: usize,
-        name: usize,
+        left: NodeIndex,
+        name: NodeIndex,
     },
     Cast {
-        left: usize,
-        type_name: usize,
+        left: NodeIndex,
+        type_name: NodeIndex,
     },
     GenericSpecifier {
-        // TODO: Convert this to name: usize?
+        // TODO: Convert this to name: ParserIndex?
         name_text: Arc<str>,
-        generic_arg_type_names: Arc<Vec<usize>>,
+        generic_arg_type_names: Arc<Vec<NodeIndex>>,
     },
     Identifier {
-        name: usize,
+        name: NodeIndex,
     },
     IntLiteral {
         text: Arc<str>,
@@ -188,42 +188,42 @@ pub enum NodeKind {
         value: char,
     },
     ArrayLiteral {
-        elements: Arc<Vec<usize>>,
-        repeat_count_const_expression: Option<usize>,
+        elements: Arc<Vec<NodeIndex>>,
+        repeat_count_const_expression: Option<NodeIndex>,
     },
     StructLiteral {
-        left: usize,
-        field_literals: Arc<Vec<usize>>,
+        left: NodeIndex,
+        field_literals: Arc<Vec<NodeIndex>>,
     },
     FieldLiteral {
-        name: usize,
-        expression: usize,
+        name: NodeIndex,
+        expression: NodeIndex,
     },
     TypeSize {
-        type_name: usize,
+        type_name: NodeIndex,
     },
     ConstExpression {
-        inner: usize,
+        inner: NodeIndex,
     },
     TypeName {
         text: Arc<str>,
     },
     TypeNamePointer {
-        inner: usize,
+        inner: NodeIndex,
         is_inner_mutable: bool,
     },
     TypeNameArray {
-        inner: usize,
-        element_count_const_expression: usize,
+        inner: NodeIndex,
+        element_count_const_expression: NodeIndex,
     },
     TypeNameFunction {
-        param_type_names: Arc<Vec<usize>>,
-        return_type_name: usize,
+        param_type_names: Arc<Vec<NodeIndex>>,
+        return_type_name: NodeIndex,
     },
     TypeNameGenericSpecifier {
-        // TODO: Convert this to name: usize?
+        // TODO: Convert this to name: ParserIndex?
         name_text: Arc<str>,
-        generic_arg_type_names: Arc<Vec<usize>>,
+        generic_arg_type_names: Arc<Vec<NodeIndex>>,
     },
     Error,
 }
@@ -249,21 +249,28 @@ macro_rules! parse_error {
     }};
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NodeIndex {
+    pub node_index: usize,
+    pub file_index: usize,
+}
+
 pub struct Parser {
     tokens: Option<Vec<Token>>,
 
     pub nodes: Vec<Node>,
-    pub definition_indices: HashMap<Arc<str>, usize>,
+    pub definition_indices: HashMap<Arc<str>, NodeIndex>,
     pub extern_function_names: HashSet<Arc<str>>,
-    pub start_index: usize,
+    pub start_index: NodeIndex,
     pub error_count: usize,
 
     files: Arc<Vec<FileData>>,
     position: usize,
+    file_index: usize,
 }
 
 impl Parser {
-    pub fn new(files: Arc<Vec<FileData>>) -> Self {
+    pub fn new(file_index: usize, files: Arc<Vec<FileData>>) -> Self {
         Self {
             files,
             tokens: None,
@@ -271,8 +278,9 @@ impl Parser {
             definition_indices: HashMap::new(),
             extern_function_names: HashSet::new(),
             error_count: 0,
-            start_index: 0,
+            start_index: NodeIndex { node_index: 0, file_index: 0 },
             position: 0,
+            file_index,
         }
     }
 
@@ -285,8 +293,8 @@ impl Parser {
         }
     }
 
-    fn node_end(&self, index: usize) -> Position {
-        self.nodes[index].end
+    fn node_end(&self, index: NodeIndex) -> Position {
+        self.nodes[index.node_index].end
     }
 
     fn token_start(&self) -> Position {
@@ -314,7 +322,7 @@ impl Parser {
         token_kind: TokenKind,
         start: Position,
         end: Position,
-    ) -> Option<usize> {
+    ) -> Option<NodeIndex> {
         if *self.token_kind() != token_kind {
             self.error(&format!(
                 "expected \"{}\" but got \"{}\"",
@@ -333,7 +341,7 @@ impl Parser {
         None
     }
 
-    fn parse_error(&mut self, message: &str, start: Position, end: Position) -> usize {
+    fn parse_error(&mut self, message: &str, start: Position, end: Position) -> NodeIndex {
         self.error(message);
         self.position += 1;
 
@@ -344,10 +352,14 @@ impl Parser {
         })
     }
 
-    fn add_node(&mut self, node: Node) -> usize {
-        let index = self.nodes.len();
+    fn add_node(&mut self, node: Node) -> NodeIndex {
+        let node_index = self.nodes.len();
         self.nodes.push(node);
-        index
+
+        NodeIndex {
+            node_index,
+            file_index: self.file_index,
+        }
     }
 
     fn error(&mut self, message: &str) {
@@ -361,7 +373,7 @@ impl Parser {
         self.start_index = self.top_level();
     }
 
-    fn top_level(&mut self) -> usize {
+    fn top_level(&mut self) -> NodeIndex {
         let mut functions = Vec::new();
         let mut structs = Vec::new();
         let mut enums = Vec::new();
@@ -405,7 +417,7 @@ impl Parser {
         })
     }
 
-    fn struct_definition(&mut self) -> usize {
+    fn struct_definition(&mut self) -> NodeIndex {
         let start = self.token_start();
 
         let is_union = match *self.token_kind() {
@@ -422,7 +434,7 @@ impl Parser {
 
         let name = self.name();
 
-        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+        let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
             parse_error!(self, "invalid struct name", start, self.node_end(name));
         };
 
@@ -471,7 +483,7 @@ impl Parser {
         index
     }
 
-    fn enum_definition(&mut self) -> usize {
+    fn enum_definition(&mut self) -> NodeIndex {
         let start = self.token_start();
 
         assert_token!(self, TokenKind::Enum, start, self.token_end());
@@ -479,7 +491,7 @@ impl Parser {
 
         let name = self.name();
 
-        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+        let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
             parse_error!(self, "invalid struct name", start, self.node_end(name));
         };
 
@@ -515,7 +527,7 @@ impl Parser {
         index
     }
 
-    fn field(&mut self) -> usize {
+    fn field(&mut self) -> NodeIndex {
         let start = self.token_start();
         let name = self.name();
 
@@ -529,7 +541,7 @@ impl Parser {
         })
     }
 
-    fn parse_function_params(&mut self, start: Position, params: &mut Vec<usize>) -> Option<usize> {
+    fn parse_function_params(&mut self, start: Position, params: &mut Vec<NodeIndex>) -> Option<NodeIndex> {
         if let Some(error_node) = self.assert_token(TokenKind::LParen, start, self.token_end()) {
             return Some(error_node);
         }
@@ -560,8 +572,8 @@ impl Parser {
     fn parse_generic_params(
         &mut self,
         start: Position,
-        generic_params: &mut Vec<usize>,
-    ) -> Option<usize> {
+        generic_params: &mut Vec<NodeIndex>,
+    ) -> Option<NodeIndex> {
         if let Some(error_node) = self.assert_token(TokenKind::Less, start, self.token_end()) {
             return Some(error_node);
         }
@@ -589,7 +601,7 @@ impl Parser {
         None
     }
 
-    fn function_declaration(&mut self) -> usize {
+    fn function_declaration(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::Func, start, self.token_end());
         self.position += 1;
@@ -625,17 +637,17 @@ impl Parser {
         })
     }
 
-    fn function(&mut self) -> usize {
+    fn function(&mut self) -> NodeIndex {
         let start = self.token_start();
         let declaration = self.function_declaration();
         let statement = self.statement();
         let end = self.node_end(statement);
 
-        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration].kind else {
+        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind else {
             parse_error!(self, "invalid function declaration", start, end);
         };
 
-        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+        let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
             parse_error!(self, "invalid function name", start, self.node_end(name));
         };
 
@@ -653,7 +665,7 @@ impl Parser {
         index
     }
 
-    fn extern_function(&mut self) -> usize {
+    fn extern_function(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::Extern, start, self.token_end());
         self.position += 1;
@@ -661,11 +673,11 @@ impl Parser {
         let declaration = self.function_declaration();
         let end = self.node_end(declaration);
 
-        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration].kind else {
+        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind else {
             parse_error!(self, "invalid function declaration", start, end);
         };
 
-        let NodeKind::Name { text: name_text } = self.nodes[name].kind.clone() else {
+        let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
             parse_error!(self, "invalid function name", start, self.node_end(name));
         };
 
@@ -681,7 +693,7 @@ impl Parser {
         index
     }
 
-    fn param(&mut self) -> usize {
+    fn param(&mut self) -> NodeIndex {
         let start = self.token_start();
         let name = self.name();
 
@@ -695,7 +707,7 @@ impl Parser {
         })
     }
 
-    fn block(&mut self) -> usize {
+    fn block(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::LBrace, start, self.token_end());
         self.position += 1;
@@ -719,7 +731,7 @@ impl Parser {
         })
     }
 
-    fn statement(&mut self) -> usize {
+    fn statement(&mut self) -> NodeIndex {
         let start = self.token_start();
         let needs_semicolon = !matches!(
             self.token_kind(),
@@ -762,7 +774,7 @@ impl Parser {
         })
     }
 
-    fn variable_declaration(&mut self) -> usize {
+    fn variable_declaration(&mut self) -> NodeIndex {
         let start = self.token_start();
         let declaration_kind = match self.token_kind() {
             TokenKind::Var => DeclarationKind::Var,
@@ -807,7 +819,7 @@ impl Parser {
         })
     }
 
-    fn return_statement(&mut self) -> usize {
+    fn return_statement(&mut self) -> NodeIndex {
         let start = self.token_start();
         let mut end = self.token_end();
         assert_token!(self, TokenKind::Return, start, end);
@@ -827,7 +839,7 @@ impl Parser {
         })
     }
 
-    fn defer_statement(&mut self) -> usize {
+    fn defer_statement(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::Defer, start, self.token_end());
         self.position += 1;
@@ -842,7 +854,7 @@ impl Parser {
         })
     }
 
-    fn if_statement(&mut self) -> usize {
+    fn if_statement(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::If, start, self.token_end());
         self.position += 1;
@@ -885,7 +897,7 @@ impl Parser {
         })
     }
 
-    fn switch_statement(&mut self) -> usize {
+    fn switch_statement(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::Switch, start, self.token_end());
         self.position += 1;
@@ -911,7 +923,7 @@ impl Parser {
         })
     }
 
-    fn case_statement(&mut self) -> usize {
+    fn case_statement(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::Case, start, self.token_end());
         self.position += 1;
@@ -954,7 +966,7 @@ impl Parser {
         })
     }
 
-    fn while_loop(&mut self) -> usize {
+    fn while_loop(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::While, start, self.token_end());
         self.position += 1;
@@ -980,7 +992,7 @@ impl Parser {
         })
     }
 
-    fn for_loop(&mut self) -> usize {
+    fn for_loop(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::For, start, self.token_end());
         self.position += 1;
@@ -1057,11 +1069,11 @@ impl Parser {
      * BooleanOr: ||
      * Assignment: =, +=, -=, /=, *=, %=, <<=, >>=, &=, ^=, |=
      */
-    fn expression(&mut self) -> usize {
+    fn expression(&mut self) -> NodeIndex {
         self.assignment()
     }
 
-    fn const_expression(&mut self) -> usize {
+    fn const_expression(&mut self) -> NodeIndex {
         let start = self.token_start();
 
         // Assignment is not allowed in const expressions.
@@ -1075,7 +1087,7 @@ impl Parser {
         })
     }
 
-    fn assignment(&mut self) -> usize {
+    fn assignment(&mut self) -> NodeIndex {
         let start = self.token_start();
         let mut left = self.boolean_or();
 
@@ -1108,7 +1120,7 @@ impl Parser {
         left
     }
 
-    fn boolean_or(&mut self) -> usize {
+    fn boolean_or(&mut self) -> NodeIndex {
         let start = self.token_start();
         let mut left = self.boolean_and();
 
@@ -1130,7 +1142,7 @@ impl Parser {
         left
     }
 
-    fn boolean_and(&mut self) -> usize {
+    fn boolean_and(&mut self) -> NodeIndex {
         let start = self.token_start();
         let mut left = self.equality();
 
@@ -1152,7 +1164,7 @@ impl Parser {
         left
     }
 
-    fn equality(&mut self) -> usize {
+    fn equality(&mut self) -> NodeIndex {
         let start = self.token_start();
         let mut left = self.inequality();
 
@@ -1176,7 +1188,7 @@ impl Parser {
         left
     }
 
-    fn inequality(&mut self) -> usize {
+    fn inequality(&mut self) -> NodeIndex {
         let start = self.token_start();
         let mut left = self.term();
 
@@ -1202,7 +1214,7 @@ impl Parser {
         left
     }
 
-    fn term(&mut self) -> usize {
+    fn term(&mut self) -> NodeIndex {
         let start = self.token_start();
         let mut left = self.factor();
 
@@ -1228,7 +1240,7 @@ impl Parser {
         left
     }
 
-    fn factor(&mut self) -> usize {
+    fn factor(&mut self) -> NodeIndex {
         let start = self.token_start();
         let mut left = self.unary_prefix();
 
@@ -1256,7 +1268,7 @@ impl Parser {
         left
     }
 
-    fn unary_prefix(&mut self) -> usize {
+    fn unary_prefix(&mut self) -> NodeIndex {
         let start = self.token_start();
         let op = match *self.token_kind() {
             TokenKind::Not => Op::Not,
@@ -1281,8 +1293,8 @@ impl Parser {
         &mut self,
         start: Position,
         end: &mut Position,
-        generic_arg_type_names: &mut Vec<usize>,
-    ) -> Option<usize> {
+        generic_arg_type_names: &mut Vec<NodeIndex>,
+    ) -> Option<NodeIndex> {
         if let Some(error_node) =
             self.assert_token(TokenKind::GenericSpecifier, start, self.token_end())
         {
@@ -1312,7 +1324,7 @@ impl Parser {
         None
     }
 
-    fn unary_suffix(&mut self) -> usize {
+    fn unary_suffix(&mut self) -> NodeIndex {
         let start = self.token_start();
         let mut left = self.primary();
 
@@ -1358,7 +1370,7 @@ impl Parser {
                         return error_node;
                     }
 
-                    let NodeKind::Identifier { name } = &self.nodes[left].kind else {
+                    let NodeKind::Identifier { name } = &self.nodes[left.node_index].kind else {
                         parse_error!(
                             self,
                             "expected identifier before generic specifier",
@@ -1367,7 +1379,7 @@ impl Parser {
                         );
                     };
 
-                    let NodeKind::Name { text: name_text } = self.nodes[*name].kind.clone() else {
+                    let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
                         parse_error!(self, "invalid identifier name", start, end);
                     };
 
@@ -1443,7 +1455,7 @@ impl Parser {
         left
     }
 
-    fn struct_literal(&mut self, left: usize, start: Position) -> usize {
+    fn struct_literal(&mut self, left: NodeIndex, start: Position) -> NodeIndex {
         assert_token!(self, TokenKind::LBrace, start, self.token_end());
         self.position += 1;
 
@@ -1474,7 +1486,7 @@ impl Parser {
         })
     }
 
-    fn primary(&mut self) -> usize {
+    fn primary(&mut self) -> NodeIndex {
         let start = self.token_start();
         match *self.token_kind() {
             TokenKind::LParen => self.parenthesized_expression(),
@@ -1495,7 +1507,7 @@ impl Parser {
         }
     }
 
-    fn parenthesized_expression(&mut self) -> usize {
+    fn parenthesized_expression(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::LParen, start, self.token_end());
         self.position += 1;
@@ -1509,7 +1521,7 @@ impl Parser {
         expression
     }
 
-    fn identifier(&mut self) -> usize {
+    fn identifier(&mut self) -> NodeIndex {
         let start = self.token_start();
         let name = self.name();
         let end = self.node_end(name);
@@ -1521,7 +1533,7 @@ impl Parser {
         })
     }
 
-    fn name(&mut self) -> usize {
+    fn name(&mut self) -> NodeIndex {
         let start = self.token_start();
         let end = self.token_end();
         let TokenKind::Identifier { text } = self.token_kind().clone() else {
@@ -1536,7 +1548,7 @@ impl Parser {
         })
     }
 
-    fn int_literal(&mut self) -> usize {
+    fn int_literal(&mut self) -> NodeIndex {
         let start = self.token_start();
         let end = self.token_end();
         let text = match self.token_kind() {
@@ -1552,7 +1564,7 @@ impl Parser {
         })
     }
 
-    fn float32_literal(&mut self) -> usize {
+    fn float32_literal(&mut self) -> NodeIndex {
         let start = self.token_start();
         let end = self.token_end();
         let text = match self.token_kind() {
@@ -1568,7 +1580,7 @@ impl Parser {
         })
     }
 
-    fn string_literal(&mut self) -> usize {
+    fn string_literal(&mut self) -> NodeIndex {
         let start = self.token_start();
         let end = self.token_end();
         let text = match self.token_kind() {
@@ -1584,7 +1596,7 @@ impl Parser {
         })
     }
 
-    fn bool_literal(&mut self) -> usize {
+    fn bool_literal(&mut self) -> NodeIndex {
         let start = self.token_start();
         let end = self.token_end();
         let value = match self.token_kind() {
@@ -1601,7 +1613,7 @@ impl Parser {
         })
     }
 
-    fn char_literal(&mut self) -> usize {
+    fn char_literal(&mut self) -> NodeIndex {
         let start = self.token_start();
         let end = self.token_end();
         let value = match self.token_kind() {
@@ -1617,7 +1629,7 @@ impl Parser {
         })
     }
 
-    fn array_literal(&mut self) -> usize {
+    fn array_literal(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::LBracket, start, self.token_end());
         self.position += 1;
@@ -1656,7 +1668,7 @@ impl Parser {
         })
     }
 
-    fn field_literal(&mut self) -> usize {
+    fn field_literal(&mut self) -> NodeIndex {
         let start = self.token_start();
         let name = self.name();
 
@@ -1673,7 +1685,7 @@ impl Parser {
         })
     }
 
-    fn type_size(&mut self) -> usize {
+    fn type_size(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::Sizeof, start, self.token_end());
         self.position += 1;
@@ -1688,7 +1700,7 @@ impl Parser {
         })
     }
 
-    fn type_name(&mut self) -> usize {
+    fn type_name(&mut self) -> NodeIndex {
         let start = self.token_start();
         let token_kind = self.token_kind().clone();
 

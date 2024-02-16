@@ -10,6 +10,12 @@
 
 ### TODOs
 
+#### IMPORTANT
+- Current solution to compiling multiple files requires every typer to type check all the things they depend on. This could lead to a lot of extra work.
+  Can we make it so that type checking outside of the current file only skips function bodies specifically and only checks types and function signatures?
+  This should be possible, at least for non-generics as a first pass.
+  This seems IMPORTANT for performance!
+
 #### Type Checking
 - Check for duplicate names of variables, functions, types, fields, etc.
 
