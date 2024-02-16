@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     file_data::FileData,
@@ -260,7 +260,6 @@ pub struct Parser {
 
     pub nodes: Vec<Node>,
     pub definition_indices: HashMap<Arc<str>, NodeIndex>,
-    pub extern_function_names: HashSet<Arc<str>>,
     pub start_index: NodeIndex,
     pub error_count: usize,
 
@@ -276,7 +275,6 @@ impl Parser {
             tokens: None,
             nodes: Vec::new(),
             definition_indices: HashMap::new(),
-            extern_function_names: HashSet::new(),
             error_count: 0,
             start_index: NodeIndex { node_index: 0, file_index: 0 },
             position: 0,
@@ -687,8 +685,7 @@ impl Parser {
             end,
         });
 
-        self.definition_indices.insert(name_text.clone(), index);
-        self.extern_function_names.insert(name_text);
+        self.definition_indices.insert(name_text, index);
 
         index
     }

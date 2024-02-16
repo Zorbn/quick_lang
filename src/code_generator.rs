@@ -96,7 +96,6 @@ pub struct CodeGenerator {
     type_kinds: TypeKinds,
     main_function_type_kind_id: Option<usize>,
     typed_definition_indices: Vec<NodeIndex>,
-    extern_function_names: Arc<HashSet<Arc<str>>>,
 
     pub header_emitter: Emitter,
     pub type_prototype_emitter: Emitter,
@@ -114,7 +113,6 @@ impl CodeGenerator {
         type_kinds: TypeKinds,
         main_function_type_kind_id: Option<usize>,
         typed_definition_indices: Vec<NodeIndex>,
-        extern_function_names: Arc<HashSet<Arc<str>>>,
         is_debug_mode: bool,
     ) -> Self {
         let mut code_generator = Self {
@@ -122,7 +120,6 @@ impl CodeGenerator {
             type_kinds,
             main_function_type_kind_id,
             typed_definition_indices,
-            extern_function_names,
             header_emitter: Emitter::new(0),
             type_prototype_emitter: Emitter::new(0),
             function_prototype_emitter: Emitter::new(0),
@@ -213,9 +210,10 @@ impl CodeGenerator {
             NodeKind::FunctionDeclaration {
                 name,
                 params,
+                generic_params,
                 return_type_name,
                 ..
-            } => self.function_declaration(name, params, return_type_name, node_type),
+            } => self.function_declaration(name, params, generic_params, return_type_name, node_type),
             NodeKind::ExternFunction { declaration } => {
                 self.extern_function(declaration, node_type)
             }
@@ -314,7 +312,7 @@ impl CodeGenerator {
 
     fn struct_definition(
         &mut self,
-        _name: NodeIndex,
+        name: NodeIndex,
         fields: Arc<Vec<NodeIndex>>,
         is_union: bool,
         node_type: Option<Type>,
@@ -325,7 +323,7 @@ impl CodeGenerator {
             // TODO: Refactor, emit_union_check_tag
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.function_prototype_emitter.emit("* ");
-            self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
+            self.emit_name_node(name, EmitterKind::FunctionPrototype);
             self.function_prototype_emitter.emit("__CheckTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.function_prototype_emitter.emit(" *self");
@@ -335,7 +333,7 @@ impl CodeGenerator {
 
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
             self.body_emitters.top().body.emit("* ");
-            self.emit_struct_name(type_kind_id, EmitterKind::Body);
+            self.emit_name_node(name, EmitterKind::Body);
             self.body_emitters.top().body.emit("__CheckTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.body_emitters.top().body.emit(" *self");
@@ -355,7 +353,7 @@ impl CodeGenerator {
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, true);
             self.function_prototype_emitter.emit("* ");
-            self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
+            self.emit_name_node(name, EmitterKind::FunctionPrototype);
             self.function_prototype_emitter.emit("__WithTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.function_prototype_emitter.emit(" *self");
@@ -366,7 +364,7 @@ impl CodeGenerator {
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::Body, true);
             self.body_emitters.top().body.emit("* ");
-            self.emit_struct_name(type_kind_id, EmitterKind::Body);
+            self.emit_name_node(name, EmitterKind::Body);
             self.body_emitters.top().body.emit("__WithTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.body_emitters.top().body.emit(" *self");
@@ -381,7 +379,7 @@ impl CodeGenerator {
         }
 
         self.type_prototype_emitter.emit("struct ");
-        self.emit_struct_name(type_kind_id, EmitterKind::TypePrototype);
+        self.emit_name_node(name, EmitterKind::TypePrototype);
 
         self.type_prototype_emitter.emit(" ");
 
@@ -463,15 +461,16 @@ impl CodeGenerator {
             self.emit_scoped_statement(statement);
             self.body_emitters.top().body.newline();
         } else {
-            let NodeKind::FunctionDeclaration { name, params, .. } =
+            let NodeKind::FunctionDeclaration { name, params, generic_params, .. } =
                 self.get_typer_node(declaration).node_kind.clone()
             else {
                 panic!("invalid function declaration");
             };
 
             let type_kind_id = node_type.unwrap().type_kind_id;
+            let has_generic_params = !generic_params.is_empty();
 
-            self.emit_function_declaration(EmitterKind::FunctionPrototype, name, &params, type_kind_id);
+            self.emit_function_declaration(EmitterKind::FunctionPrototype, name, &params, has_generic_params, type_kind_id);
 
             self.function_prototype_emitter.emitln(";");
             self.function_prototype_emitter.newline();
@@ -482,16 +481,18 @@ impl CodeGenerator {
         &mut self,
         name: NodeIndex,
         params: Arc<Vec<NodeIndex>>,
+        generic_params: Arc<Vec<NodeIndex>>,
         _return_type_name: NodeIndex,
         node_type: Option<Type>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
+        let has_generic_params = !generic_params.is_empty();
 
-        self.emit_function_declaration(EmitterKind::FunctionPrototype, name, &params, type_kind_id);
+        self.emit_function_declaration(EmitterKind::FunctionPrototype, name, &params, has_generic_params, type_kind_id);
         self.function_prototype_emitter.emitln(";");
         self.function_prototype_emitter.newline();
 
-        self.emit_function_declaration(EmitterKind::Body, name, &params, type_kind_id);
+        self.emit_function_declaration(EmitterKind::Body, name, &params, has_generic_params, type_kind_id);
         self.body_emitters.top().body.emit(" ");
     }
 
@@ -506,7 +507,7 @@ impl CodeGenerator {
 
         let type_kind_id = node_type.unwrap().type_kind_id;
 
-        self.emit_function_declaration(EmitterKind::FunctionPrototype, name, &params, type_kind_id);
+        self.emit_function_declaration(EmitterKind::FunctionPrototype, name, &params, false, type_kind_id);
 
         self.function_prototype_emitter.emitln(";");
         self.function_prototype_emitter.newline();
@@ -900,6 +901,7 @@ impl CodeGenerator {
                     };
 
                 if let TypeKind::Struct {
+                    name: struct_name,
                     fields,
                     is_union,
                     ..
@@ -918,7 +920,7 @@ impl CodeGenerator {
                             panic!("tag not found in union assignment");
                         };
 
-                        self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
+                        self.emit_name_node(*struct_name, EmitterKind::Body);
                         self.body_emitters.top().body.emit("__WithTag((");
                         self.emit_type_kind_left(
                             dereferenced_left_type_kind_id,
@@ -1098,6 +1100,7 @@ impl CodeGenerator {
             };
 
         if let TypeKind::Struct {
+            name: struct_name,
             fields,
             is_union,
             ..
@@ -1114,7 +1117,7 @@ impl CodeGenerator {
                     panic!("tag not found in field access");
                 };
 
-                self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
+                self.emit_name_node(*struct_name, EmitterKind::Body);
                 self.body_emitters.top().body.emit("__CheckTag((");
                 self.emit_type_kind_left(
                     dereferenced_left_type_kind_id,
@@ -1206,14 +1209,17 @@ impl CodeGenerator {
     fn generic_specifier(
         &mut self,
         name_text: Arc<str>,
-        _generic_arg_type_names: Arc<Vec<NodeIndex>>,
+        generic_arg_type_names: Arc<Vec<NodeIndex>>,
         node_type: Option<Type>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         if let TypeKind::Function { .. } = self.type_kinds.get_by_id(type_kind_id) {
             self.body_emitters.top().body.emit(&name_text);
-            self.emit_number_backwards(type_kind_id, EmitterKind::Body);
+
+            if !generic_arg_type_names.is_empty() {
+                self.emit_number_backwards(type_kind_id, EmitterKind::Body);
+            }
         } else {
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
@@ -1224,20 +1230,8 @@ impl CodeGenerator {
         self.emit_name(text, EmitterKind::Body);
     }
 
-    fn identifier(&mut self, name: NodeIndex, node_type: Option<Type>) {
+    fn identifier(&mut self, name: NodeIndex, _node_type: Option<Type>) {
         self.gen_node(name);
-
-        let type_kind_id = node_type.unwrap().type_kind_id;
-
-        if let TypeKind::Function { .. } = self.type_kinds.get_by_id(type_kind_id) {
-            let NodeKind::Name { text: name_text } = &self.get_typer_node(name).node_kind else {
-                panic!("invalid name in identifier");
-            };
-
-            if !self.extern_function_names.contains(name_text) {
-                self.emit_number_backwards(type_kind_id, EmitterKind::Body);
-            }
-        }
     }
 
     fn int_literal(&mut self, text: Arc<str>, _node_type: Option<Type>) {
@@ -1489,9 +1483,9 @@ impl CodeGenerator {
             TypeKind::UInt64 => self.emitter(kind).emit("uint64_t"),
             TypeKind::Float32 => self.emitter(kind).emit("float"),
             TypeKind::Float64 => self.emitter(kind).emit("double"),
-            TypeKind::Struct { .. } => {
+            TypeKind::Struct { name, .. } => {
                 self.emitter(kind).emit("struct ");
-                self.emit_struct_name(type_kind_id, kind);
+                self.emit_name_node(name, kind);
             }
             TypeKind::Enum { name, .. } => {
                 self.emitter(kind).emit("enum ");
@@ -1630,6 +1624,7 @@ impl CodeGenerator {
         kind: EmitterKind,
         name: NodeIndex,
         params: &Arc<Vec<NodeIndex>>,
+        has_generic_params: bool,
         type_kind_id: usize,
     ) {
         let TypeKind::Function {
@@ -1643,11 +1638,7 @@ impl CodeGenerator {
         self.emit_type_kind_left(return_type_kind_id, kind, true, true);
         self.emit_name_node(name, kind);
 
-        let NodeKind::Name { text: name_text } = &self.get_typer_node(name).node_kind else {
-            panic!("invalid name in function declaration");
-        };
-
-        if !self.extern_function_names.contains(name_text) {
+        if has_generic_params {
             self.emit_number_backwards(type_kind_id, kind);
         }
 
@@ -1781,22 +1772,6 @@ impl CodeGenerator {
         self.body_emitters.top().body.newline();
     }
 
-    fn emit_struct_name(&mut self, type_kind_id: usize, kind: EmitterKind) {
-        let TypeKind::Struct { name, .. } = self.type_kinds.get_by_id(type_kind_id) else {
-            panic!("invalid struct");
-        };
-
-        let NodeKind::Name { text } = self.get_typer_node(name).node_kind.clone() else {
-            panic!(
-                "invalid struct name: {:?}",
-                self.get_typer_node(name).node_kind
-            );
-        };
-
-        self.emit_name(text, kind);
-        self.emit_number_backwards(type_kind_id, kind);
-    }
-
     fn emit_main_function(&mut self) {
         let Some(main_function_type_kind_id) = self.main_function_type_kind_id else {
             // TODO: It is good to emit a C main even if there is no main defined in the source,
@@ -1825,7 +1800,6 @@ impl CodeGenerator {
                 .emitln("int main(int argc, char** argv) {");
             self.body_emitters.top().body.indent();
             self.body_emitters.top().body.emit("return (int)Main");
-            self.emit_number_backwards(main_function_type_kind_id, EmitterKind::Body);
             self.body_emitters
                 .top()
                 .body
@@ -1840,7 +1814,6 @@ impl CodeGenerator {
         self.body_emitters.top().body.emitln("int main(void) {");
         self.body_emitters.top().body.indent();
         self.body_emitters.top().body.emit("return (int)Main");
-        self.emit_number_backwards(main_function_type_kind_id, EmitterKind::Body);
         self.body_emitters.top().body.emitln("();");
         self.body_emitters.top().body.unindent();
         self.body_emitters.top().body.emitln("}");

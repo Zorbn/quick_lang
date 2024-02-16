@@ -1,4 +1,4 @@
-use std::{collections::HashSet, ffi::OsStr, fs, io, path::Path, process::ExitCode, sync::Arc, time::Instant};
+use std::{ffi::OsStr, fs, io, path::Path, process::ExitCode, sync::Arc, time::Instant};
 
 use crate::{code_generator::CodeGenerator, file_data::FileData, lexer::Lexer, parser::Parser, typer::Typer};
 
@@ -114,21 +114,18 @@ fn check(parsers: Vec<Parser>, files: &Arc<Vec<FileData>>) -> Option<Vec<Typer>>
     let mut all_nodes = Vec::with_capacity(parsers.len());
     let mut all_start_indices = Vec::with_capacity(parsers.len());
     let mut all_definition_indices = Vec::with_capacity(parsers.len());
-    let mut extern_function_names = HashSet::new();
 
     for parser in parsers {
         all_nodes.push(parser.nodes);
         all_start_indices.push(parser.start_index);
         all_definition_indices.push(parser.definition_indices);
-        extern_function_names.extend(parser.extern_function_names);
     }
 
     let all_nodes = Arc::new(all_nodes);
     let all_definition_indices = Arc::new(all_definition_indices);
-    let extern_function_names = Arc::new(extern_function_names);
 
     for (i, start_index) in all_start_indices.into_iter().enumerate() {
-        let mut typer = Typer::new(all_nodes.clone(), all_definition_indices.clone(), extern_function_names.clone(), files.clone(), i);
+        let mut typer = Typer::new(all_nodes.clone(), all_definition_indices.clone(), files.clone(), i);
         typer.check(start_index);
         had_typing_error = had_typing_error || typer.error_count > 0;
         typers.push(typer);
@@ -148,7 +145,6 @@ fn gen(typers: Vec<Typer>, files: &Arc<Vec<FileData>>, is_debug_mode: bool) {
             typer.type_kinds,
             typer.main_function_type_kind_id,
             typer.typed_definition_indices,
-            typer.extern_function_names,
             is_debug_mode,
         );
         code_generator.gen();

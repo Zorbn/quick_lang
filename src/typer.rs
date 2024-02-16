@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, hash::Hash, mem, sync::Arc};
+use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
 use crate::{
     const_value::ConstValue,
@@ -57,7 +57,6 @@ pub struct GenericIdentifier {
 pub struct Typer {
     all_nodes: Arc<Vec<Vec<Node>>>,
     all_definition_indices: Arc<Vec<HashMap<Arc<str>, NodeIndex>>>,
-    pub extern_function_names: Arc<HashSet<Arc<str>>>,
 
     pub typed_nodes: Vec<TypedNode>,
     pub typed_definition_indices: Vec<NodeIndex>,
@@ -83,14 +82,12 @@ impl Typer {
     pub fn new(
         all_nodes: Arc<Vec<Vec<Node>>>,
         all_definition_indices: Arc<Vec<HashMap<Arc<str>, NodeIndex>>>,
-        extern_function_names: Arc<HashSet<Arc<str>>>,
         files: Arc<Vec<FileData>>,
         file_index: usize,
     ) -> Self {
         let mut type_checker = Self {
             all_nodes,
             all_definition_indices,
-            extern_function_names,
             files,
             file_index,
             typed_nodes: Vec::new(),
@@ -2039,7 +2036,9 @@ impl Typer {
         };
 
         if name_text.as_ref() == "Main" {
-            self.main_function_type_kind_id = Some(type_kind_id);
+            if self.shallow_check_stack == 0 {
+                self.main_function_type_kind_id = Some(type_kind_id);
+            }
 
             if self.type_kinds.get_by_id(return_type.type_kind_id) != TypeKind::Int {
                 type_error!(self, "expected Main to return an Int");
