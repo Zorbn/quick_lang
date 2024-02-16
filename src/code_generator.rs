@@ -1,6 +1,5 @@
 use std::{
-    collections::HashSet,
-    sync::{Arc, OnceLock},
+    collections::HashSet, sync::{Arc, OnceLock}
 };
 
 use crate::{
@@ -312,7 +311,7 @@ impl CodeGenerator {
 
     fn struct_definition(
         &mut self,
-        name: NodeIndex,
+        _name: NodeIndex,
         fields: Arc<Vec<NodeIndex>>,
         is_union: bool,
         node_type: Option<Type>,
@@ -323,7 +322,7 @@ impl CodeGenerator {
             // TODO: Refactor, emit_union_check_tag
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.function_prototype_emitter.emit("* ");
-            self.emit_name_node(name, EmitterKind::FunctionPrototype);
+            self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
             self.function_prototype_emitter.emit("__CheckTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.function_prototype_emitter.emit(" *self");
@@ -333,7 +332,7 @@ impl CodeGenerator {
 
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
             self.body_emitters.top().body.emit("* ");
-            self.emit_name_node(name, EmitterKind::Body);
+            self.emit_struct_name(type_kind_id, EmitterKind::Body);
             self.body_emitters.top().body.emit("__CheckTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.body_emitters.top().body.emit(" *self");
@@ -353,7 +352,7 @@ impl CodeGenerator {
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, true);
             self.function_prototype_emitter.emit("* ");
-            self.emit_name_node(name, EmitterKind::FunctionPrototype);
+            self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
             self.function_prototype_emitter.emit("__WithTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.function_prototype_emitter.emit(" *self");
@@ -364,7 +363,7 @@ impl CodeGenerator {
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::Body, true);
             self.body_emitters.top().body.emit("* ");
-            self.emit_name_node(name, EmitterKind::Body);
+            self.emit_struct_name(type_kind_id, EmitterKind::Body);
             self.body_emitters.top().body.emit("__WithTag(");
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.body_emitters.top().body.emit(" *self");
@@ -379,7 +378,7 @@ impl CodeGenerator {
         }
 
         self.type_prototype_emitter.emit("struct ");
-        self.emit_name_node(name, EmitterKind::TypePrototype);
+        self.emit_struct_name(type_kind_id, EmitterKind::TypePrototype);
 
         self.type_prototype_emitter.emit(" ");
 
@@ -901,7 +900,6 @@ impl CodeGenerator {
                     };
 
                 if let TypeKind::Struct {
-                    name: struct_name,
                     fields,
                     is_union,
                     ..
@@ -920,7 +918,7 @@ impl CodeGenerator {
                             panic!("tag not found in union assignment");
                         };
 
-                        self.emit_name_node(*struct_name, EmitterKind::Body);
+                        self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
                         self.body_emitters.top().body.emit("__WithTag((");
                         self.emit_type_kind_left(
                             dereferenced_left_type_kind_id,
@@ -1100,7 +1098,6 @@ impl CodeGenerator {
             };
 
         if let TypeKind::Struct {
-            name: struct_name,
             fields,
             is_union,
             ..
@@ -1117,7 +1114,7 @@ impl CodeGenerator {
                     panic!("tag not found in field access");
                 };
 
-                self.emit_name_node(*struct_name, EmitterKind::Body);
+                self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
                 self.body_emitters.top().body.emit("__CheckTag((");
                 self.emit_type_kind_left(
                     dereferenced_left_type_kind_id,
@@ -1224,6 +1221,7 @@ impl CodeGenerator {
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
         }
+
     }
 
     fn name(&mut self, text: Arc<str>, _node_type: Option<Type>) {
@@ -1483,9 +1481,9 @@ impl CodeGenerator {
             TypeKind::UInt64 => self.emitter(kind).emit("uint64_t"),
             TypeKind::Float32 => self.emitter(kind).emit("float"),
             TypeKind::Float64 => self.emitter(kind).emit("double"),
-            TypeKind::Struct { name, .. } => {
+            TypeKind::Struct { .. } => {
                 self.emitter(kind).emit("struct ");
-                self.emit_name_node(name, kind);
+                self.emit_struct_name(type_kind_id, kind);
             }
             TypeKind::Enum { name, .. } => {
                 self.emitter(kind).emit("enum ");
@@ -1770,6 +1768,22 @@ impl CodeGenerator {
         self.body_emitters.top().body.unindent();
         self.body_emitters.top().body.emitln("}");
         self.body_emitters.top().body.newline();
+    }
+
+    fn emit_struct_name(&mut self, type_kind_id: usize, kind: EmitterKind) {
+        let TypeKind::Struct { name, .. } = self.type_kinds.get_by_id(type_kind_id) else {
+            panic!("invalid struct");
+        };
+
+        let NodeKind::Name { text } = self.get_typer_node(name).node_kind.clone() else {
+            panic!(
+                "invalid struct name: {:?}",
+                self.get_typer_node(name).node_kind
+            );
+        };
+
+        self.emit_name(text, kind);
+        self.emit_number_backwards(type_kind_id, kind);
     }
 
     fn emit_main_function(&mut self) {

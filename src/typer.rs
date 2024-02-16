@@ -2003,7 +2003,7 @@ impl Typer {
         &mut self,
         name: NodeIndex,
         params: Arc<Vec<NodeIndex>>,
-        _generic_params: Arc<Vec<NodeIndex>>,
+        generic_params: Arc<Vec<NodeIndex>>,
         return_type_name: NodeIndex,
     ) -> NodeIndex {
         let typed_name = self.check_node(name);
@@ -2018,6 +2018,12 @@ impl Typer {
             param_type_kind_ids.push(param_type.type_kind_id);
         }
         let param_type_kind_ids = Arc::new(param_type_kind_ids);
+
+        let mut typed_generic_params = Vec::new();
+        for generic_param in generic_params.iter() {
+            let typed_generic_param = self.check_node(*generic_param);
+            typed_generic_params.push(typed_generic_param);
+        }
 
         let typed_return_type_name = self.check_node(return_type_name);
         let return_type = assert_typed!(self, typed_return_type_name);
@@ -2069,7 +2075,7 @@ impl Typer {
             node_kind: NodeKind::FunctionDeclaration {
                 name: typed_name,
                 params: Arc::new(typed_params),
-                generic_params: Arc::new(Vec::new()),
+                generic_params: Arc::new(typed_generic_params),
                 return_type_name: typed_return_type_name,
             },
             node_type: Some(Type {
@@ -2210,6 +2216,12 @@ impl Typer {
         name_text: Arc<str>,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
     ) -> NodeIndex {
+        let mut typed_generic_arg_type_names = Vec::new();
+        for generic_arg_type_name in generic_arg_type_names.iter() {
+            let typed_generic_arg_type_name = self.check_node(*generic_arg_type_name);
+            typed_generic_arg_type_names.push(typed_generic_arg_type_name);
+        }
+
         let mut generic_arg_type_kind_ids = Vec::new();
         for generic_arg_type_name in generic_arg_type_names.iter() {
             let typed_generic_arg = self.check_node(*generic_arg_type_name);
@@ -2229,7 +2241,7 @@ impl Typer {
 
         let node_kind = NodeKind::GenericSpecifier {
             name_text: name_text.clone(),
-            generic_arg_type_names: Arc::new(Vec::new()),
+            generic_arg_type_names: Arc::new(typed_generic_arg_type_names),
         };
 
         if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
