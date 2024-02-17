@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fs, io::{self, Write}, path::{Path, PathBuf}, process::{Command, ExitCode}, sync::Arc, time::Instant};
+use std::{ffi::{OsStr, OsString}, fs::{self, File}, io::{self, BufWriter, Write}, path::{Path, PathBuf}, process::{Command, ExitCode}, sync::Arc, time::Instant};
 
 use crate::{code_generator::CodeGenerator, file_data::FileData, lexer::Lexer, parser::Parser, typer::Typer};
 
@@ -34,13 +34,13 @@ pub fn compile(project_path: &str, is_debug_mode: bool, c_flags: &[String]) -> E
         return ExitCode::FAILURE;
     };
 
-    let typers = if let Some(typers) = check(parsers, &files) {
+    let paths_components = Arc::new(get_paths_components(&files));
+
+    let typers = if let Some(typers) = check(parsers, &files, paths_components) {
         typers
     } else {
         return ExitCode::FAILURE
     };
-
-    fs::create_dir_all("build").unwrap();
 
     let output_paths = get_output_paths(&files);
 
@@ -114,7 +114,7 @@ fn parse(lexers: Vec<Lexer>, files: &Arc<Vec<FileData>>) -> Option<Vec<Parser>> 
     }
 }
 
-fn check(parsers: Vec<Parser>, files: &Arc<Vec<FileData>>) -> Option<Vec<Typer>> {
+fn check(parsers: Vec<Parser>, files: &Arc<Vec<FileData>>, paths_components: Arc<Vec<Vec<OsString>>>) -> Option<Vec<Typer>> {
     let mut typers = Vec::with_capacity(parsers.len());
     let mut had_typing_error = false;
 
@@ -132,7 +132,7 @@ fn check(parsers: Vec<Parser>, files: &Arc<Vec<FileData>>) -> Option<Vec<Typer>>
     let all_definition_indices = Arc::new(all_definition_indices);
 
     for (i, start_index) in all_start_indices.into_iter().enumerate() {
-        let mut typer = Typer::new(all_nodes.clone(), all_definition_indices.clone(), files.clone(), i);
+        let mut typer = Typer::new(all_nodes.clone(), all_definition_indices.clone(), files.clone(), paths_components.clone(), i);
         typer.check(start_index);
         had_typing_error = had_typing_error || typer.error_count > 0;
         typers.push(typer);
@@ -156,7 +156,9 @@ fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
         );
         code_generator.gen();
 
-        let mut output_file = fs::File::create(output_path).unwrap();
+        fs::create_dir_all(output_path.parent().unwrap()).unwrap();
+        let output_file = File::create(output_path).unwrap();
+        let mut output_file = BufWriter::new(output_file);
 
         code_generator.header_emitter.write(&mut output_file);
         code_generator
@@ -166,6 +168,8 @@ fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
             .function_prototype_emitter
             .write(&mut output_file);
         code_generator.body_emitters.write(&mut output_file);
+
+        output_file.flush().unwrap();
     }
 }
 
@@ -179,6 +183,24 @@ fn get_output_paths(files: &Arc<Vec<FileData>>) -> Vec<PathBuf> {
     }
 
     output_paths
+}
+
+fn get_paths_components(files: &Arc<Vec<FileData>>) -> Vec<Vec<OsString>> {
+    let mut paths_components = Vec::new();
+
+    for file in files.iter() {
+        let mut components = Vec::new();
+        let path = file.path.with_extension("");
+
+        for component in path.components().skip(1) {
+            let component = component.as_os_str().to_os_string();
+            components.push(component);
+        }
+
+        paths_components.push(components)
+    }
+
+    paths_components
 }
 
 fn collect_source_files(directory: &Path, files: &mut Vec<FileData>) -> io::Result<()> {

@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 
 pub struct Emitter {
     pub string: String,
@@ -73,7 +73,7 @@ impl Emitter {
         self.indent_count -= 1;
     }
 
-    pub fn write(&self, file: &mut File) {
+    pub fn write(&self, file: &mut BufWriter<File>) {
         write!(file, "{}", self.string).unwrap();
     }
 }

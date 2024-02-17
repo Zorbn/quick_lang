@@ -1,5 +1,5 @@
-using ".\Test.quick";
-using ".\Conflictor.quick";
+using Test;
+using Conflictor;
 
 struct Point
 {

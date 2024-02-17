@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
+use std::{collections::HashMap, ffi::OsString, hash::Hash, mem, sync::Arc};
 
 use crate::{
     const_value::ConstValue,
@@ -80,6 +80,7 @@ pub struct Typer {
     type_kind_environment: Environment<GenericIdentifier, usize>,
     function_definitions: HashMap<GenericIdentifier, FunctionDefinition>,
     files: Arc<Vec<FileData>>,
+    file_paths_components: Arc<Vec<Vec<OsString>>>,
     environment: Environment<Arc<str>, Type>,
     has_function_opened_block: bool,
     node_index_stack: Vec<NodeIndex>,
@@ -96,12 +97,14 @@ impl Typer {
         all_nodes: Arc<Vec<Vec<Node>>>,
         all_definition_indices: Arc<Vec<HashMap<Arc<str>, NodeIndex>>>,
         files: Arc<Vec<FileData>>,
+        file_paths_components: Arc<Vec<Vec<OsString>>>,
         file_index: usize,
     ) -> Self {
         let mut type_checker = Self {
             all_nodes,
             all_definition_indices,
             files,
+            file_paths_components,
             typed_nodes: Vec::new(),
             typed_definition_indices: Vec::new(),
             type_kinds: TypeKinds::new(),
@@ -433,7 +436,7 @@ impl Typer {
                 usings,
             } => self.top_level(functions, structs, enums, usings),
             NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
-            NodeKind::Using { path_string_literal } => self.using(path_string_literal),
+            NodeKind::Using { path_component_names } => self.using(path_component_names),
             NodeKind::Param { name, type_name } => self.param(name, type_name),
             NodeKind::Block { statements } => self.block(statements),
             NodeKind::Statement { inner } => self.statement(inner),
@@ -748,27 +751,39 @@ impl Typer {
         index
     }
 
-    fn using(&mut self, path_string_literal: NodeIndex) -> NodeIndex {
-        let typed_path_string_literal = self.check_node(path_string_literal);
-
-        let NodeKind::StringLiteral { text: path_text } = &self.get_typer_node(typed_path_string_literal).node_kind else {
-            type_error!(self, "invalid string literal in using statement");
-        };
-
+    fn using(&mut self, path_component_names: Arc<Vec<NodeIndex>>) -> NodeIndex {
         let mut did_find_file = false;
-        for (i, file) in self.files.iter().enumerate() {
-            if file.path.to_str().unwrap() == path_text.as_ref() {
-                self.used_file_indices.push(i);
-                did_find_file = true;
-                break;
+        for (i, file_path_components) in self.file_paths_components.iter().enumerate() {
+            if file_path_components.len() != path_component_names.len() {
+                continue;
             }
+
+            let mut is_matching = true;
+            for component_i in 0..file_path_components.len() {
+                let NodeKind::Name { text: name_text } = &self.get_parser_node(path_component_names[component_i]).kind else {
+                    panic!("invalid component name");
+                };
+
+                if file_path_components[component_i] != name_text.as_ref() {
+                    is_matching = false;
+                    break;
+                }
+            }
+
+            if !is_matching {
+                continue;
+            }
+
+            self.used_file_indices.push(i);
+            did_find_file = true;
+            break;
         }
 
         if !did_find_file {
             type_error!(self, "couldn't file file referenced by using statement");
         }
 
-        self.add_node(TypedNode { node_kind: NodeKind::Using { path_string_literal: typed_path_string_literal }, node_type: None })
+        self.add_node(TypedNode { node_kind: NodeKind::Using { path_component_names: Arc::new(Vec::new()) }, node_type: None })
     }
 
     fn param(&mut self, name: NodeIndex, type_name: NodeIndex) -> NodeIndex {

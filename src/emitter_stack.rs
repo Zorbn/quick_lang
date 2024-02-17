@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File, io::BufWriter};
 
 use crate::emitter::Emitter;
 
@@ -92,7 +92,7 @@ impl EmitterStack {
         self.stack.last_mut().unwrap().bottom.push(destination);
     }
 
-    pub fn write(&self, file: &mut File) {
+    pub fn write(&self, file: &mut BufWriter<File>) {
         if self.stack.len() != 1 {
             panic!(
                 "invalid stack length while trying to get result of emitter stack: {}",

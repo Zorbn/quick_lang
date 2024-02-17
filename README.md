@@ -15,18 +15,17 @@
 
 #### Project Structure
 - Namespaces.
-    - Each file is it's own namespace, named after the file. (eg. a function `Bar()` defined in `Foo.quick` is called with `Bar();` in `Foo.quick` and `Foo.Bar();` elsewhere)
 - Some form of incremental compilation.
 - Maybe parallel compilation too?
 
 #### Features
+- Break & continue & make sure defer supports them (they are treated as exiting the current scope).
 - Default parameters.
 - Variadic arguments.
 - `for elem in array {}`
 - Possibly generic type inference, so specifiers aren't required?
-- Bring back methods, implemented better than they were originally.
+- Bring back methods, implemented better than they were originally with support for structs/unions/enums.
     - Define methods as normal free functions, but with their owning type at the front (eg. `func PlayerStruct.JumpMethod() Void {}` called as `playerInstance.JumpMethod();`)
-- Enum methods.
 - Top level const declarations.
 
 #### Missing Things and Bug Fixes

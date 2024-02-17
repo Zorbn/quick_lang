@@ -88,9 +88,8 @@ pub enum NodeKind {
     ExternFunction {
         declaration: NodeIndex,
     },
-    // TODO: Paths shouldn't be string paths `using "Folder/Folder/File.quick"`, they should be like `using Folder.Folder.File`.
     Using {
-        path_string_literal: NodeIndex,
+        path_component_names: Arc<Vec<NodeIndex>>,
     },
     Param {
         name: NodeIndex,
@@ -542,13 +541,24 @@ impl Parser {
         assert_token!(self, TokenKind::Using, start, self.token_end());
         self.position += 1;
 
-        let path_string_literal = self.string_literal();
+        let mut path_component_names = Vec::new();
 
-        assert_token!(self, TokenKind::Semicolon, start, self.token_end());
+        while *self.token_kind() != TokenKind::Semicolon {
+            path_component_names.push(self.name());
+
+            if *self.token_kind() != TokenKind::Period {
+                break;
+            }
+
+            assert_token!(self, TokenKind::Period, start, self.token_end());
+            self.position += 1;
+        }
+
         let end = self.token_end();
+        assert_token!(self, TokenKind::Semicolon, start, end);
         self.position += 1;
 
-        self.add_node(Node { kind: NodeKind::Using { path_string_literal }, start, end })
+        self.add_node(Node { kind: NodeKind::Using { path_component_names: Arc::new(path_component_names) }, start, end })
     }
 
     fn field(&mut self) -> NodeIndex {
