@@ -1,0 +1,37 @@
+Namespaces:
+
+Are type kinds
+
+
+
+Path-based name spaces.
+
+Field access:
+NsA.NsB.NsC.MyType {};
+NsA.NsB.NsC.MyFunc();
+
+Definitions:
+`func MyFunc() Void {}` defined at path "NsA/NsB/NsC.quick" will be called as NsA.NsB.NsC.MyFunc();
+
+Using:
+`using NsA.NsB;` statement would allow it to be called as NsC.MyFunc();
+Files implicitly use themself, eg. in "NsA/NsB/NsC.quick" MyFunc can be called as MyFunc();
+
+Although you can optionally use more of the namespace than is necessary. (May be helpful to break ambiguities)
+You get an error if a name is ambiguous, eg. `using Ns.NsB.NsC;` then `MyFunc();` while another function also called MyFunc is defined in the current file.
+
+
+
+
+Import based name spaces.
+
+Field access (note: not nested):
+Ns.MyType {}
+Ns.MyFunc {}
+
+Definitions:
+`func MyFunc() Void {}` defined at path "A/B/C.quick" will be called as `MyFunc();` within that file, and invisible by default everywhere else.
+
+Using:
+`using A.B.C;` will allow the current file to call `MyFunc();` from "A/B/C.quick"
+`using A.B.C as Ns;` will allow the current file to call `Ns.MyFunc();`

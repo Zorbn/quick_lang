@@ -59,6 +59,7 @@ pub enum NodeKind {
         functions: Arc<Vec<NodeIndex>>,
         structs: Arc<Vec<NodeIndex>>,
         enums: Arc<Vec<NodeIndex>>,
+        usings: Arc<Vec<NodeIndex>>,
     },
     StructDefinition {
         name: NodeIndex,
@@ -86,6 +87,10 @@ pub enum NodeKind {
     },
     ExternFunction {
         declaration: NodeIndex,
+    },
+    // TODO: Paths shouldn't be string paths `using "Folder/Folder/File.quick"`, they should be like `using Folder.Folder.File`.
+    Using {
+        path_string_literal: NodeIndex,
     },
     Param {
         name: NodeIndex,
@@ -165,8 +170,7 @@ pub enum NodeKind {
         type_name: NodeIndex,
     },
     GenericSpecifier {
-        // TODO: Convert this to name: ParserIndex?
-        name_text: Arc<str>,
+        name: NodeIndex,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
     },
     Identifier {
@@ -245,7 +249,6 @@ macro_rules! assert_token {
 
 macro_rules! parse_error {
     ($self:ident, $message:expr, $start:expr, $end:expr) => {{
-        $self.position += 1;
         return $self.parse_error($message, $start, $end);
     }};
 }
@@ -253,7 +256,10 @@ macro_rules! parse_error {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeIndex {
     pub node_index: usize,
-    pub file_index: usize,
+    // For parser nodes the file_index is the index of the file the node comes from.
+    // For typer nodes the file_index of functions (names, definitions, usages, etc)
+    // are modified to be the index of the file that function was defined in.
+    pub file_index: Option<usize>,
 }
 
 pub struct Parser {
@@ -277,7 +283,7 @@ impl Parser {
             nodes: Vec::new(),
             definition_indices: HashMap::new(),
             error_count: 0,
-            start_index: NodeIndex { node_index: 0, file_index: 0 },
+            start_index: NodeIndex { node_index: 0, file_index: None },
             position: 0,
             file_index,
         }
@@ -328,7 +334,6 @@ impl Parser {
                 token_kind,
                 self.token_kind()
             ));
-            self.position += 1;
 
             return Some(self.add_node(Node {
                 kind: NodeKind::Error,
@@ -342,7 +347,6 @@ impl Parser {
 
     fn parse_error(&mut self, message: &str, start: Position, end: Position) -> NodeIndex {
         self.error(message);
-        self.position += 1;
 
         self.add_node(Node {
             kind: NodeKind::Error,
@@ -357,7 +361,7 @@ impl Parser {
 
         NodeIndex {
             node_index,
-            file_index: self.file_index,
+            file_index: Some(self.file_index),
         }
     }
 
@@ -372,10 +376,12 @@ impl Parser {
         self.start_index = self.top_level();
     }
 
+    // TODO: Functions, structs, and enums could probably all be stored in the same vec.
     fn top_level(&mut self) -> NodeIndex {
         let mut functions = Vec::new();
         let mut structs = Vec::new();
         let mut enums = Vec::new();
+        let mut usings = Vec::new();
         let start = self.token_start();
         let mut end = self.token_end();
 
@@ -399,6 +405,10 @@ impl Parser {
                     index = self.enum_definition();
                     enums.push(index);
                 }
+                TokenKind::Using => {
+                    index = self.using();
+                    usings.push(index);
+                }
                 _ => parse_error!(self, "unexpected token at top level", start, end),
             }
 
@@ -410,6 +420,7 @@ impl Parser {
                 functions: Arc::new(functions),
                 structs: Arc::new(structs),
                 enums: Arc::new(enums),
+                usings: Arc::new(usings),
             },
             start,
             end,
@@ -524,6 +535,21 @@ impl Parser {
         self.definition_indices.insert(name_text, index);
 
         index
+    }
+
+    fn using(&mut self) -> NodeIndex {
+        let start = self.token_start();
+
+        assert_token!(self, TokenKind::Using, start, self.token_end());
+        self.position += 1;
+
+        let path_string_literal = self.string_literal();
+
+        assert_token!(self, TokenKind::Semicolon, start, self.token_end());
+        let end = self.token_end();
+        self.position += 1;
+
+        self.add_node(Node { kind: NodeKind::Using { path_string_literal }, start, end })
     }
 
     fn field(&mut self) -> NodeIndex {
@@ -1377,13 +1403,9 @@ impl Parser {
                         );
                     };
 
-                    let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
-                        parse_error!(self, "invalid identifier name", start, end);
-                    };
-
                     left = self.add_node(Node {
                         kind: NodeKind::GenericSpecifier {
-                            name_text,
+                            name: *name,
                             generic_arg_type_names: Arc::new(generic_arg_type_names),
                         },
                         start,

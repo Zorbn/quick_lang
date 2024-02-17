@@ -94,7 +94,7 @@ fn reserved_names() -> &'static HashSet<Arc<str>> {
 pub struct CodeGenerator {
     typed_nodes: Vec<TypedNode>,
     type_kinds: TypeKinds,
-    main_function_type_kind_id: Option<usize>,
+    main_function_declaration: Option<NodeIndex>,
     typed_definition_indices: Vec<NodeIndex>,
 
     pub header_emitter: Emitter,
@@ -111,14 +111,14 @@ impl CodeGenerator {
     pub fn new(
         typed_nodes: Vec<TypedNode>,
         type_kinds: TypeKinds,
-        main_function_type_kind_id: Option<usize>,
+        main_function_declaration: Option<NodeIndex>,
         typed_definition_indices: Vec<NodeIndex>,
         is_debug_mode: bool,
     ) -> Self {
         let mut code_generator = Self {
             typed_nodes,
             type_kinds,
-            main_function_type_kind_id,
+            main_function_declaration,
             typed_definition_indices,
             header_emitter: Emitter::new(0),
             type_prototype_emitter: Emitter::new(0),
@@ -190,6 +190,7 @@ impl CodeGenerator {
                 functions,
                 structs,
                 enums,
+                ..
             } => self.top_level(functions, structs, enums, node_type),
             NodeKind::StructDefinition {
                 name,
@@ -269,10 +270,10 @@ impl CodeGenerator {
             NodeKind::FieldAccess { left, name } => self.field_access(left, name, node_type),
             NodeKind::Cast { left, type_name } => self.cast(left, type_name, node_type),
             NodeKind::GenericSpecifier {
-                name_text,
+                name,
                 generic_arg_type_names,
-            } => self.generic_specifier(name_text, generic_arg_type_names, node_type),
-            NodeKind::Name { text } => self.name(text, node_type),
+            } => self.generic_specifier(name, generic_arg_type_names, node_type),
+            NodeKind::Name { .. } => self.name(index, node_type),
             NodeKind::Identifier { name } => self.identifier(name, node_type),
             NodeKind::IntLiteral { text } => self.int_literal(text, node_type),
             NodeKind::Float32Literal { text } => self.float32_literal(text, node_type),
@@ -290,6 +291,7 @@ impl CodeGenerator {
                 self.field_literal(name, expression, node_type)
             }
             NodeKind::TypeSize { type_name } => self.type_size(type_name, node_type),
+            NodeKind::Using { .. } => panic!("cannot generate using statement"),
             NodeKind::Error => panic!("cannot generate error node"),
             NodeKind::TypeName { .. }
             | NodeKind::TypeNameArray { .. }
@@ -422,14 +424,14 @@ impl CodeGenerator {
         _node_type: Option<Type>,
     ) {
         self.type_prototype_emitter.emit("enum ");
-        self.emit_name_node(name, EmitterKind::TypePrototype);
+        self.emit_name(name, EmitterKind::TypePrototype);
         self.type_prototype_emitter.emitln(" {");
         self.type_prototype_emitter.indent();
 
         for variant_name in variant_names.iter() {
             self.type_prototype_emitter.emit("__");
-            self.emit_name_node(name, EmitterKind::TypePrototype);
-            self.emit_name_node(*variant_name, EmitterKind::TypePrototype);
+            self.emit_name(name, EmitterKind::TypePrototype);
+            self.emit_name(*variant_name, EmitterKind::TypePrototype);
             self.type_prototype_emitter.emitln(",");
         }
 
@@ -445,7 +447,7 @@ impl CodeGenerator {
             false,
             true,
         );
-        self.emit_name_node(name, EmitterKind::TypePrototype);
+        self.emit_name(name, EmitterKind::TypePrototype);
         self.emit_type_kind_right(
             node_type.unwrap().type_kind_id,
             EmitterKind::TypePrototype,
@@ -1206,18 +1208,15 @@ impl CodeGenerator {
 
     fn generic_specifier(
         &mut self,
-        name_text: Arc<str>,
+        name: NodeIndex,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
         node_type: Option<Type>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         if let TypeKind::Function { .. } = self.type_kinds.get_by_id(type_kind_id) {
-            self.body_emitters.top().body.emit(&name_text);
-
-            if !generic_arg_type_names.is_empty() {
-                self.emit_number_backwards(type_kind_id, EmitterKind::Body);
-            }
+            let is_generic = !generic_arg_type_names.is_empty();
+            self.emit_function_name(name, type_kind_id, is_generic, EmitterKind::Body)
         } else {
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
@@ -1225,12 +1224,18 @@ impl CodeGenerator {
 
     }
 
-    fn name(&mut self, text: Arc<str>, _node_type: Option<Type>) {
-        self.emit_name(text, EmitterKind::Body);
+    fn name(&mut self, index: NodeIndex, _node_type: Option<Type>) {
+        self.emit_name(index, EmitterKind::Body);
     }
 
-    fn identifier(&mut self, name: NodeIndex, _node_type: Option<Type>) {
-        self.gen_node(name);
+    fn identifier(&mut self, name: NodeIndex, node_type: Option<Type>) {
+        let node_type = node_type.unwrap();
+
+        if let TypeKind::Function { .. } = self.type_kinds.get_by_id(node_type.type_kind_id) {
+            self.emit_function_name(name, node_type.type_kind_id, false, EmitterKind::Body)
+        } else {
+            self.gen_node(name);
+        }
     }
 
     fn int_literal(&mut self, text: Arc<str>, _node_type: Option<Type>) {
@@ -1488,10 +1493,7 @@ impl CodeGenerator {
             }
             TypeKind::Enum { name, .. } => {
                 self.emitter(kind).emit("enum ");
-                let NodeKind::Name { text } = self.get_typer_node(name).node_kind.clone() else {
-                    panic!("invalid enum name");
-                };
-                self.emit_name(text, kind);
+                self.emit_name(name, kind);
             }
             TypeKind::Array {
                 element_type_kind_id,
@@ -1635,11 +1637,7 @@ impl CodeGenerator {
         };
 
         self.emit_type_kind_left(return_type_kind_id, kind, true, true);
-        self.emit_name_node(name, kind);
-
-        if has_generic_params {
-            self.emit_number_backwards(type_kind_id, kind);
-        }
+        self.emit_function_name(name, type_kind_id, has_generic_params, kind);
 
         let mut param_count = 0;
 
@@ -1691,7 +1689,7 @@ impl CodeGenerator {
 
     fn emit_param(&mut self, name: NodeIndex, type_kind_id: usize, kind: EmitterKind) {
         self.emit_type_kind_left(type_kind_id, kind, false, true);
-        self.emit_name_node(name, kind);
+        self.emit_name(name, kind);
         self.emit_type_kind_right(type_kind_id, kind, false);
     }
 
@@ -1701,15 +1699,12 @@ impl CodeGenerator {
         self.emit_type_kind_right(type_kind_id, kind, false);
     }
 
-    fn emit_name_node(&mut self, name: NodeIndex, kind: EmitterKind) {
+    fn emit_name(&mut self, name: NodeIndex, kind: EmitterKind) {
         let NodeKind::Name { text } = self.get_typer_node(name).node_kind.clone() else {
             panic!("invalid name");
         };
 
-        self.emit_name(text, kind);
-    }
-
-    fn emit_name(&mut self, text: Arc<str>, kind: EmitterKind) {
+        // TODO: It's probably overkill to do this for all names?
         if reserved_names().contains(&text) {
             self.emitter(kind).emit("__");
         }
@@ -1776,26 +1771,40 @@ impl CodeGenerator {
             panic!("invalid struct");
         };
 
-        let NodeKind::Name { text } = self.get_typer_node(name).node_kind.clone() else {
-            panic!(
-                "invalid struct name: {:?}",
-                self.get_typer_node(name).node_kind
-            );
-        };
-
-        self.emit_name(text, kind);
+        self.emit_name(name, kind);
         self.emit_number_backwards(type_kind_id, kind);
     }
 
+    fn emit_function_name(&mut self, name: NodeIndex, type_kind_id: usize, is_generic: bool, kind: EmitterKind) {
+        self.emit_name(name, kind);
+
+        if is_generic {
+            self.emitter(kind).emit("__");
+            self.emit_number_backwards(type_kind_id, kind);
+        }
+
+        if let Some(file_index) = name.file_index {
+            self.emitter(kind).emit("__");
+            self.emit_number_backwards(file_index, kind);
+        }
+    }
+
     fn emit_main_function(&mut self) {
-        let Some(main_function_type_kind_id) = self.main_function_type_kind_id else {
+        let Some(main_function_declaration) = self.main_function_declaration else {
             return;
+        };
+
+        let TypedNode {
+            node_kind: NodeKind::FunctionDeclaration { name, .. },
+            node_type: Some(function_type),
+        } = self.get_typer_node(main_function_declaration).clone() else {
+            panic!("invalid main function declaration");
         };
 
         let TypeKind::Function {
             param_type_kind_ids,
             ..
-        } = &self.type_kinds.get_by_id(main_function_type_kind_id)
+        } = &self.type_kinds.get_by_id(function_type.type_kind_id)
         else {
             panic!("invalid main function");
         };
@@ -1806,7 +1815,8 @@ impl CodeGenerator {
                 .body
                 .emitln("int main(int argc, char** argv) {");
             self.body_emitters.top().body.indent();
-            self.body_emitters.top().body.emit("return (int)Main");
+            self.body_emitters.top().body.emit("return (int)");
+            self.emit_function_name(name, function_type.type_kind_id, false, EmitterKind::Body);
             self.body_emitters
                 .top()
                 .body
@@ -1820,7 +1830,8 @@ impl CodeGenerator {
 
         self.body_emitters.top().body.emitln("int main(void) {");
         self.body_emitters.top().body.indent();
-        self.body_emitters.top().body.emit("return (int)Main");
+        self.body_emitters.top().body.emit("return (int)");
+        self.emit_function_name(name, function_type.type_kind_id, false, EmitterKind::Body);
         self.body_emitters.top().body.emitln("();");
         self.body_emitters.top().body.unindent();
         self.body_emitters.top().body.emitln("}");

@@ -1,0 +1,7 @@
+// TODO: Should conflict with Test's None.
+struct None {}
+
+func zero() Int
+{
+    return 0;
+}

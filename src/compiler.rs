@@ -63,6 +63,7 @@ pub fn compile(project_path: &str, is_debug_mode: bool, c_flags: &[String]) -> E
         Ok(output) => {
             if !output.stderr.is_empty() {
                 println!("System compiler error:\n");
+                io::stdout().write_all(&output.stdout).unwrap();
                 io::stdout().write_all(&output.stderr).unwrap();
                 return ExitCode::FAILURE;
             }
@@ -149,7 +150,7 @@ fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
         let mut code_generator = CodeGenerator::new(
             typer.typed_nodes,
             typer.type_kinds,
-            typer.main_function_type_kind_id,
+            typer.main_function_declaration,
             typer.typed_definition_indices,
             is_debug_mode,
         );

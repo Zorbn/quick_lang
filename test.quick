@@ -1,3 +1,6 @@
+using ".\Other.quick";
+using ".\Conflictor.quick";
+
 extern func puts(str String) UInt
 extern func malloc(size UInt) *var Void
 extern func free(ptr *var Void) Void
@@ -34,6 +37,8 @@ union Maybe<T>
 
 func Main(argc Int, argv *val String) Int
 {
+    takesPoint(Point { x = 1, y = 2 });
+
     val bitwiseMess = 1 & 5 << 5 >> 4 | 3;
 
     var mySome = Maybe.<Int> { some = 5 };
@@ -238,7 +243,8 @@ func Main(argc Int, argv *val String) Int
     return 0;
 }
 
-func returnsGeneric() GenericStruct.<Int, Int> {
+func returnsGeneric() GenericStruct.<Int, Int>
+{
     return GenericStruct.<Int, Int> { a = 5, b = 6 };
 }
 

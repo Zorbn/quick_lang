@@ -59,6 +59,7 @@ pub enum TokenKind {
     Enum,
     Return,
     Extern,
+    Using,
     If,
     Else,
     Switch,
@@ -134,9 +135,10 @@ impl Display for TokenKind {
             TokenKind::Func => "func",
             TokenKind::Struct => "struct",
             TokenKind::Union => "union",
-            TokenKind::Enum => "enum",
             TokenKind::Return => "return",
+            TokenKind::Enum => "enum",
             TokenKind::Extern => "extern",
+            TokenKind::Using => "using",
             TokenKind::If => "if",
             TokenKind::Else => "else",
             TokenKind::Switch => "switch",
@@ -183,6 +185,7 @@ fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
         keywords.insert(Arc::from("enum"), TokenKind::Enum);
         keywords.insert(Arc::from("return"), TokenKind::Return);
         keywords.insert(Arc::from("extern"), TokenKind::Extern);
+        keywords.insert(Arc::from("using"), TokenKind::Using);
         keywords.insert(Arc::from("if"), TokenKind::If);
         keywords.insert(Arc::from("else"), TokenKind::Else);
         keywords.insert(Arc::from("switch"), TokenKind::Switch);
