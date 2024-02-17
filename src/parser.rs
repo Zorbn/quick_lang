@@ -245,6 +245,7 @@ macro_rules! assert_token {
 
 macro_rules! parse_error {
     ($self:ident, $message:expr, $start:expr, $end:expr) => {{
+        $self.position += 1;
         return $self.parse_error($message, $start, $end);
     }};
 }
@@ -1055,7 +1056,7 @@ impl Parser {
      *
      * (Nestable, eg. &pointer^)
      * UnarySuffix: .<, .*, [], (), ., as, {}
-     * UnaryPrefix: &, !, ~, +, -
+     * UnaryPrefix: *, !, ~, +, -
      *
      * (Chainable, eg. a * b / c)
      * Factor: *, /, %, &, <<, >>
@@ -1272,7 +1273,7 @@ impl Parser {
             TokenKind::Tilde => Op::BitwiseNot,
             TokenKind::Plus => Op::Plus,
             TokenKind::Minus => Op::Minus,
-            TokenKind::Ampersand => Op::Reference,
+            TokenKind::Asterisk => Op::Reference,
             _ => return self.unary_suffix(),
         };
         self.position += 1;

@@ -29,5 +29,5 @@ func callsMain() Void
 {
     val argc = 5;
     val argv = "hello";
-    Main(argc, &argv);
+    Main(argc, *argv);
 }

@@ -64,7 +64,7 @@ func Main(argc Int, argv *val String) Int
     val unionTag = genericUnion as Tag;
     val otherTag = GenericUnion.<Int32, Int64>.b;
 
-    var function *val func(Int, Int) Int = &add;
+    var function *val func(Int, Int) Int = *add;
     function.*(1, 2);
 
     defer
@@ -83,7 +83,7 @@ func Main(argc Int, argv *val String) Int
     puts(str);
 
     var byte UInt8 = 255 as UInt8;
-    var bytePtr *var UInt8 = &byte;
+    var bytePtr *var UInt8 = *byte;
     var otherByte UInt8 = bytePtr.*;
 
     /*
@@ -225,8 +225,8 @@ func Main(argc Int, argv *val String) Int
     val genericResult2 = genericFunction.<Bool, Bool>(false, true);
     val genericResult3 = genericFunction.<Bool, Bool>(false, true);
 
-    val nonGenericPtr = &genericFunction.<Int, Int>;
-    val nonGenericDoublePtr = &nonGenericPtr;
+    val nonGenericPtr = *genericFunction.<Int, Int>;
+    val nonGenericDoublePtr = *nonGenericPtr;
 
     val genericStruct = GenericStruct.<Int, Int> { a = 5, b = 6 };
     val genericStruct2 = GenericStruct.<Bool, Int> { a = true, b = 6 };
@@ -286,7 +286,7 @@ func takeArray(a [3]Int) [3]Int
 }
 
 func returnFunPtr() *val func(Int, Int) Int
-    return &add;
+    return *add;
 
 func genericFunction<A, B>(a A, b B) A
 {
