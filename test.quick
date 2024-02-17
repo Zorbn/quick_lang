@@ -36,8 +36,10 @@ func Main(argc Int, argv *val String) Int
 {
     val bitwiseMess = 1 & 5 << 5 >> 4 | 3;
 
-    val mySome = Maybe.<Int> { some = 5 };
+    var mySome = Maybe.<Int> { some = 5 };
     val myNone = Maybe.<Int> { none = None {} };
+
+    mySome.some = 3;
 
     val unwrappedSome = mySome.some;
 

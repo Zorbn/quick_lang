@@ -876,7 +876,7 @@ impl Typer {
             Op::Assign | Op::PlusAssign | Op::MinusAssign | Op::MultiplyAssign | Op::DivideAssign | Op::BitwiseAndAssign | Op::BitwiseOrAssign | Op::XorAssign | Op::LeftShiftAssign | Op::RightShiftAssign | Op::ModuloAssign
         ) && left_type.instance_kind != InstanceKind::Var
         {
-            type_error!(self, "only variables can be assigned to");
+            type_error!(self, "only vars can be assigned to");
         }
 
         match op {
@@ -1191,6 +1191,10 @@ impl Typer {
         let typed_left = self.check_node(left);
         let left_type = assert_typed!(self, typed_left);
 
+        if left_type.instance_kind == InstanceKind::Name {
+            type_error!(self, "array type names cannot be indexed");
+        }
+
         let element_type_kind_id = if let TypeKind::Array {
             element_type_kind_id,
             ..
@@ -1215,7 +1219,7 @@ impl Typer {
             },
             node_type: Some(Type {
                 type_kind_id: element_type_kind_id,
-                instance_kind: InstanceKind::Var,
+                instance_kind: left_type.instance_kind,
             }),
         })
     }
@@ -1239,7 +1243,7 @@ impl Typer {
             match &self.type_kinds.get_by_id(left_type.type_kind_id) {
                 TypeKind::Struct { is_union, .. } => {
                     is_tag_access = left_type.instance_kind == InstanceKind::Name && *is_union;
-                    (left_type.type_kind_id, InstanceKind::Var)
+                    (left_type.type_kind_id, left_type.instance_kind)
                 }
                 TypeKind::Pointer {
                     inner_type_kind_id,
