@@ -48,6 +48,7 @@ fn reserved_names() -> &'static HashSet<Arc<str>> {
             "inline",
             "int",
             "long",
+            "main",
             "nullptr",
             "register",
             "restrict",
