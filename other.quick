@@ -1,9 +1,6 @@
 using ".\Test.quick";
 using ".\Conflictor.quick";
 
-// TODO: Should conflict with Test's puts.
-extern func puts(str String) UInt
-
 struct Point
 {
     x Int;

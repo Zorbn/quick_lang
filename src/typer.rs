@@ -60,6 +60,13 @@ struct FunctionDefinition {
     file_index: Option<usize>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DefinitionLookupResult {
+    Error,
+    NotFound,
+    Found(NodeIndex),
+}
+
 pub struct Typer {
     all_nodes: Arc<Vec<Vec<Node>>>,
     all_definition_indices: Arc<Vec<HashMap<Arc<str>, NodeIndex>>>,
@@ -298,7 +305,7 @@ impl Typer {
         &self.typed_nodes[index.node_index]
     }
 
-    fn get_definition_index(&mut self, name_text: &Arc<str>) -> Option<NodeIndex> {
+    fn lookup_definition_index(&mut self, name_text: &Arc<str>) -> DefinitionLookupResult {
         let mut found_index = None;
 
         for i in 0..self.used_file_indices.len() {
@@ -309,19 +316,86 @@ impl Typer {
                 continue;
             }
 
-            // TODO: This only catches ambiguous identifiers when they get looked up, not when they get defined in the current file.
             if found_index.is_some() {
-                self.error("ambiguous identifier, multiple possible definitions exist")
+                self.error("ambiguous identifier, multiple possible definitions exist");
+                return DefinitionLookupResult::Error;
             }
 
             found_index = definition_index;
         }
 
-        if found_index.is_none() {
-            self.error("undefined identifier");
+        if let Some(found_index) = found_index {
+            DefinitionLookupResult::Found(found_index)
+        } else {
+            DefinitionLookupResult::NotFound
+        }
+    }
+
+    fn lookup_identifier(&mut self, name: NodeIndex, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>, is_types_only: bool) -> Option<(NodeIndex, Type)> {
+        let mut typed_name = self.check_node(name);
+
+        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
+            self.error("invalid identifier name");
+            return None;
+        };
+
+        // Look up the definition first, to make sure there is exactly one definition available (aka: it isn't ambiguous).
+        // We'll use it if the type information isn't already available in one of the caches.
+        let definition_index = self.lookup_definition_index(&name_text);
+        if definition_index == DefinitionLookupResult::Error {
+            return None;
         }
 
-        found_index
+        if let Some(identifier_type) = self.environment.get(&name_text) {
+            return Some((typed_name, identifier_type));
+        };
+
+        let identifier = GenericIdentifier {
+            name: name_text.clone(),
+            generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
+        };
+
+        if !is_types_only {
+            if let Some(function_definition) = self.function_definitions.get(&identifier) {
+                typed_name.file_index = function_definition.file_index;
+                return Some((typed_name, Type {
+                    type_kind_id: function_definition.type_kind_id,
+                    instance_kind: InstanceKind::Val,
+                }));
+            }
+        }
+
+        if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
+            return Some((typed_name, Type {
+                type_kind_id,
+                instance_kind: InstanceKind::Name,
+            }));
+        }
+
+        let DefinitionLookupResult::Found(definition_index) = definition_index else {
+            self.error("undefined identifier");
+            return None;
+        };
+
+        if is_types_only {
+            if let NodeKind::Function { .. } = self.get_parser_node(definition_index).kind {
+                self.error("expected identifier to refer to a type");
+                return None;
+            }
+        }
+
+        self.shallow_check_stack += 1;
+        let typed_definition = self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids);
+        self.shallow_check_stack -= 1;
+
+        // It's possible that the definition type will not have a valid type, if it's
+        // the definition of a generic function since no generic args were specified.
+        // So, we check it and report a type error instead of using assert_typed!().
+        let definition_type = self.get_typer_node(typed_definition).node_type.clone()?;
+
+        typed_name.file_index = typed_definition.file_index;
+
+        Some((typed_name, definition_type))
     }
 
     fn error(&mut self, message: &str) {
@@ -444,7 +518,7 @@ impl Typer {
                 name,
                 generic_arg_type_names,
             } => self.generic_specifier(name, generic_arg_type_names),
-            NodeKind::TypeName { text } => self.type_name(text),
+            NodeKind::TypeName { name } => self.type_name(name),
             NodeKind::TypeNamePointer {
                 inner,
                 is_inner_mutable,
@@ -458,9 +532,9 @@ impl Typer {
                 return_type_name,
             } => self.type_name_function(param_type_names, return_type_name),
             NodeKind::TypeNameGenericSpecifier {
-                name_text,
+                name,
                 generic_arg_type_names,
-            } => self.type_name_generic_specifier(name_text, generic_arg_type_names),
+            } => self.type_name_generic_specifier(name, generic_arg_type_names),
             NodeKind::Error => type_error!(self, "cannot generate error node"),
         };
 
@@ -472,7 +546,7 @@ impl Typer {
     fn check_node_with_generic_args(
         &mut self,
         index: NodeIndex,
-        generic_arg_type_kind_ids: Arc<Vec<usize>>,
+        generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
     ) -> NodeIndex {
         self.node_index_stack.push(index);
 
@@ -487,13 +561,16 @@ impl Typer {
                 fields,
                 generic_params,
                 is_union,
-                Some(generic_arg_type_kind_ids),
+                generic_arg_type_kind_ids,
             ),
             NodeKind::Function {
                 declaration,
                 statement,
-            } => self.function(declaration, statement, Some(generic_arg_type_kind_ids)),
-            _ => type_error!(self, "tried to generate unexpected node with generic args"),
+            } => self.function(declaration, statement, generic_arg_type_kind_ids),
+            NodeKind::ExternFunction {
+                declaration,
+            } => self.extern_function(declaration),
+            _ => type_error!(self, "tried to check unexpected node with generic args"),
         };
 
         self.node_index_stack.pop();
@@ -541,10 +618,14 @@ impl Typer {
 
         let mut typed_structs = Vec::new();
         for struct_definition in structs.iter() {
-            let NodeKind::StructDefinition { name, .. } = &self.get_parser_node(*struct_definition).kind
+            let NodeKind::StructDefinition { name, generic_params, .. } = &self.get_parser_node(*struct_definition).kind
             else {
                 panic!("invalid struct definition");
             };
+
+            if !generic_params.is_empty() {
+                continue;
+            }
 
             let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone() else {
                 panic!("invalid struct name");
@@ -586,6 +667,23 @@ impl Typer {
 
         let mut typed_functions = Vec::new();
         for function in functions.iter() {
+            let declaration = if let NodeKind::Function { declaration, .. } = &self.get_parser_node(*function).kind {
+                declaration
+            } else if let NodeKind::ExternFunction { declaration } = &self.get_parser_node(*function).kind {
+                declaration
+            } else {
+                panic!("invalid function");
+            };
+
+            let NodeKind::FunctionDeclaration { generic_params, .. } = &self.get_parser_node(*declaration).kind
+            else {
+                panic!("invalid function declaration");
+            };
+
+            if !generic_params.is_empty() {
+                continue;
+            }
+
             typed_functions.push(self.check_node(*function));
         }
 
@@ -1481,66 +1579,13 @@ impl Typer {
     }
 
     fn identifier(&mut self, name: NodeIndex) -> NodeIndex {
-        let mut typed_name = self.check_node(name);
-
-        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            type_error!(self, "invalid identifier name");
-        };
-
-        if let Some(identifier_type) = self.environment.get(&name_text) {
-            return self.add_node(TypedNode {
-                node_kind: NodeKind::Identifier { name: typed_name },
-                node_type: Some(identifier_type),
-            });
-        };
-
-        let identifier = GenericIdentifier {
-            name: name_text.clone(),
-            generic_arg_type_kind_ids: None,
-        };
-
-        if let Some(function_definition) = self.function_definitions.get(&identifier) {
-            typed_name.file_index = function_definition.file_index;
-
-            return self.add_node(TypedNode {
-                node_kind: NodeKind::Identifier { name: typed_name },
-                node_type: Some(Type {
-                    type_kind_id: function_definition.type_kind_id,
-                    instance_kind: InstanceKind::Val,
-                }),
-            });
-        }
-
-        if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return self.add_node(TypedNode {
-                node_kind: NodeKind::Identifier { name: typed_name },
-                node_type: Some(Type {
-                    type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                }),
-            });
-        }
-
-        let Some(definition_index) = self.get_definition_index(&name_text) else {
+        let Some((typed_name, name_type)) = self.lookup_identifier(name, None, false) else {
             return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
         };
 
-        self.shallow_check_stack += 1;
-        let typed_definition = self.check_node(definition_index);
-        self.shallow_check_stack -= 1;
-
-        // It's possible that the definition type will not have a valid type, if it's
-        // the definition of a generic function since no generic args were specified.
-        // So, we check it and report a type error instead of using assert_typed!().
-        let Some(definition_type) = self.get_typer_node(typed_definition).node_type.clone() else {
-            type_error!(self, "identifier is missing generic arguments");
-        };
-
-        typed_name.file_index = typed_definition.file_index;
-
         self.add_node(TypedNode {
             node_kind: NodeKind::Identifier { name: typed_name },
-            node_type: Some(definition_type),
+            node_type: Some(name_type),
         })
     }
 
@@ -1891,10 +1936,7 @@ impl Typer {
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
     ) -> NodeIndex {
         if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
-            return self.add_node(TypedNode {
-                node_kind: NodeKind::Error,
-                node_type: None,
-            });
+            type_error!(self, "generic type requires generic arguments");
         }
 
         let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
@@ -2188,10 +2230,7 @@ impl Typer {
         };
 
         if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
-            return self.add_node(TypedNode {
-                node_kind: NodeKind::Error,
-                node_type: None,
-            });
+            type_error!(self, "generic function requires generic arguments");
         }
 
         self.type_kind_environment.push(false);
@@ -2275,8 +2314,6 @@ impl Typer {
         name: NodeIndex,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
     ) -> NodeIndex {
-        let mut typed_name = self.check_node(name);
-
         let mut typed_generic_arg_type_names = Vec::new();
         for generic_arg_type_name in generic_arg_type_names.iter() {
             let typed_generic_arg_type_name = self.check_node(*generic_arg_type_name);
@@ -2295,97 +2332,24 @@ impl Typer {
         }
         let generic_arg_type_kind_ids = Arc::new(generic_arg_type_kind_ids);
 
-        let NodeKind::Name { text: name_text } = self.get_typer_node(typed_name).node_kind.clone() else {
-            type_error!(self, "invalid name in generic specifier");
-        };
-
-        let identifier = GenericIdentifier {
-            name: name_text.clone(),
-            generic_arg_type_kind_ids: Some(generic_arg_type_kind_ids.clone()),
-        };
-
-        if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return self.add_node(TypedNode {
-                node_kind: NodeKind::GenericSpecifier {
-                    name: typed_name,
-                    generic_arg_type_names: Arc::new(typed_generic_arg_type_names),
-                },
-                node_type: Some(Type {
-                    type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                }),
-            });
-        }
-
-        if let Some(function_definition) = self.function_definitions.get(&identifier).copied() {
-            typed_name.file_index = function_definition.file_index;
-
-            return self.add_node(TypedNode {
-                node_kind: NodeKind::GenericSpecifier {
-                    name: typed_name,
-                    generic_arg_type_names: Arc::new(typed_generic_arg_type_names),
-                },
-                node_type: Some(Type {
-                    type_kind_id: function_definition.type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                }),
-            });
-        }
-
-        let Some(definition_index) = self.get_definition_index(&name_text) else {
+        let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(generic_arg_type_kind_ids), false) else {
             return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
         };
 
-        self.shallow_check_stack += 1;
-        let typed_definition =
-            self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids);
-        self.shallow_check_stack -= 1;
-        let definition_type = assert_typed!(self, typed_definition);
-
-        typed_name.file_index = typed_definition.file_index;
-
         self.add_node(TypedNode {
-            node_kind: NodeKind::GenericSpecifier {
-                name: typed_name,
-                generic_arg_type_names: Arc::new(typed_generic_arg_type_names),
-            },
-            node_type: Some(definition_type),
+            node_kind: NodeKind::GenericSpecifier { name: typed_name, generic_arg_type_names: Arc::new(typed_generic_arg_type_names) },
+            node_type: Some(name_type),
         })
     }
 
-    fn type_name(&mut self, text: Arc<str>) -> NodeIndex {
-        let node_kind = NodeKind::TypeName { text: text.clone() };
-
-        let identifier = GenericIdentifier {
-            name: text.clone(),
-            generic_arg_type_kind_ids: None,
-        };
-
-        if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return self.add_node(TypedNode {
-                node_kind,
-                node_type: Some(Type {
-                    type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                }),
-            });
-        }
-
-        let Some(definition_index) = self.get_definition_index(&text) else {
+    fn type_name(&mut self, name: NodeIndex) -> NodeIndex {
+        let Some((typed_name, name_type)) = self.lookup_identifier(name, None, true) else {
             return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
         };
 
-        self.shallow_check_stack += 1;
-        let typed_definition = self.check_node(definition_index);
-        self.shallow_check_stack -= 1;
-        let definition_type = assert_typed!(self, typed_definition);
-
         self.add_node(TypedNode {
-            node_kind,
-            node_type: Some(Type {
-                type_kind_id: definition_type.type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
+            node_kind: NodeKind::TypeName { name: typed_name },
+            node_type: Some(name_type),
         })
     }
 
@@ -2489,7 +2453,7 @@ impl Typer {
 
     fn type_name_generic_specifier(
         &mut self,
-        name_text: Arc<str>,
+        name: NodeIndex,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
     ) -> NodeIndex {
         let mut generic_arg_type_kind_ids = Vec::new();
@@ -2504,50 +2468,13 @@ impl Typer {
         }
         let generic_arg_type_kind_ids = Arc::new(generic_arg_type_kind_ids);
 
-        let node_kind = NodeKind::TypeNameGenericSpecifier {
-            name_text: name_text.clone(),
-            generic_arg_type_names: Arc::new(Vec::new()),
-        };
-
-        let identifier = GenericIdentifier {
-            name: name_text.clone(),
-            generic_arg_type_kind_ids: Some(generic_arg_type_kind_ids.clone()),
-        };
-
-        if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return self.add_node(TypedNode {
-                node_kind,
-                node_type: Some(Type {
-                    type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                }),
-            });
-        }
-
-        let Some(definition_index) = self.get_definition_index(&name_text) else {
+        let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(generic_arg_type_kind_ids), true) else {
             return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
         };
 
-        let definition_type =
-            if let NodeKind::StructDefinition { .. } = self.get_parser_node(definition_index).kind.clone() {
-                self.shallow_check_stack += 1;
-                let typed_definition =
-                    self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids);
-                self.shallow_check_stack -= 1;
-                assert_typed!(self, typed_definition)
-            } else {
-                type_error!(
-                    self,
-                    "expected struct/union before generic specifier in type name"
-                );
-            };
-
         self.add_node(TypedNode {
-            node_kind,
-            node_type: Some(Type {
-                type_kind_id: definition_type.type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
+            node_kind: NodeKind::TypeNameGenericSpecifier { name: typed_name, generic_arg_type_names: Arc::new(Vec::new()) },
+            node_type: Some(name_type),
         })
     }
 

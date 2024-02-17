@@ -1704,7 +1704,6 @@ impl CodeGenerator {
             panic!("invalid name");
         };
 
-        // TODO: It's probably overkill to do this for all names?
         if reserved_names().contains(&text) {
             self.emitter(kind).emit("__");
         }
@@ -1772,20 +1771,21 @@ impl CodeGenerator {
         };
 
         self.emit_name(name, kind);
+        self.emitter(kind).emit("__");
         self.emit_number_backwards(type_kind_id, kind);
     }
 
     fn emit_function_name(&mut self, name: NodeIndex, type_kind_id: usize, is_generic: bool, kind: EmitterKind) {
         self.emit_name(name, kind);
 
-        if is_generic {
-            self.emitter(kind).emit("__");
-            self.emit_number_backwards(type_kind_id, kind);
-        }
-
         if let Some(file_index) = name.file_index {
             self.emitter(kind).emit("__");
             self.emit_number_backwards(file_index, kind);
+        }
+
+        if is_generic {
+            self.emitter(kind).emit("__");
+            self.emit_number_backwards(type_kind_id, kind);
         }
     }
 

@@ -210,7 +210,7 @@ pub enum NodeKind {
         inner: NodeIndex,
     },
     TypeName {
-        text: Arc<str>,
+        name: NodeIndex,
     },
     TypeNamePointer {
         inner: NodeIndex,
@@ -225,8 +225,7 @@ pub enum NodeKind {
         return_type_name: NodeIndex,
     },
     TypeNameGenericSpecifier {
-        // TODO: Convert this to name: ParserIndex?
-        name_text: Arc<str>,
+        name: NodeIndex,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
     },
     Error,
@@ -1805,8 +1804,8 @@ impl Parser {
                     end,
                 })
             }
-            TokenKind::Identifier { text } => {
-                self.position += 1;
+            TokenKind::Identifier { .. } => {
+                let name = self.name();
 
                 if *self.token_kind() == TokenKind::GenericSpecifier {
                     let mut generic_arg_type_names = Vec::new();
@@ -1821,7 +1820,7 @@ impl Parser {
 
                     return self.add_node(Node {
                         kind: NodeKind::TypeNameGenericSpecifier {
-                            name_text: text,
+                            name,
                             generic_arg_type_names: Arc::new(generic_arg_type_names),
                         },
                         start,
@@ -1830,7 +1829,7 @@ impl Parser {
                 }
 
                 self.add_node(Node {
-                    kind: NodeKind::TypeName { text },
+                    kind: NodeKind::TypeName { name },
                     start,
                     end: self.token_end(),
                 })

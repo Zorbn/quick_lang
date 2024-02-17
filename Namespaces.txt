@@ -1,7 +1,8 @@
 Namespaces:
 
 Are type kinds
-
+If you use multiple namespaces that have ambiguous items, that's ok. However, if you refer to them in an ambiguous way that's an error.
+eg. you can using `A.quick` and `B.quick` which both define `Function`, but if you write `Function();` that's ambiguous and causes an error.
 
 
 Path-based name spaces.
