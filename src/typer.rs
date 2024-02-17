@@ -755,11 +755,17 @@ impl Typer {
             type_error!(self, "invalid string literal in using statement");
         };
 
+        let mut did_find_file = false;
         for (i, file) in self.files.iter().enumerate() {
             if file.path.to_str().unwrap() == path_text.as_ref() {
                 self.used_file_indices.push(i);
+                did_find_file = true;
                 break;
             }
+        }
+
+        if !did_find_file {
+            type_error!(self, "couldn't file file referenced by using statement");
         }
 
         self.add_node(TypedNode { node_kind: NodeKind::Using { path_string_literal: typed_path_string_literal }, node_type: None })

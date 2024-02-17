@@ -1388,10 +1388,7 @@ impl CodeGenerator {
     fn type_size(&mut self, _type_name: NodeIndex, node_type: Option<Type>) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
-        self.body_emitters.top().body.emit("sizeof(");
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
-        self.body_emitters.top().body.emit(")");
+        self.emit_type_size(type_kind_id);
     }
 
     fn emit_memmove_expression_to_variable(
@@ -1449,7 +1446,7 @@ impl CodeGenerator {
             }
             _ => {
                 self.body_emitters.top().body.emit("sizeof(");
-                self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, true);
+                self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
                 self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
                 self.body_emitters.top().body.emit(")");
             }

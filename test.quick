@@ -1,5 +1,4 @@
 using ".\Other.quick";
-using ".\Conflictor.quick";
 
 extern func puts(str String) UInt
 extern func malloc(size UInt) *var Void
