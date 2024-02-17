@@ -1460,7 +1460,13 @@ impl Typer {
         self.shallow_check_stack += 1;
         let typed_definition = self.check_node(definition_index);
         self.shallow_check_stack -= 1;
-        let definition_type = assert_typed!(self, typed_definition);
+
+        // It's possible that the definition type will not have a valid type, if it's
+        // the definition of a generic function since no generic args were specified.
+        // So, we check it and report a type error instead of using assert_typed!().
+        let Some(definition_type) = self.get_typer_node(typed_definition).node_type.clone() else {
+            type_error!(self, "identifier is missing generic arguments");
+        };
 
         self.add_node(TypedNode {
             node_kind,
