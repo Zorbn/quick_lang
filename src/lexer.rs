@@ -58,6 +58,8 @@ pub enum TokenKind {
     Union,
     Enum,
     Return,
+    Break,
+    Continue,
     Extern,
     Using,
     If,
@@ -136,6 +138,8 @@ impl Display for TokenKind {
             TokenKind::Struct => "struct",
             TokenKind::Union => "union",
             TokenKind::Return => "return",
+            TokenKind::Break => "break",
+            TokenKind::Continue => "continue",
             TokenKind::Enum => "enum",
             TokenKind::Extern => "extern",
             TokenKind::Using => "using",
@@ -184,6 +188,8 @@ fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
         keywords.insert(Arc::from("union"), TokenKind::Union);
         keywords.insert(Arc::from("enum"), TokenKind::Enum);
         keywords.insert(Arc::from("return"), TokenKind::Return);
+        keywords.insert(Arc::from("break"), TokenKind::Break);
+        keywords.insert(Arc::from("continue"), TokenKind::Continue);
         keywords.insert(Arc::from("extern"), TokenKind::Extern);
         keywords.insert(Arc::from("using"), TokenKind::Using);
         keywords.insert(Arc::from("if"), TokenKind::If);

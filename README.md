@@ -19,7 +19,6 @@
 - Maybe parallel compilation too?
 
 #### Features
-- Break & continue & make sure defer supports them (they are treated as exiting the current scope).
 - Default parameters.
 - Variadic arguments.
 - `for elem in array {}`
@@ -29,6 +28,7 @@
 - Top level const declarations.
 
 #### Missing Things and Bug Fixes
+- Make sure defer works properly when it is in a conditional statement rather than a conditional block.
 - Struct equality comparisons.
 - Allow `sizeof` on complex types at compile time.
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp

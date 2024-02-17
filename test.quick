@@ -173,6 +173,18 @@ func Main(argc Int, argv *val String) Int
     {
         defer puts("defer in loop1");
         defer puts("defer in loop2");
+
+        if (false)
+        {
+            continue;
+        }
+
+        if (true)
+        {
+            break;
+        }
+
+        break;
     }
 
     for (i of zero() <= 10)

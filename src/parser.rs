@@ -110,6 +110,8 @@ pub enum NodeKind {
     ReturnStatement {
         expression: Option<NodeIndex>,
     },
+    BreakStatement,
+    ContinueStatement,
     DeferStatement {
         statement: NodeIndex,
     },
@@ -780,6 +782,8 @@ impl Parser {
             TokenKind::Semicolon => None,
             TokenKind::Var | TokenKind::Val | TokenKind::Const => Some(self.variable_declaration()),
             TokenKind::Return => Some(self.return_statement()),
+            TokenKind::Break => Some(self.break_statement()),
+            TokenKind::Continue => Some(self.continue_statement()),
             TokenKind::Defer => Some(self.defer_statement()),
             TokenKind::If => Some(self.if_statement()),
             TokenKind::Switch => Some(self.switch_statement()),
@@ -867,6 +871,32 @@ impl Parser {
 
         self.add_node(Node {
             kind: NodeKind::ReturnStatement { expression },
+            start,
+            end,
+        })
+    }
+
+    fn break_statement(&mut self) -> NodeIndex {
+        let start = self.token_start();
+        let end = self.token_end();
+        assert_token!(self, TokenKind::Break, start, end);
+        self.position += 1;
+
+        self.add_node(Node {
+            kind: NodeKind::BreakStatement,
+            start,
+            end,
+        })
+    }
+
+    fn continue_statement(&mut self) -> NodeIndex {
+        let start = self.token_start();
+        let end = self.token_end();
+        assert_token!(self, TokenKind::Continue, start, end);
+        self.position += 1;
+
+        self.add_node(Node {
+            kind: NodeKind::ContinueStatement,
             start,
             end,
         })

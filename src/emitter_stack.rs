@@ -35,7 +35,7 @@ impl EmitterStack {
         self.stack.last_mut().unwrap()
     }
 
-    pub fn exiting_all_scopes(&mut self) {
+    pub fn early_exiting_scopes(&mut self, scope_count: Option<usize>) {
         let Some((destination, sources)) = self.stack.split_last_mut() else {
             return;
         };
@@ -44,7 +44,17 @@ impl EmitterStack {
             destination.body.append(&segment.string);
         }
 
-        for source in sources.iter().rev() {
+        let scope_count = if let Some(scope_count) = scope_count {
+            scope_count
+        } else {
+            sources.len()
+        };
+
+        if scope_count < 2 {
+            return;
+        }
+
+        for source in sources.iter().rev().take(scope_count - 1) {
             if source.bottom.is_empty() {
                 continue;
             }
@@ -90,6 +100,10 @@ impl EmitterStack {
         }
 
         self.stack.last_mut().unwrap().bottom.push(destination);
+    }
+
+    pub fn len(&self) -> usize {
+        self.stack.len()
     }
 
     pub fn write(&self, file: &mut BufWriter<File>) {

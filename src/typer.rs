@@ -85,6 +85,7 @@ pub struct Typer {
     has_function_opened_block: bool,
     node_index_stack: Vec<NodeIndex>,
     used_file_indices: Vec<usize>,
+    loop_stack: usize,
     // We want to do as little work as possible when type checking types/functions that haven't been checked yet but
     // are needed as dependencies of other types/functions, since any non-generic type/function will eventually be fully checked.
     // So, we can increment the shallow check stack to request that type checks don't include function bodies when we don't need them.
@@ -116,6 +117,7 @@ impl Typer {
             has_function_opened_block: false,
             node_index_stack: Vec::new(),
             used_file_indices: Vec::new(),
+            loop_stack: 0,
             shallow_check_stack: 0,
         };
 
@@ -447,6 +449,8 @@ impl Typer {
                 expression,
             } => self.variable_declaration(declaration_kind, name, type_name, expression),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression),
+            NodeKind::BreakStatement => self.break_statement(),
+            NodeKind::ContinueStatement => self.continue_statement(),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
             NodeKind::IfStatement {
                 expression,
@@ -931,6 +935,28 @@ impl Typer {
         })
     }
 
+    fn break_statement(&mut self) -> NodeIndex {
+        if self.loop_stack == 0 {
+            type_error!(self, "break statements can only appear in loops");
+        }
+
+        self.add_node(TypedNode {
+            node_kind: NodeKind::BreakStatement,
+            node_type: None,
+        })
+    }
+
+    fn continue_statement(&mut self) -> NodeIndex {
+        if self.loop_stack == 0 {
+            type_error!(self, "continue statements can only appear in loops");
+        }
+
+        self.add_node(TypedNode {
+            node_kind: NodeKind::ContinueStatement,
+            node_type: None,
+        })
+    }
+
     fn defer_statement(&mut self, statement: NodeIndex) -> NodeIndex {
         let typed_statement = self.check_node(statement);
 
@@ -992,7 +1018,10 @@ impl Typer {
 
     fn while_loop(&mut self, expression: NodeIndex, statement: NodeIndex) -> NodeIndex {
         let typed_expression = self.check_node(expression);
+
+        self.loop_stack += 1;
         let typed_statement = self.check_node(statement);
+        self.loop_stack -= 1;
 
         self.add_node(TypedNode {
             node_kind: NodeKind::WhileLoop {
@@ -1016,7 +1045,10 @@ impl Typer {
         let typed_from = self.check_node(from);
         let typed_to = self.check_node(to);
         let typed_by = self.check_optional_node(by);
+
+        self.loop_stack += 1;
         let typed_statement = self.check_node(statement);
+        self.loop_stack -= 1;
 
         self.add_node(TypedNode {
             node_kind: NodeKind::ForLoop {

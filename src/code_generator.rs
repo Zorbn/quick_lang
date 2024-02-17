@@ -104,6 +104,7 @@ pub struct CodeGenerator {
 
     function_declaration_needing_init: Option<NodeIndex>,
     temp_variable_count: usize,
+    loop_depth_stack: Vec<usize>,
     is_debug_mode: bool,
 }
 
@@ -126,6 +127,7 @@ impl CodeGenerator {
             body_emitters: EmitterStack::new(),
             function_declaration_needing_init: None,
             temp_variable_count: 0,
+            loop_depth_stack: Vec::new(),
             is_debug_mode,
         };
 
@@ -215,9 +217,7 @@ impl CodeGenerator {
                 return_type_name,
                 ..
             } => self.function_declaration(name, params, generic_params, return_type_name, node_type),
-            NodeKind::ExternFunction { declaration } => {
-                self.extern_function(declaration, node_type)
-            }
+            NodeKind::ExternFunction { declaration } => self.extern_function(declaration, node_type),
             NodeKind::Param { name, type_name } => self.param(name, type_name, node_type),
             NodeKind::Block { statements } => self.block(statements, node_type),
             NodeKind::Statement { inner } => self.statement(inner, node_type),
@@ -226,12 +226,10 @@ impl CodeGenerator {
                 name,
                 type_name,
                 expression,
-            } => {
-                self.variable_declaration(declaration_kind, name, type_name, expression, node_type)
-            }
-            NodeKind::ReturnStatement { expression } => {
-                self.return_statement(expression, node_type)
-            }
+            } => self.variable_declaration(declaration_kind, name, type_name, expression, node_type),
+            NodeKind::ReturnStatement { expression } => self.return_statement(expression, node_type),
+            NodeKind::BreakStatement => self.break_statement(node_type),
+            NodeKind::ContinueStatement => self.continue_statement(node_type),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement, node_type),
             NodeKind::IfStatement {
                 expression,
@@ -264,9 +262,7 @@ impl CodeGenerator {
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type),
             NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op, node_type),
             NodeKind::Call { left, args } => self.call(left, args, node_type),
-            NodeKind::IndexAccess { left, expression } => {
-                self.index_access(left, expression, node_type)
-            }
+            NodeKind::IndexAccess { left, expression } => self.index_access(left, expression, node_type),
             NodeKind::FieldAccess { left, name } => self.field_access(left, name, node_type),
             NodeKind::Cast { left, type_name } => self.cast(left, type_name, node_type),
             NodeKind::GenericSpecifier {
@@ -284,12 +280,8 @@ impl CodeGenerator {
                 elements,
                 repeat_count_const_expression,
             } => self.array_literal(elements, repeat_count_const_expression, node_type),
-            NodeKind::StructLiteral { left, field_literals } => {
-                self.struct_literal(left, field_literals, node_type)
-            }
-            NodeKind::FieldLiteral { name, expression } => {
-                self.field_literal(name, expression, node_type)
-            }
+            NodeKind::StructLiteral { left, field_literals } => self.struct_literal(left, field_literals, node_type),
+            NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression, node_type),
             NodeKind::TypeSize { type_name } => self.type_size(type_name, node_type),
             NodeKind::Using { .. } => panic!("cannot generate using statement"),
             NodeKind::Error => panic!("cannot generate error node"),
@@ -323,6 +315,7 @@ impl CodeGenerator {
 
         if is_union {
             // TODO: Refactor, emit_union_check_tag
+            self.function_prototype_emitter.emit("inline ");
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.function_prototype_emitter.emit("* ");
             self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
@@ -333,6 +326,7 @@ impl CodeGenerator {
             self.function_prototype_emitter.emitln(", intptr_t tag);");
             self.function_prototype_emitter.newline();
 
+            self.body_emitters.top().body.emit("inline ");
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
             self.body_emitters.top().body.emit("* ");
             self.emit_struct_name(type_kind_id, EmitterKind::Body);
@@ -352,6 +346,7 @@ impl CodeGenerator {
             self.body_emitters.top().body.newline();
 
             // TODO: Refactor, emit_union_set_tag
+            self.function_prototype_emitter.emit("inline ");
             self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, true);
             self.function_prototype_emitter.emit("* ");
@@ -363,6 +358,7 @@ impl CodeGenerator {
             self.function_prototype_emitter.emitln(", intptr_t tag);");
             self.function_prototype_emitter.newline();
 
+            self.body_emitters.top().body.emit("inline ");
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::Body, true);
             self.body_emitters.top().body.emit("* ");
@@ -579,7 +575,7 @@ impl CodeGenerator {
             self.gen_node(*statement);
         }
 
-        let mut was_last_statement_return = false;
+        let mut was_last_statement_early_exit = false;
         for statement in statements.iter().rev() {
             let TypedNode {
                 node_kind: NodeKind::Statement { inner },
@@ -593,18 +589,15 @@ impl CodeGenerator {
                 continue;
             };
 
-            was_last_statement_return = matches!(
-                self.get_typer_node(*inner),
-                TypedNode {
-                    node_kind: NodeKind::ReturnStatement { .. },
-                    ..
-                }
+            was_last_statement_early_exit = matches!(
+                self.get_typer_node(*inner).node_kind,
+                NodeKind::ReturnStatement { .. } | NodeKind::BreakStatement | NodeKind::ContinueStatement,
             );
 
             break;
         }
 
-        self.body_emitters.pop(!was_last_statement_return);
+        self.body_emitters.pop(!was_last_statement_early_exit);
         self.body_emitters.top().body.emit("}");
     }
 
@@ -698,7 +691,7 @@ impl CodeGenerator {
     }
 
     fn return_statement(&mut self, expression: Option<NodeIndex>, _node_type: Option<Type>) {
-        self.body_emitters.exiting_all_scopes();
+        self.body_emitters.early_exiting_scopes(None);
 
         let expression = if let Some(expression) = expression {
             expression
@@ -739,6 +732,20 @@ impl CodeGenerator {
             self.body_emitters.top().body.emit("return ");
             self.gen_node(expression);
         }
+    }
+
+    fn break_statement(&mut self, _node_type: Option<Type>) {
+        let scope_count = self.body_emitters.len() - self.loop_depth_stack.last().unwrap();
+
+        self.body_emitters.early_exiting_scopes(Some(scope_count));
+        self.body_emitters.top().body.emit("break");
+    }
+
+    fn continue_statement(&mut self, _node_type: Option<Type>) {
+        let scope_count = self.body_emitters.len() - self.loop_depth_stack.last().unwrap();
+
+        self.body_emitters.early_exiting_scopes(Some(scope_count));
+        self.body_emitters.top().body.emit("continue");
     }
 
     fn defer_statement(&mut self, statement: NodeIndex, _node_type: Option<Type>) {
@@ -809,7 +816,10 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("while (");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
+
+        self.loop_depth_stack.push(self.body_emitters.len());
         self.gen_node(statement);
+        self.loop_depth_stack.pop();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -843,7 +853,9 @@ impl CodeGenerator {
         }
         self.body_emitters.top().body.emit(") ");
 
+        self.loop_depth_stack.push(self.body_emitters.len());
         self.gen_node(statement);
+        self.loop_depth_stack.pop();
     }
 
     fn const_expression(&mut self, _inner: NodeIndex, node_type: Option<Type>) {
