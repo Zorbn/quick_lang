@@ -540,37 +540,6 @@ impl Typer {
 
         let mut typed_functions = Vec::new();
         for function in functions.iter() {
-            // TODO: Get rid of this commented code. Now all functions will be necessary to check because these are the full checks as opposed to the shallow checks
-            // that happen when another functions needs to know the type information of this function right away. Just leaving this here while I work, so I remember how it used to be.
-//             let declaration = if let NodeKind::Function { declaration, .. } =
-//                 &self.get_parser_node(*function).kind
-//             {
-//                 *declaration
-//             } else {
-//                 let NodeKind::ExternFunction { declaration } = &self.get_parser_node(*function).kind else {
-//                     panic!("invalid function");
-//                 };
-//
-//                 *declaration
-//             };
-//
-//             let NodeKind::FunctionDeclaration { name, .. } = &self.get_parser_node(declaration).kind else {
-//                 panic!("invalid function declaration");
-//             };
-//
-//             let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone() else {
-//                 panic!("invalid function name");
-//             };
-//
-//             let identifier = GenericIdentifier {
-//                 name: name_text.clone(),
-//                 generic_arg_type_kind_ids: None,
-//             };
-//
-//             if self.function_type_kinds.get(&identifier).is_some() {
-//                 continue;
-//             }
-
             typed_functions.push(self.check_node(*function));
         }
 

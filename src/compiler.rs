@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, fs, io, path::Path, process::ExitCode, sync::Arc, time::Instant};
+use std::{ffi::OsStr, fs, io::{self, Write}, path::{Path, PathBuf}, process::{Command, ExitCode}, sync::Arc, time::Instant};
 
 use crate::{code_generator::CodeGenerator, file_data::FileData, lexer::Lexer, parser::Parser, typer::Typer};
 
@@ -40,33 +40,39 @@ pub fn compile(project_path: &str, is_debug_mode: bool, c_flags: &[String]) -> E
         return ExitCode::FAILURE
     };
 
-    gen(typers, &files, is_debug_mode);
+    fs::create_dir_all("build").unwrap();
+
+    let output_paths = get_output_paths(&files);
+
+    gen(typers, &output_paths, is_debug_mode);
 
     println!(
         "Frontend finished in: {:.2?}ms",
         frontend_start.elapsed().as_millis()
     );
 
-//     let backend_start = Instant::now();
-//
-//     match Command::new("clang")
-//         .args(["bin/out.c", "-o", "bin/out.exe"])
-//         .args(c_flags)
-//         .output()
-//     {
-//         Err(_) => panic!("couldn't compile using the system compiler!"),
-//         Ok(output) => {
-//             if !output.stderr.is_empty() {
-//                 println!("System compiler error: {}\n", output.stderr);
-//                 return ExitCode::FAILURE;
-//             }
-//         }
-//     }
-//
-//     println!(
-//         "Backend finished in: {:.2?}ms",
-//         backend_start.elapsed().as_millis()
-//     );
+    let backend_start = Instant::now();
+
+    match Command::new("clang")
+        .args(["-o", "build/Out.exe"])
+        .args(&output_paths)
+        .args(c_flags)
+        .output()
+    {
+        Err(_) => panic!("couldn't compile using the system compiler!"),
+        Ok(output) => {
+            if !output.stderr.is_empty() {
+                println!("System compiler error:\n");
+                io::stdout().write_all(&output.stderr).unwrap();
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    println!(
+        "Backend finished in: {:.2?}ms",
+        backend_start.elapsed().as_millis()
+    );
 
     ExitCode::SUCCESS
 }
@@ -138,8 +144,8 @@ fn check(parsers: Vec<Parser>, files: &Arc<Vec<FileData>>) -> Option<Vec<Typer>>
     }
 }
 
-fn gen(typers: Vec<Typer>, files: &Arc<Vec<FileData>>, is_debug_mode: bool) {
-    for (i, typer) in typers.into_iter().enumerate() {
+fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
+    for (typer, output_path) in typers.into_iter().zip(output_paths.iter()) {
         let mut code_generator = CodeGenerator::new(
             typer.typed_nodes,
             typer.type_kinds,
@@ -149,8 +155,6 @@ fn gen(typers: Vec<Typer>, files: &Arc<Vec<FileData>>, is_debug_mode: bool) {
         );
         code_generator.gen();
 
-        let mut output_path = Path::new("bin/").join(&files[i].path);
-        output_path.set_extension("c");
         let mut output_file = fs::File::create(output_path).unwrap();
 
         code_generator.header_emitter.write(&mut output_file);
@@ -162,6 +166,18 @@ fn gen(typers: Vec<Typer>, files: &Arc<Vec<FileData>>, is_debug_mode: bool) {
             .write(&mut output_file);
         code_generator.body_emitters.write(&mut output_file);
     }
+}
+
+fn get_output_paths(files: &Arc<Vec<FileData>>) -> Vec<PathBuf> {
+    let mut output_paths = Vec::new();
+
+    for file in files.iter() {
+        let mut output_path = Path::new("build/").join(&file.path);
+        output_path.set_extension("c");
+        output_paths.push(output_path);
+    }
+
+    output_paths
 }
 
 fn collect_source_files(directory: &Path, files: &mut Vec<FileData>) -> io::Result<()> {

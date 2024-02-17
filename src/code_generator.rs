@@ -1788,14 +1788,6 @@ impl CodeGenerator {
 
     fn emit_main_function(&mut self) {
         let Some(main_function_type_kind_id) = self.main_function_type_kind_id else {
-            // TODO: It is good to emit a C main even if there is no main defined in the source,
-            // but doing it this way creates extra a main function in every generated C file which is not good ;).
-            // self.body_emitters.top().body.emitln("int main(void) {");
-            // self.body_emitters.top().body.indent();
-            // self.body_emitters.top().body.emitln("return 0;");
-            // self.body_emitters.top().body.unindent();
-            // self.body_emitters.top().body.emitln("}");
-            // self.body_emitters.top().body.newline();
             return;
         };
 

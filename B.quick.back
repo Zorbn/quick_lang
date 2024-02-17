@@ -1,5 +1,0 @@
-func BDoThing() Void
-{
-    puts("Running!");
-    Main();
-}

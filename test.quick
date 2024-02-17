@@ -231,6 +231,8 @@ func Main(argc Int, argv *val String) Int
     val genericStruct3 = GenericStruct.<Int, Int> { a = 5, b = 6 };
     val genericStruct4 GenericStruct.<Int, Int> = returnsGeneric();
 
+    puts("reached end"); // Shouldn't happen because of all of the returns, recursions, etc above.
+
     return 0;
 }
 
