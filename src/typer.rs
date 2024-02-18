@@ -82,7 +82,7 @@ pub struct Typer {
     files: Arc<Vec<FileData>>,
     file_paths_components: Arc<Vec<Vec<OsString>>>,
     environment: Environment<Arc<str>, Type>,
-    has_function_opened_block: bool,
+    was_block_already_opened: bool,
     node_index_stack: Vec<NodeIndex>,
     used_file_indices: Vec<usize>,
     loop_stack: usize,
@@ -114,7 +114,7 @@ impl Typer {
             environment: Environment::new(),
             type_kind_environment: Environment::new(),
             function_definitions: HashMap::new(),
-            has_function_opened_block: false,
+            was_block_already_opened: false,
             node_index_stack: Vec::new(),
             used_file_indices: Vec::new(),
             loop_stack: 0,
@@ -819,10 +819,10 @@ impl Typer {
     }
 
     fn block(&mut self, statements: Arc<Vec<NodeIndex>>) -> NodeIndex {
-        if !self.has_function_opened_block {
+        if !self.was_block_already_opened {
             self.environment.push(true);
         } else {
-            self.has_function_opened_block = false;
+            self.was_block_already_opened = false;
         }
 
         let mut typed_statements = Vec::new();
@@ -1050,8 +1050,39 @@ impl Typer {
     ) -> NodeIndex {
         let typed_iterator = self.check_node(iterator);
         let typed_from = self.check_node(from);
+        let from_type = assert_typed!(self, typed_from);
         let typed_to = self.check_node(to);
+        let to_type = assert_typed!(self, typed_to);
         let typed_by = self.check_optional_node(by);
+
+        if from_type.type_kind_id != to_type.type_kind_id {
+            type_error!(self, "type mismatch between for loop bounds");
+        }
+
+        if let Some(typed_by) = typed_by {
+            let by_type = assert_typed!(self, typed_by);
+
+            if by_type.type_kind_id != from_type.type_kind_id {
+                type_error!(self, "type mismatch between for loop increment and bounds");
+            }
+        }
+
+        if !self.type_kinds.get_by_id(from_type.type_kind_id).is_numeric() {
+            type_error!(self, "for loop bounds must have numeric types");
+        }
+
+        self.environment.push(true);
+        self.was_block_already_opened = true;
+
+        let NodeKind::Name { text: iterator_text } = self.get_typer_node(typed_iterator).node_kind.clone() else {
+            type_error!(self, "invalid iterator name");
+        };
+
+        let node_type = Type {
+            type_kind_id: from_type.type_kind_id,
+            instance_kind: InstanceKind::Var,
+        };
+        self.environment.insert(iterator_text, node_type.clone(), false);
 
         self.loop_stack += 1;
         let typed_scoped_statement = self.check_node(scoped_statement);

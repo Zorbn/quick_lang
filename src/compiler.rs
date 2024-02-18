@@ -2,7 +2,7 @@ use std::{ffi::{OsStr, OsString}, fs::{self, File}, io::{self, BufWriter, Write}
 
 use crate::{code_generator::CodeGenerator, file_data::FileData, lexer::Lexer, parser::Parser, typer::Typer};
 
-pub fn compile(project_path: &str, is_debug_mode: bool, c_flags: &[String]) -> ExitCode {
+pub fn compile(project_path: &str, is_debug_mode: bool, use_msvc: bool, c_flags: &[String]) -> ExitCode {
     let mut files = Vec::new();
     let path = Path::new(project_path);
     if is_path_source_file(path) {
@@ -53,15 +53,12 @@ pub fn compile(project_path: &str, is_debug_mode: bool, c_flags: &[String]) -> E
 
     let backend_start = Instant::now();
 
-    match Command::new("clang")
-        .args(["-o", "build/Out.exe"])
-        .args(&output_paths)
-        .args(c_flags)
-        .output()
-    {
+    let mut compiler_command = create_compiler_command(is_debug_mode, use_msvc, c_flags, &output_paths);
+
+    match compiler_command.output() {
         Err(_) => panic!("couldn't compile using the system compiler!"),
         Ok(output) => {
-            if !output.stderr.is_empty() {
+            if !output.status.success() {
                 println!("System compiler error:\n");
                 io::stdout().write_all(&output.stdout).unwrap();
                 io::stdout().write_all(&output.stderr).unwrap();
@@ -229,4 +226,34 @@ fn is_path_source_file(path: &Path) -> bool {
 
 fn read_chars_at_path(path: &Path) -> Vec<char> {
     fs::read_to_string(path).unwrap().chars().collect()
+}
+
+fn create_compiler_command(is_debug_mode: bool, use_msvc: bool, c_flags: &[String], output_paths: &[PathBuf]) -> Command {
+    if use_msvc {
+        let mut compiler_command = Command::new("cl");
+
+        if is_debug_mode {
+            compiler_command.args(["-Z7", "-MTd", "/DEBUG"]);
+        }
+
+        compiler_command
+            .args(["-Fe:", "build/Out.exe"])
+            .args(output_paths)
+            .args(c_flags);
+
+        compiler_command
+    } else {
+        let mut compiler_command = Command::new("clang");
+
+        if is_debug_mode {
+            compiler_command.args(["-g", "-gcodeview"]);
+        }
+
+        compiler_command
+            .args(["-o", "build/Out.exe"])
+            .args(output_paths)
+            .args(c_flags);
+
+        compiler_command
+    }
 }

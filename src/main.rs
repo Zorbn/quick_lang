@@ -26,10 +26,14 @@ fn main() -> ExitCode {
 
     let mut c_flags_start = None;
     let mut is_debug_mode = false;
+    let mut use_msvc = false;
     for (i, arg) in args.iter().enumerate().skip(2) {
         match arg.as_str() {
             "--debug" => {
                 is_debug_mode = true;
+            }
+            "--msvc" => {
+                use_msvc = true;
             }
             "--cflags" => {
                 c_flags_start = Some(i + 1);
@@ -48,5 +52,5 @@ fn main() -> ExitCode {
         &[]
     };
 
-    compiler::compile(&args[1], is_debug_mode, c_flags)
+    compiler::compile(&args[1], is_debug_mode, use_msvc, c_flags)
 }

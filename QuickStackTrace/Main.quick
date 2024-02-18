@@ -1,0 +1,79 @@
+// Clang: cargo run . --cflags -Lc:/lib64 -lDbghelp -lKernel32
+// MSVC: cargo run . --msvc --debug --cflags /link Dbghelp.lib Kernel32.lib user32.lib winmm.lib shell32.lib
+func Main() Int
+{
+    const maxFrames = 100 as UInt;
+
+    var stack = [0 as *var Void; maxFrames];
+    var process = GetCurrentProcess();
+
+    var result = SymInitialize(process, 0 as String, 1 as Int32);
+    if (result == 0 as Int32)
+    {
+        var lastError = GetLastError();
+        puts("Failed to initialize");
+    }
+
+    var frameCount = RtlCaptureStackBackTrace(0 as UInt, maxFrames, stack as *var Void, 0 as *var UInt);
+
+    if (frameCount > 0 as UInt16) puts("Successfully acquired stack trace:");
+
+    var symbol = calloc(sizeof SymbolInfo + 254 as UInt * sizeof Char, 1 as UInt) as *var SymbolInfo;
+    symbol.maxNameLen = 255 as UInt32;
+    symbol.sizeOfStruct = sizeof SymbolInfo as UInt32;
+
+    for (i of 0 < frameCount as Int)
+    {
+        result = SymFromAddr(process, stack[i] as UInt64, 0 as *var UInt64, symbol);
+
+        if (result == 0 as Int32)
+        {
+            var lastError = GetLastError();
+            puts("Failed to get sym");
+            continue;
+        }
+
+        if (symbol.name as UInt == 0 as UInt)
+        {
+            puts("Unknown symbol name");
+        }
+        else
+        {
+            puts(symbol.name as String);
+        }
+    }
+
+    free(symbol as *var Void);
+
+    return 0;
+}
+
+struct SymbolInfo
+{
+    sizeOfStruct UInt32;
+    typeIndex UInt32;
+    reserved [2]UInt64;
+    index UInt32;
+    size UInt32;
+    modBase UInt64;
+    flags UInt32;
+    value UInt64;
+    address UInt64;
+    register UInt32;
+    scope UInt32;
+    tag UInt32;
+    nameLen UInt32;
+    maxNameLen UInt32;
+    name [1]Char;
+}
+
+extern func puts(string String) UInt
+extern func putchar(character Int) Int
+extern func calloc(num UInt, size UInt) *var Void
+extern func free(pointer *var Void) Void
+
+extern func GetLastError() UInt
+extern func RtlCaptureStackBackTrace(framesToSkip UInt, framesToCapture UInt, backTrace *var Void, backTraceHash *var UInt) UInt16
+extern func GetCurrentProcess() *var Void
+extern func SymInitialize(process *var Void, searchPath String, invadeProcess Int32) Int32
+extern func SymFromAddr(process *var Void, address UInt64, displacement *var UInt64, symbol *var SymbolInfo) Int32

@@ -1406,10 +1406,9 @@ impl CodeGenerator {
         self.gen_node(expression);
     }
 
-    fn type_size(&mut self, _type_name: NodeIndex, node_type: Option<Type>) {
-        let type_kind_id = node_type.unwrap().type_kind_id;
-
-        self.emit_type_size(type_kind_id);
+    fn type_size(&mut self, type_name: NodeIndex, _node_type: Option<Type>) {
+        let type_name_type_kind = &self.get_typer_node(type_name).node_type;
+        self.emit_type_size(type_name_type_kind.as_ref().unwrap().type_kind_id);
     }
 
     fn emit_memmove_expression_to_variable(
