@@ -292,7 +292,11 @@ impl Typer {
         }
     }
 
-    fn add_node_with_file_index(&mut self, typed_node: TypedNode, file_index: Option<usize>) -> NodeIndex {
+    fn add_node_with_file_index(
+        &mut self,
+        typed_node: TypedNode,
+        file_index: Option<usize>,
+    ) -> NodeIndex {
         let node_index = self.typed_nodes.len();
         self.typed_nodes.push(typed_node);
 
@@ -315,7 +319,9 @@ impl Typer {
 
         for i in 0..self.used_file_indices.len() {
             let imported_file_index = self.used_file_indices[i];
-            let definition_index = self.all_definition_indices[imported_file_index].get(name_text).copied();
+            let definition_index = self.all_definition_indices[imported_file_index]
+                .get(name_text)
+                .copied();
 
             if definition_index.is_none() {
                 continue;
@@ -336,7 +342,12 @@ impl Typer {
         }
     }
 
-    fn lookup_identifier(&mut self, name: NodeIndex, generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>, is_types_only: bool) -> Option<(NodeIndex, Type)> {
+    fn lookup_identifier(
+        &mut self,
+        name: NodeIndex,
+        generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
+        is_types_only: bool,
+    ) -> Option<(NodeIndex, Type)> {
         let mut typed_name = self.check_node(name);
 
         let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
@@ -363,18 +374,24 @@ impl Typer {
         if !is_types_only {
             if let Some(function_definition) = self.function_definitions.get(&identifier) {
                 typed_name.file_index = function_definition.file_index;
-                return Some((typed_name, Type {
-                    type_kind_id: function_definition.type_kind_id,
-                    instance_kind: InstanceKind::Val,
-                }));
+                return Some((
+                    typed_name,
+                    Type {
+                        type_kind_id: function_definition.type_kind_id,
+                        instance_kind: InstanceKind::Val,
+                    },
+                ));
             }
         }
 
         if let Some(type_kind_id) = self.type_kind_environment.get(&identifier) {
-            return Some((typed_name, Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }));
+            return Some((
+                typed_name,
+                Type {
+                    type_kind_id,
+                    instance_kind: InstanceKind::Name,
+                },
+            ));
         }
 
         let DefinitionLookupResult::Found(definition_index) = definition_index else {
@@ -390,7 +407,8 @@ impl Typer {
         }
 
         self.shallow_check_stack += 1;
-        let typed_definition = self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids);
+        let typed_definition =
+            self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids);
         self.shallow_check_stack -= 1;
 
         let definition_type = self.get_typer_node(typed_definition).node_type.clone()?;
@@ -436,8 +454,13 @@ impl Typer {
                 aliases,
             } => self.top_level(functions, structs, enums, usings, aliases),
             NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
-            NodeKind::Using { path_component_names } => self.using(path_component_names),
-            NodeKind::Alias { aliased_type_name, alias_name } => self.alias(aliased_type_name, alias_name),
+            NodeKind::Using {
+                path_component_names,
+            } => self.using(path_component_names),
+            NodeKind::Alias {
+                aliased_type_name,
+                alias_name,
+            } => self.alias(aliased_type_name, alias_name),
             NodeKind::Param { name, type_name } => self.param(name, type_name),
             NodeKind::Block { statements } => self.block(statements),
             NodeKind::Statement { inner } => self.statement(inner),
@@ -496,7 +519,10 @@ impl Typer {
                 elements,
                 repeat_count_const_expression,
             } => self.array_literal(elements, repeat_count_const_expression),
-            NodeKind::StructLiteral { left, field_literals } => self.struct_literal(left, field_literals),
+            NodeKind::StructLiteral {
+                left,
+                field_literals,
+            } => self.struct_literal(left, field_literals),
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
             NodeKind::TypeSize { type_name } => self.type_size(type_name),
             NodeKind::StructDefinition {
@@ -573,11 +599,7 @@ impl Typer {
                 declaration,
                 scoped_statement,
             } => self.function(declaration, scoped_statement, generic_arg_type_kind_ids),
-            NodeKind::ExternFunction {
-                declaration,
-            } => self.extern_function(declaration),
-            NodeKind::Alias { aliased_type_name, alias_name } => self.alias(aliased_type_name, alias_name),
-            _ => type_error!(self, "tried to check unexpected node with generic args"),
+            _ => self.check_node(index),
         };
 
         self.node_index_stack.pop();
@@ -599,9 +621,7 @@ impl Typer {
             NodeKind::BoolLiteral { value } => self.const_bool_literal(value, index),
             NodeKind::CharLiteral { value } => self.const_char_literal(value, index),
             NodeKind::TypeSize { type_name } => self.const_type_size(type_name, index),
-            _ => {
-                self.type_error("non-constant in constant expression")
-            }
+            _ => self.type_error("non-constant in constant expression"),
         };
 
         self.node_index_stack.pop();
@@ -631,7 +651,11 @@ impl Typer {
 
         let mut typed_structs = Vec::new();
         for struct_definition in structs.iter() {
-            let NodeKind::StructDefinition { name, generic_params, .. } = &self.get_parser_node(*struct_definition).kind
+            let NodeKind::StructDefinition {
+                name,
+                generic_params,
+                ..
+            } = &self.get_parser_node(*struct_definition).kind
             else {
                 panic!("invalid struct definition");
             };
@@ -640,7 +664,8 @@ impl Typer {
                 continue;
             }
 
-            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone() else {
+            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
+            else {
                 panic!("invalid struct name");
             };
 
@@ -658,11 +683,14 @@ impl Typer {
 
         let mut typed_enums = Vec::new();
         for enum_definition in enums.iter() {
-            let NodeKind::EnumDefinition { name, .. } = &self.get_parser_node(*enum_definition).kind else {
+            let NodeKind::EnumDefinition { name, .. } =
+                &self.get_parser_node(*enum_definition).kind
+            else {
                 panic!("invalid enum definition");
             };
 
-            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone() else {
+            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
+            else {
                 panic!("invalid enum name");
             };
 
@@ -680,15 +708,20 @@ impl Typer {
 
         let mut typed_functions = Vec::new();
         for function in functions.iter() {
-            let declaration = if let NodeKind::Function { declaration, .. } = &self.get_parser_node(*function).kind {
+            let declaration = if let NodeKind::Function { declaration, .. } =
+                &self.get_parser_node(*function).kind
+            {
                 declaration
-            } else if let NodeKind::ExternFunction { declaration } = &self.get_parser_node(*function).kind {
+            } else if let NodeKind::ExternFunction { declaration } =
+                &self.get_parser_node(*function).kind
+            {
                 declaration
             } else {
                 panic!("invalid function");
             };
 
-            let NodeKind::FunctionDeclaration { generic_params, .. } = &self.get_parser_node(*declaration).kind
+            let NodeKind::FunctionDeclaration { generic_params, .. } =
+                &self.get_parser_node(*declaration).kind
             else {
                 panic!("invalid function declaration");
             };
@@ -734,7 +767,8 @@ impl Typer {
 
         self.environment.push(false);
 
-        let typed_declaration = self.function_declaration(name, params, generic_params, return_type_name, true);
+        let typed_declaration =
+            self.function_declaration(name, params, generic_params, return_type_name, true);
 
         self.environment.pop();
 
@@ -743,19 +777,28 @@ impl Typer {
             name: name_text.clone(),
             generic_arg_type_kind_ids: None,
         };
-        self.function_definitions.insert(identifier, FunctionDefinition { type_kind_id, file_index: None });
+        self.function_definitions.insert(
+            identifier,
+            FunctionDefinition {
+                type_kind_id,
+                file_index: None,
+            },
+        );
 
         let node_type = Some(Type {
             type_kind_id,
             instance_kind: InstanceKind::Val,
         });
 
-        let index = self.add_node_with_file_index(TypedNode {
-            node_kind: NodeKind::ExternFunction {
-                declaration: typed_declaration,
+        let index = self.add_node_with_file_index(
+            TypedNode {
+                node_kind: NodeKind::ExternFunction {
+                    declaration: typed_declaration,
+                },
+                node_type,
             },
-            node_type,
-        }, typed_declaration.file_index);
+            typed_declaration.file_index,
+        );
 
         self.typed_definition_indices.push(index);
 
@@ -771,7 +814,9 @@ impl Typer {
 
             let mut is_matching = true;
             for component_i in 0..file_path_components.len() {
-                let NodeKind::Name { text: name_text } = &self.get_parser_node(path_component_names[component_i]).kind else {
+                let NodeKind::Name { text: name_text } =
+                    &self.get_parser_node(path_component_names[component_i]).kind
+                else {
                     panic!("invalid component name");
                 };
 
@@ -794,7 +839,12 @@ impl Typer {
             type_error!(self, "couldn't file file referenced by using statement");
         }
 
-        self.add_node(TypedNode { node_kind: NodeKind::Using { path_component_names: Arc::new(Vec::new()) }, node_type: None })
+        self.add_node(TypedNode {
+            node_kind: NodeKind::Using {
+                path_component_names: Arc::new(Vec::new()),
+            },
+            node_type: None,
+        })
     }
 
     fn alias(&mut self, aliased_type_name: NodeIndex, alias_name: NodeIndex) -> NodeIndex {
@@ -802,7 +852,10 @@ impl Typer {
         let aliased_type_name_type = assert_typed!(self, typed_aliased_type_name);
         let typed_alias_name = self.check_node(alias_name);
 
-        let NodeKind::Name { text: alias_name_text } = self.get_typer_node(typed_alias_name).node_kind.clone() else {
+        let NodeKind::Name {
+            text: alias_name_text,
+        } = self.get_typer_node(typed_alias_name).node_kind.clone()
+        else {
             type_error!(self, "invalid enum name");
         };
 
@@ -811,9 +864,16 @@ impl Typer {
             generic_arg_type_kind_ids: None,
         };
 
-        self.type_kind_environment.insert(identifier, aliased_type_name_type.type_kind_id, true);
+        self.type_kind_environment
+            .insert(identifier, aliased_type_name_type.type_kind_id, true);
 
-        self.add_node(TypedNode { node_kind: NodeKind::Alias { aliased_type_name: typed_aliased_type_name, alias_name: typed_alias_name }, node_type: Some(aliased_type_name_type) })
+        self.add_node(TypedNode {
+            node_kind: NodeKind::Alias {
+                aliased_type_name: typed_aliased_type_name,
+                alias_name: typed_alias_name,
+            },
+            node_type: Some(aliased_type_name_type),
+        })
     }
 
     fn param(&mut self, name: NodeIndex, type_name: NodeIndex) -> NodeIndex {
@@ -1001,7 +1061,12 @@ impl Typer {
         })
     }
 
-    fn if_statement(&mut self, expression: NodeIndex, scoped_statement: NodeIndex, next: Option<NodeIndex>) -> NodeIndex {
+    fn if_statement(
+        &mut self,
+        expression: NodeIndex,
+        scoped_statement: NodeIndex,
+        next: Option<NodeIndex>,
+    ) -> NodeIndex {
         let typed_expression = self.check_node(expression);
         let typed_scoped_statement = self.check_node(scoped_statement);
         let typed_next = self.check_optional_node(next);
@@ -1093,14 +1158,21 @@ impl Typer {
             }
         }
 
-        if !self.type_kinds.get_by_id(from_type.type_kind_id).is_numeric() {
+        if !self
+            .type_kinds
+            .get_by_id(from_type.type_kind_id)
+            .is_numeric()
+        {
             type_error!(self, "for loop bounds must have numeric types");
         }
 
         self.environment.push(true);
         self.was_block_already_opened = true;
 
-        let NodeKind::Name { text: iterator_text } = self.get_typer_node(typed_iterator).node_kind.clone() else {
+        let NodeKind::Name {
+            text: iterator_text,
+        } = self.get_typer_node(typed_iterator).node_kind.clone()
+        else {
             type_error!(self, "invalid iterator name");
         };
 
@@ -1108,7 +1180,8 @@ impl Typer {
             type_kind_id: from_type.type_kind_id,
             instance_kind: InstanceKind::Var,
         };
-        self.environment.insert(iterator_text, node_type.clone(), false);
+        self.environment
+            .insert(iterator_text, node_type.clone(), false);
 
         self.loop_stack += 1;
         let typed_scoped_statement = self.check_node(scoped_statement);
@@ -1155,7 +1228,17 @@ impl Typer {
 
         if matches!(
             op,
-            Op::Assign | Op::PlusAssign | Op::MinusAssign | Op::MultiplyAssign | Op::DivideAssign | Op::BitwiseAndAssign | Op::BitwiseOrAssign | Op::XorAssign | Op::LeftShiftAssign | Op::RightShiftAssign | Op::ModuloAssign
+            Op::Assign
+                | Op::PlusAssign
+                | Op::MinusAssign
+                | Op::MultiplyAssign
+                | Op::DivideAssign
+                | Op::BitwiseAndAssign
+                | Op::BitwiseOrAssign
+                | Op::XorAssign
+                | Op::LeftShiftAssign
+                | Op::RightShiftAssign
+                | Op::ModuloAssign
         ) && left_type.instance_kind != InstanceKind::Var
         {
             type_error!(self, "only vars can be assigned to");
@@ -1236,7 +1319,13 @@ impl Typer {
         })
     }
 
-    fn const_binary(&mut self, left: NodeIndex, op: Op, right: NodeIndex, index: NodeIndex) -> NodeIndex {
+    fn const_binary(
+        &mut self,
+        left: NodeIndex,
+        op: Op,
+        right: NodeIndex,
+        index: NodeIndex,
+    ) -> NodeIndex {
         let typed_binary = self.check_node(index);
         let binary_type = assert_typed!(self, typed_binary);
 
@@ -1697,7 +1786,10 @@ impl Typer {
 
     fn identifier(&mut self, name: NodeIndex) -> NodeIndex {
         let Some((typed_name, name_type)) = self.lookup_identifier(name, None, false) else {
-            return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
+            return self.add_node(TypedNode {
+                node_kind: NodeKind::Error,
+                node_type: None,
+            });
         };
 
         self.add_node(TypedNode {
@@ -1898,7 +1990,11 @@ impl Typer {
         })
     }
 
-    fn struct_literal(&mut self, left: NodeIndex, field_literals: Arc<Vec<NodeIndex>>) -> NodeIndex {
+    fn struct_literal(
+        &mut self,
+        left: NodeIndex,
+        field_literals: Arc<Vec<NodeIndex>>,
+    ) -> NodeIndex {
         let typed_left = self.check_node(left);
         let struct_type = assert_typed!(self, typed_left);
 
@@ -1909,18 +2005,23 @@ impl Typer {
             );
         }
 
-        let TypeKind::Struct { fields: expected_fields, is_union, .. } = self.type_kinds.get_by_id(struct_type.type_kind_id) else {
-            type_error!(
-                self,
-                "expected struct type in struct literal"
-            );
+        let TypeKind::Struct {
+            fields: expected_fields,
+            is_union,
+            ..
+        } = self.type_kinds.get_by_id(struct_type.type_kind_id)
+        else {
+            type_error!(self, "expected struct type in struct literal");
         };
 
         let mut typed_field_literals = Vec::new();
 
         if is_union {
             if field_literals.len() != 1 && expected_fields.len() != 0 {
-                type_error!(self, "incorrect number of fields, expected one field to initialize a union");
+                type_error!(
+                    self,
+                    "incorrect number of fields, expected one field to initialize a union"
+                );
             }
 
             if field_literals.len() > 0 {
@@ -1929,19 +2030,29 @@ impl Typer {
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                let NodeKind::FieldLiteral { name: field_name, .. } = &self.get_typer_node(typed_field_literal).node_kind else {
+                let NodeKind::FieldLiteral {
+                    name: field_name, ..
+                } = &self.get_typer_node(typed_field_literal).node_kind
+                else {
                     type_error!(self, "invalid field literal");
                 };
 
-                let NodeKind::Name { text: field_name_text } = &self.get_typer_node(*field_name).node_kind else {
+                let NodeKind::Name {
+                    text: field_name_text,
+                } = &self.get_typer_node(*field_name).node_kind
+                else {
                     type_error!(self, "invalid field name");
                 };
 
-                let Some(expected_field_index) = get_field_index_by_name(&self.typed_nodes, field_name_text, &expected_fields) else {
+                let Some(expected_field_index) =
+                    get_field_index_by_name(&self.typed_nodes, field_name_text, &expected_fields)
+                else {
                     type_error!(self, "union doesn't contain a field with this name");
                 };
 
-                if field_literal_type.type_kind_id != expected_fields[expected_field_index].type_kind_id {
+                if field_literal_type.type_kind_id
+                    != expected_fields[expected_field_index].type_kind_id
+                {
                     type_error!(self, "incorrect field type");
                 }
             }
@@ -2148,7 +2259,11 @@ impl Typer {
         index
     }
 
-    fn enum_definition(&mut self, name: NodeIndex, variant_names: Arc<Vec<NodeIndex>>) -> NodeIndex {
+    fn enum_definition(
+        &mut self,
+        name: NodeIndex,
+        variant_names: Arc<Vec<NodeIndex>>,
+    ) -> NodeIndex {
         let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
             type_error!(self, "invalid enum name");
         };
@@ -2249,18 +2364,21 @@ impl Typer {
         };
         let type_kind_id = self.type_kinds.add_or_get(type_kind);
 
-        let index = self.add_node_with_file_index(TypedNode {
-            node_kind: NodeKind::FunctionDeclaration {
-                name: typed_name,
-                params: Arc::new(typed_params),
-                generic_params: Arc::new(typed_generic_params),
-                return_type_name: typed_return_type_name,
+        let index = self.add_node_with_file_index(
+            TypedNode {
+                node_kind: NodeKind::FunctionDeclaration {
+                    name: typed_name,
+                    params: Arc::new(typed_params),
+                    generic_params: Arc::new(typed_generic_params),
+                    return_type_name: typed_return_type_name,
+                },
+                node_type: Some(Type {
+                    type_kind_id,
+                    instance_kind: InstanceKind::Name,
+                }),
             },
-            node_type: Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
-        }, typed_name.file_index);
+            typed_name.file_index,
+        );
 
         let NodeKind::Name { text: name_text } = &self.get_typer_node(typed_name).node_kind else {
             type_error!(self, "invalid name in function declaration");
@@ -2290,7 +2408,11 @@ impl Typer {
                 }
 
                 let second_type_kind = self.type_kinds.get_by_id(param_type_kind_ids[1]);
-                let TypeKind::Pointer { inner_type_kind_id, is_inner_mutable: false } = second_type_kind else {
+                let TypeKind::Pointer {
+                    inner_type_kind_id,
+                    is_inner_mutable: false,
+                } = second_type_kind
+                else {
                     type_error!(self, "expected second argument of Main to be *val String");
                 };
 
@@ -2321,7 +2443,9 @@ impl Typer {
 
         // The place this node was used must have been the node before it in the stack.
         if let Some(usage_index) = self.node_index_stack.get(self.node_index_stack.len() - 2) {
-            self.get_parser_node(*usage_index).start.usage_error(&self.files);
+            self.get_parser_node(*usage_index)
+                .start
+                .usage_error(&self.files);
         }
 
         index
@@ -2382,15 +2506,24 @@ impl Typer {
             name: name_text.clone(),
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
         };
-        self.function_definitions
-            .insert(identifier, FunctionDefinition { type_kind_id: declaration_type.type_kind_id, file_index: typed_declaration.file_index });
+        self.function_definitions.insert(
+            identifier,
+            FunctionDefinition {
+                type_kind_id: declaration_type.type_kind_id,
+                file_index: typed_declaration.file_index,
+            },
+        );
 
         let is_deep_check = self.shallow_check_stack == 0 || generic_arg_type_kind_ids.is_some();
 
         let typed_scoped_statement = if is_deep_check {
             let typed_scoped_statement = self.check_node(scoped_statement);
 
-            let TypeKind::Function { return_type_kind_id: expected_return_type_kind_id, .. } = self.type_kinds.get_by_id(declaration_type.type_kind_id) else {
+            let TypeKind::Function {
+                return_type_kind_id: expected_return_type_kind_id,
+                ..
+            } = self.type_kinds.get_by_id(declaration_type.type_kind_id)
+            else {
                 type_error!(self, "invalid function type");
             };
 
@@ -2399,27 +2532,36 @@ impl Typer {
                     type_error!(self, "function does not return the right type");
                 }
             } else if self.type_kinds.get_by_id(expected_return_type_kind_id) != TypeKind::Void {
-                type_error!(self, "function does not return the correct type of value on all execution paths");
+                type_error!(
+                    self,
+                    "function does not return the correct type of value on all execution paths"
+                );
             }
 
             typed_scoped_statement
         } else {
-            self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
+            self.add_node(TypedNode {
+                node_kind: NodeKind::Error,
+                node_type: None,
+            })
         };
 
         self.environment.pop();
         self.type_kind_environment.pop();
 
-        let index = self.add_node_with_file_index(TypedNode {
-            node_kind: NodeKind::Function {
-                declaration: typed_declaration,
-                scoped_statement: typed_scoped_statement,
+        let index = self.add_node_with_file_index(
+            TypedNode {
+                node_kind: NodeKind::Function {
+                    declaration: typed_declaration,
+                    scoped_statement: typed_scoped_statement,
+                },
+                node_type: Some(Type {
+                    type_kind_id: declaration_type.type_kind_id,
+                    instance_kind: InstanceKind::Val,
+                }),
             },
-            node_type: Some(Type {
-                type_kind_id: declaration_type.type_kind_id,
-                instance_kind: InstanceKind::Val,
-            }),
-        }, typed_declaration.file_index);
+            typed_declaration.file_index,
+        );
 
         self.typed_definition_indices.push(index);
 
@@ -2449,19 +2591,30 @@ impl Typer {
         }
         let generic_arg_type_kind_ids = Arc::new(generic_arg_type_kind_ids);
 
-        let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(generic_arg_type_kind_ids), false) else {
-            return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
+        let Some((typed_name, name_type)) =
+            self.lookup_identifier(name, Some(generic_arg_type_kind_ids), false)
+        else {
+            return self.add_node(TypedNode {
+                node_kind: NodeKind::Error,
+                node_type: None,
+            });
         };
 
         self.add_node(TypedNode {
-            node_kind: NodeKind::GenericSpecifier { name: typed_name, generic_arg_type_names: Arc::new(typed_generic_arg_type_names) },
+            node_kind: NodeKind::GenericSpecifier {
+                name: typed_name,
+                generic_arg_type_names: Arc::new(typed_generic_arg_type_names),
+            },
             node_type: Some(name_type),
         })
     }
 
     fn type_name(&mut self, name: NodeIndex) -> NodeIndex {
         let Some((typed_name, name_type)) = self.lookup_identifier(name, None, true) else {
-            return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
+            return self.add_node(TypedNode {
+                node_kind: NodeKind::Error,
+                node_type: None,
+            });
         };
 
         self.add_node(TypedNode {
@@ -2494,7 +2647,11 @@ impl Typer {
         })
     }
 
-    fn type_name_array(&mut self, inner: NodeIndex, element_count_const_expression: NodeIndex) -> NodeIndex {
+    fn type_name_array(
+        &mut self,
+        inner: NodeIndex,
+        element_count_const_expression: NodeIndex,
+    ) -> NodeIndex {
         let typed_inner = self.check_node(inner);
         let inner_type = assert_typed!(self, typed_inner);
         if inner_type.instance_kind != InstanceKind::Name {
@@ -2585,12 +2742,20 @@ impl Typer {
         }
         let generic_arg_type_kind_ids = Arc::new(generic_arg_type_kind_ids);
 
-        let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(generic_arg_type_kind_ids), true) else {
-            return self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
+        let Some((typed_name, name_type)) =
+            self.lookup_identifier(name, Some(generic_arg_type_kind_ids), true)
+        else {
+            return self.add_node(TypedNode {
+                node_kind: NodeKind::Error,
+                node_type: None,
+            });
         };
 
         self.add_node(TypedNode {
-            node_kind: NodeKind::TypeNameGenericSpecifier { name: typed_name, generic_arg_type_names: Arc::new(Vec::new()) },
+            node_kind: NodeKind::TypeNameGenericSpecifier {
+                name: typed_name,
+                generic_arg_type_names: Arc::new(Vec::new()),
+            },
             node_type: Some(name_type),
         })
     }
@@ -2600,7 +2765,8 @@ impl Typer {
         const_expression: NodeIndex,
         result: &mut usize,
     ) -> Option<NodeIndex> {
-        let NodeKind::ConstExpression { inner } = self.get_parser_node(const_expression).kind else {
+        let NodeKind::ConstExpression { inner } = self.get_parser_node(const_expression).kind
+        else {
             return Some(self.type_error("expected const expression"));
         };
 
@@ -2639,18 +2805,38 @@ impl Typer {
                 }
 
                 None
-            },
-            NodeKind::Statement { inner: Some(inner) } => self.ensure_typed_statement_returns(*inner),
-            NodeKind::ReturnStatement { expression: Some(expression) } => self.get_typer_node(*expression).node_type.clone(),
-            NodeKind::DeferStatement { statement } => self.ensure_typed_statement_returns(*statement),
-            NodeKind::IfStatement { scoped_statement, next: Some(next), .. } => self.ensure_both_typed_statements_return(*scoped_statement, *next),
-            NodeKind::SwitchStatement { case_statement, .. } => self.ensure_typed_statement_returns(*case_statement),
-            NodeKind::CaseStatement { scoped_statement, next: Some(next), .. } => self.ensure_both_typed_statements_return(*scoped_statement, *next),
+            }
+            NodeKind::Statement { inner: Some(inner) } => {
+                self.ensure_typed_statement_returns(*inner)
+            }
+            NodeKind::ReturnStatement {
+                expression: Some(expression),
+            } => self.get_typer_node(*expression).node_type.clone(),
+            NodeKind::DeferStatement { statement } => {
+                self.ensure_typed_statement_returns(*statement)
+            }
+            NodeKind::IfStatement {
+                scoped_statement,
+                next: Some(next),
+                ..
+            } => self.ensure_both_typed_statements_return(*scoped_statement, *next),
+            NodeKind::SwitchStatement { case_statement, .. } => {
+                self.ensure_typed_statement_returns(*case_statement)
+            }
+            NodeKind::CaseStatement {
+                scoped_statement,
+                next: Some(next),
+                ..
+            } => self.ensure_both_typed_statements_return(*scoped_statement, *next),
             _ => None,
         }
     }
 
-    fn ensure_both_typed_statements_return(&self, statement: NodeIndex, next: NodeIndex) -> Option<Type> {
+    fn ensure_both_typed_statements_return(
+        &self,
+        statement: NodeIndex,
+        next: NodeIndex,
+    ) -> Option<Type> {
         let Some(statement_type) = self.ensure_typed_statement_returns(statement) else {
             return None;
         };

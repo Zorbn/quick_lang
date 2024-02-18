@@ -288,7 +288,10 @@ impl Parser {
             nodes: Vec::new(),
             definition_indices: HashMap::new(),
             error_count: 0,
-            start_index: NodeIndex { node_index: 0, file_index: None },
+            start_index: NodeIndex {
+                node_index: 0,
+                file_index: None,
+            },
             position: 0,
             file_index,
         }
@@ -572,7 +575,13 @@ impl Parser {
         assert_token!(self, TokenKind::Semicolon, start, end);
         self.position += 1;
 
-        self.add_node(Node { kind: NodeKind::Using { path_component_names: Arc::new(path_component_names) }, start, end })
+        self.add_node(Node {
+            kind: NodeKind::Using {
+                path_component_names: Arc::new(path_component_names),
+            },
+            start,
+            end,
+        })
     }
 
     fn alias(&mut self) -> NodeIndex {
@@ -592,9 +601,17 @@ impl Parser {
         assert_token!(self, TokenKind::Semicolon, start, end);
         self.position += 1;
 
-        let index = self.add_node(Node { kind: NodeKind::Alias { aliased_type_name, alias_name }, start, end });
+        let index = self.add_node(Node {
+            kind: NodeKind::Alias {
+                aliased_type_name,
+                alias_name,
+            },
+            start,
+            end,
+        });
 
-        let NodeKind::Name { text: name_text } = self.nodes[alias_name.node_index].kind.clone() else {
+        let NodeKind::Name { text: name_text } = self.nodes[alias_name.node_index].kind.clone()
+        else {
             panic!("invalid alias name");
         };
 
@@ -617,7 +634,11 @@ impl Parser {
         })
     }
 
-    fn parse_function_params(&mut self, start: Position, params: &mut Vec<NodeIndex>) -> Option<NodeIndex> {
+    fn parse_function_params(
+        &mut self,
+        start: Position,
+        params: &mut Vec<NodeIndex>,
+    ) -> Option<NodeIndex> {
         if let Some(error_node) = self.assert_token(TokenKind::LParen, start, self.token_end()) {
             return Some(error_node);
         }
@@ -719,7 +740,8 @@ impl Parser {
         let scoped_statement = self.scoped_statement();
         let end = self.node_end(scoped_statement);
 
-        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind else {
+        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind
+        else {
             parse_error!(self, "invalid function declaration", start, end);
         };
 
@@ -752,7 +774,8 @@ impl Parser {
         assert_token!(self, TokenKind::Semicolon, start, end);
         self.position += 1;
 
-        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind else {
+        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind
+        else {
             parse_error!(self, "invalid function declaration", start, end);
         };
 
@@ -826,7 +849,13 @@ impl Parser {
 
         let statements = vec![statement];
 
-        self.add_node(Node { kind: NodeKind::Block { statements: Arc::new(statements) }, start, end })
+        self.add_node(Node {
+            kind: NodeKind::Block {
+                statements: Arc::new(statements),
+            },
+            start,
+            end,
+        })
     }
 
     fn statement(&mut self) -> NodeIndex {
@@ -909,7 +938,12 @@ impl Parser {
             }
 
             if type_name.is_none() {
-                parse_error!(self, "uninitialized variable must have a specified type", start, end);
+                parse_error!(
+                    self,
+                    "uninitialized variable must have a specified type",
+                    start,
+                    end
+                );
             }
 
             (None, end)
@@ -1277,7 +1311,11 @@ impl Parser {
             let right = self.boolean_and();
             let end = self.node_end(right);
             left = self.add_node(Node {
-                kind: NodeKind::Binary { left, op: Op::Or, right },
+                kind: NodeKind::Binary {
+                    left,
+                    op: Op::Or,
+                    right,
+                },
                 start,
                 end,
             })
@@ -1299,7 +1337,11 @@ impl Parser {
             let right = self.equality();
             let end = self.node_end(right);
             left = self.add_node(Node {
-                kind: NodeKind::Binary { left, op: Op::And, right },
+                kind: NodeKind::Binary {
+                    left,
+                    op: Op::And,
+                    right,
+                },
                 start,
                 end,
             })

@@ -1,10 +1,7 @@
-use std::{
-    env,
-    process::ExitCode,
-};
+use std::{env, process::ExitCode};
 
-mod compiler;
 mod code_generator;
+mod compiler;
 mod const_value;
 mod emitter;
 mod emitter_stack;

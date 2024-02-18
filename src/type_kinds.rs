@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::{parser::{NodeIndex, NodeKind}, typer::TypedNode};
+use crate::{
+    parser::{NodeIndex, NodeKind},
+    typer::TypedNode,
+};
 
 #[derive(Debug, PartialEq)]
 pub struct Field {
