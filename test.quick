@@ -37,6 +37,7 @@ union Maybe<T>
 
 func Main(argc Int, argv *val String) Int
 {
+    var uninitializedPoint Point = ?;
     QuickCodeTest();
     takesPoint(Point { x = 1, y = 2 });
 

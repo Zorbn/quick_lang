@@ -105,7 +105,7 @@ pub enum NodeKind {
         declaration_kind: DeclarationKind,
         name: NodeIndex,
         type_name: Option<NodeIndex>,
-        expression: NodeIndex,
+        expression: Option<NodeIndex>,
     },
     ReturnStatement {
         expression: Option<NodeIndex>,
@@ -334,6 +334,7 @@ impl Parser {
                 token_kind,
                 self.token_kind()
             ));
+            self.position += 1;
 
             return Some(self.add_node(Node {
                 kind: NodeKind::Error,
@@ -857,12 +858,30 @@ impl Parser {
         assert_token!(self, TokenKind::Equal, start, self.token_end());
         self.position += 1;
 
-        let expression = if declaration_kind == DeclarationKind::Const {
-            self.const_expression()
+        let (expression, end) = if *self.token_kind() == TokenKind::QuestionMark {
+            let end = self.token_end();
+            self.position += 1;
+
+            if declaration_kind != DeclarationKind::Var {
+                parse_error!(self, "uninitialized variable must be a var", start, end);
+            }
+
+            if type_name.is_none() {
+                parse_error!(self, "uninitialized variable must have a specified type", start, end);
+            }
+
+            (None, end)
+        } else if declaration_kind == DeclarationKind::Const {
+            let expression = self.const_expression();
+            let end = self.node_end(expression);
+
+            (Some(expression), end)
         } else {
-            self.expression()
+            let expression = self.expression();
+            let end = self.node_end(expression);
+
+            (Some(expression), end)
         };
-        let end = self.node_end(expression);
 
         self.add_node(Node {
             kind: NodeKind::VariableDeclaration {

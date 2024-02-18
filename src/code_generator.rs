@@ -655,14 +655,10 @@ impl CodeGenerator {
         declaration_kind: DeclarationKind,
         name: NodeIndex,
         _type_name: Option<NodeIndex>,
-        expression: NodeIndex,
-        _node_type: Option<Type>,
+        expression: Option<NodeIndex>,
+        node_type: Option<Type>,
     ) {
-        let type_kind_id = self.get_typer_node(expression)
-            .node_type
-            .as_ref()
-            .unwrap()
-            .type_kind_id;
+        let type_kind_id = node_type.unwrap().type_kind_id;
 
         let is_array = matches!(
             &self.type_kinds.get_by_id(type_kind_id),
@@ -676,6 +672,10 @@ impl CodeGenerator {
         }
         self.gen_node(name);
         self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
+
+        let Some(expression) = expression else {
+            return;
+        };
 
         if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
             self.body_emitters.top().body.emitln(";");

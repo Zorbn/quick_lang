@@ -854,27 +854,34 @@ impl Typer {
         declaration_kind: DeclarationKind,
         name: NodeIndex,
         type_name: Option<NodeIndex>,
-        expression: NodeIndex,
+        expression: Option<NodeIndex>,
     ) -> NodeIndex {
         let typed_name = self.check_node(name);
 
-        let typed_expression = self.check_node(expression);
-        let expression_type = assert_typed!(self, typed_expression);
+        let typed_expression = self.check_optional_node(expression);
+        if let Some(typed_expression) = typed_expression {
+            let expression_type = assert_typed!(self, typed_expression);
 
-        if expression_type.instance_kind == InstanceKind::Name {
-            type_error!(self, "only instances of types can be stored in variables");
+            if expression_type.instance_kind == InstanceKind::Name {
+                type_error!(self, "only instances of types can be stored in variables");
+            }
         }
 
         let typed_type_name = self.check_optional_node(type_name);
         let mut variable_type = if let Some(typed_type_name) = typed_type_name {
             let variable_type = assert_typed!(self, typed_type_name);
-            if variable_type.type_kind_id != expression_type.type_kind_id {
-                type_error!(self, "mismatched types in variable declaration");
+
+            if let Some(typed_expression) = typed_expression {
+                let expression_type = assert_typed!(self, typed_expression);
+
+                if variable_type.type_kind_id != expression_type.type_kind_id {
+                    type_error!(self, "mismatched types in variable declaration");
+                }
             }
 
             variable_type
         } else {
-            expression_type
+            assert_typed!(self, typed_expression.unwrap())
         };
 
         if declaration_kind == DeclarationKind::Const
@@ -912,7 +919,7 @@ impl Typer {
                 type_name: typed_type_name,
                 expression: typed_expression,
             },
-            node_type: None,
+            node_type: Some(variable_type),
         })
     }
 

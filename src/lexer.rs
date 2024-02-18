@@ -50,6 +50,7 @@ pub enum TokenKind {
     GreaterEqual,
     And,
     Or,
+    QuestionMark,
     Var,
     Val,
     Const,
@@ -131,6 +132,7 @@ impl Display for TokenKind {
             TokenKind::GreaterEqual => ">=",
             TokenKind::And => "&&",
             TokenKind::Or => "||",
+            TokenKind::QuestionMark => "?",
             TokenKind::Var => "var",
             TokenKind::Val => "val",
             TokenKind::Const => "const",
@@ -492,6 +494,7 @@ impl Lexer {
                 '~' => TokenKind::Tilde,
                 '%' => TokenKind::Percent,
                 '|' => TokenKind::Pipe,
+                '?' => TokenKind::QuestionMark,
                 '\'' => {
                     let start = self.position;
                     self.position.advance();
