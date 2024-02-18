@@ -131,12 +131,12 @@ impl CodeGenerator {
             is_debug_mode,
         };
 
-        code_generator.header_emitter.emitln("#include <string.h>");
         code_generator
             .header_emitter
-            .emitln("#include <inttypes.h>");
+            .emitln("#include <stdint.h>");
         code_generator.header_emitter.emitln("#include <stdbool.h>");
         code_generator.header_emitter.emitln("#include <assert.h>");
+        code_generator.header_emitter.emitln("void *memmove(void *dst, const void *src, size_t size);");
         code_generator.header_emitter.newline();
         code_generator.body_emitters.push(1);
 
