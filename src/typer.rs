@@ -393,9 +393,6 @@ impl Typer {
         let typed_definition = self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids);
         self.shallow_check_stack -= 1;
 
-        // It's possible that the definition type will not have a valid type, if it's
-        // the definition of a generic function since no generic args were specified.
-        // So, we check it and report a type error instead of using assert_typed!().
         let definition_type = self.get_typer_node(typed_definition).node_type.clone()?;
 
         typed_name.file_index = typed_definition.file_index;
@@ -436,9 +433,11 @@ impl Typer {
                 structs,
                 enums,
                 usings,
-            } => self.top_level(functions, structs, enums, usings),
+                aliases,
+            } => self.top_level(functions, structs, enums, usings, aliases),
             NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
             NodeKind::Using { path_component_names } => self.using(path_component_names),
+            NodeKind::Alias { aliased_type_name, alias_name } => self.alias(aliased_type_name, alias_name),
             NodeKind::Param { name, type_name } => self.param(name, type_name),
             NodeKind::Block { statements } => self.block(statements),
             NodeKind::Statement { inner } => self.statement(inner),
@@ -577,6 +576,7 @@ impl Typer {
             NodeKind::ExternFunction {
                 declaration,
             } => self.extern_function(declaration),
+            NodeKind::Alias { aliased_type_name, alias_name } => self.alias(aliased_type_name, alias_name),
             _ => type_error!(self, "tried to check unexpected node with generic args"),
         };
 
@@ -600,7 +600,6 @@ impl Typer {
             NodeKind::CharLiteral { value } => self.const_char_literal(value, index),
             NodeKind::TypeSize { type_name } => self.const_type_size(type_name, index),
             _ => {
-                println!("{:?}", self.get_parser_node(index).kind);
                 self.type_error("non-constant in constant expression")
             }
         };
@@ -616,11 +615,18 @@ impl Typer {
         structs: Arc<Vec<NodeIndex>>,
         enums: Arc<Vec<NodeIndex>>,
         usings: Arc<Vec<NodeIndex>>,
+        aliases: Arc<Vec<NodeIndex>>,
     ) -> NodeIndex {
         let mut typed_usings = Vec::new();
         for using in usings.iter() {
             let typed_using = self.check_node(*using);
             typed_usings.push(typed_using);
+        }
+
+        let mut typed_aliases = Vec::new();
+        for alias in aliases.iter() {
+            let typed_alias = self.check_node(*alias);
+            typed_aliases.push(typed_alias);
         }
 
         let mut typed_structs = Vec::new();
@@ -700,6 +706,7 @@ impl Typer {
                 structs: Arc::new(typed_structs),
                 enums: Arc::new(typed_enums),
                 usings: Arc::new(typed_usings),
+                aliases: Arc::new(typed_aliases),
             },
             node_type: None,
         })
@@ -788,6 +795,25 @@ impl Typer {
         }
 
         self.add_node(TypedNode { node_kind: NodeKind::Using { path_component_names: Arc::new(Vec::new()) }, node_type: None })
+    }
+
+    fn alias(&mut self, aliased_type_name: NodeIndex, alias_name: NodeIndex) -> NodeIndex {
+        let typed_aliased_type_name = self.check_node(aliased_type_name);
+        let aliased_type_name_type = assert_typed!(self, typed_aliased_type_name);
+        let typed_alias_name = self.check_node(alias_name);
+
+        let NodeKind::Name { text: alias_name_text } = self.get_typer_node(typed_alias_name).node_kind.clone() else {
+            type_error!(self, "invalid enum name");
+        };
+
+        let identifier = GenericIdentifier {
+            name: alias_name_text,
+            generic_arg_type_kind_ids: None,
+        };
+
+        self.type_kind_environment.insert(identifier, aliased_type_name_type.type_kind_id, true);
+
+        self.add_node(TypedNode { node_kind: NodeKind::Alias { aliased_type_name: typed_aliased_type_name, alias_name: typed_alias_name }, node_type: Some(aliased_type_name_type) })
     }
 
     fn param(&mut self, name: NodeIndex, type_name: NodeIndex) -> NodeIndex {
@@ -2265,7 +2291,7 @@ impl Typer {
 
                 let second_type_kind = self.type_kinds.get_by_id(param_type_kind_ids[1]);
                 let TypeKind::Pointer { inner_type_kind_id, is_inner_mutable: false } = second_type_kind else {
-                    type_error!(self, "expected second argument of Main to be *String");
+                    type_error!(self, "expected second argument of Main to be *val String");
                 };
 
                 let TypeKind::String = self.type_kinds.get_by_id(inner_type_kind_id) else {

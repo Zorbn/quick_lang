@@ -48,7 +48,7 @@
 		"keyword": {
 			"patterns": [{
 				"name": "keyword.control.quick",
-				"match": "\\b(var|val|const|func|struct|union|enum|return|break|continue|extern|using|if|else|switch|case|while|for|of|by|as|defer|sizeof|true|false)\\b"
+				"match": "\\b(var|val|const|func|struct|union|enum|alias|return|break|continue|extern|using|if|else|switch|case|while|for|of|by|as|defer|sizeof|true|false)\\b"
 			}]
 		},
 		"string": {

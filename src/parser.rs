@@ -60,6 +60,7 @@ pub enum NodeKind {
         structs: Arc<Vec<NodeIndex>>,
         enums: Arc<Vec<NodeIndex>>,
         usings: Arc<Vec<NodeIndex>>,
+        aliases: Arc<Vec<NodeIndex>>,
     },
     StructDefinition {
         name: NodeIndex,
@@ -90,6 +91,10 @@ pub enum NodeKind {
     },
     Using {
         path_component_names: Arc<Vec<NodeIndex>>,
+    },
+    Alias {
+        aliased_type_name: NodeIndex,
+        alias_name: NodeIndex,
     },
     Param {
         name: NodeIndex,
@@ -383,6 +388,7 @@ impl Parser {
         let mut structs = Vec::new();
         let mut enums = Vec::new();
         let mut usings = Vec::new();
+        let mut aliases = Vec::new();
         let start = self.token_start();
         let mut end = self.token_end();
 
@@ -410,6 +416,10 @@ impl Parser {
                     index = self.using();
                     usings.push(index);
                 }
+                TokenKind::Alias => {
+                    index = self.alias();
+                    aliases.push(index);
+                }
                 _ => parse_error!(self, "unexpected token at top level", start, end),
             }
 
@@ -422,6 +432,7 @@ impl Parser {
                 structs: Arc::new(structs),
                 enums: Arc::new(enums),
                 usings: Arc::new(usings),
+                aliases: Arc::new(aliases),
             },
             start,
             end,
@@ -562,6 +573,34 @@ impl Parser {
         self.position += 1;
 
         self.add_node(Node { kind: NodeKind::Using { path_component_names: Arc::new(path_component_names) }, start, end })
+    }
+
+    fn alias(&mut self) -> NodeIndex {
+        let start = self.token_start();
+
+        assert_token!(self, TokenKind::Alias, start, self.token_end());
+        self.position += 1;
+
+        let alias_name = self.name();
+
+        assert_token!(self, TokenKind::Equal, start, self.token_end());
+        self.position += 1;
+
+        let aliased_type_name = self.type_name();
+
+        let end = self.token_end();
+        assert_token!(self, TokenKind::Semicolon, start, end);
+        self.position += 1;
+
+        let index = self.add_node(Node { kind: NodeKind::Alias { aliased_type_name, alias_name }, start, end });
+
+        let NodeKind::Name { text: name_text } = self.nodes[alias_name.node_index].kind.clone() else {
+            panic!("invalid alias name");
+        };
+
+        self.definition_indices.insert(name_text, index);
+
+        index
     }
 
     fn field(&mut self) -> NodeIndex {
@@ -708,7 +747,10 @@ impl Parser {
         self.position += 1;
 
         let declaration = self.function_declaration();
-        let end = self.node_end(declaration);
+
+        let end = self.token_end();
+        assert_token!(self, TokenKind::Semicolon, start, end);
+        self.position += 1;
 
         let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind else {
             parse_error!(self, "invalid function declaration", start, end);

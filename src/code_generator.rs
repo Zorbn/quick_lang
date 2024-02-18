@@ -284,6 +284,7 @@ impl CodeGenerator {
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression, node_type),
             NodeKind::TypeSize { type_name } => self.type_size(type_name, node_type),
             NodeKind::Using { .. } => panic!("cannot generate using statement"),
+            NodeKind::Alias { .. } => panic!("cannot generate alias statement"),
             NodeKind::Error => panic!("cannot generate error node"),
             NodeKind::TypeName { .. }
             | NodeKind::TypeNameArray { .. }

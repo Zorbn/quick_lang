@@ -1,9 +1,11 @@
 using Other;
 using QuickCode.Test;
 
-extern func puts(str String) UInt
-extern func malloc(size UInt) *var Void
-extern func free(ptr *var Void) Void
+alias MyString = String;
+
+extern func puts(str String) UInt;
+extern func malloc(size UInt) *var Void;
+extern func free(ptr *var Void) Void;
 
 enum Name
 {
@@ -37,6 +39,9 @@ union Maybe<T>
 
 func Main(argc Int, argv *val String) Int
 {
+    val myMyString MyString = "MyString";
+    useMyString(myMyString);
+
     var uninitializedPoint Point = ?;
     QuickCodeTest();
     takesPoint(Point { x = 1, y = 2 });

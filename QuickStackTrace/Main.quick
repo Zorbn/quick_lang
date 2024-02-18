@@ -67,13 +67,13 @@ struct SymbolInfo
     name [1]Char;
 }
 
-extern func puts(string String) UInt
-extern func putchar(character Int) Int
-extern func calloc(num UInt, size UInt) *var Void
-extern func free(pointer *var Void) Void
+extern func puts(string String) UInt;
+extern func putchar(character Int) Int;
+extern func calloc(num UInt, size UInt) *var Void;
+extern func free(pointer *var Void) Void;
 
-extern func GetLastError() UInt
-extern func RtlCaptureStackBackTrace(framesToSkip UInt, framesToCapture UInt, backTrace *var Void, backTraceHash *var UInt) UInt16
-extern func GetCurrentProcess() *var Void
-extern func SymInitialize(process *var Void, searchPath String, invadeProcess Int32) Int32
-extern func SymFromAddr(process *var Void, address UInt64, displacement *var UInt64, symbol *var SymbolInfo) Int32
+extern func GetLastError() UInt;
+extern func RtlCaptureStackBackTrace(framesToSkip UInt, framesToCapture UInt, backTrace *var Void, backTraceHash *var UInt) UInt16;
+extern func GetCurrentProcess() *var Void;
+extern func SymInitialize(process *var Void, searchPath String, invadeProcess Int32) Int32;
+extern func SymFromAddr(process *var Void, address UInt64, displacement *var UInt64, symbol *var SymbolInfo) Int32;

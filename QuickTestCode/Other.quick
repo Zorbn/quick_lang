@@ -39,3 +39,8 @@ func callsMain() Void
     val argv = "hello";
     Main(argc, *argv);
 }
+
+func useMyString(myString MyString) Void
+{
+
+}
