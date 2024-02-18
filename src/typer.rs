@@ -454,30 +454,30 @@ impl Typer {
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
             NodeKind::IfStatement {
                 expression,
-                statement,
+                scoped_statement,
                 next,
-            } => self.if_statement(expression, statement, next),
+            } => self.if_statement(expression, scoped_statement, next),
             NodeKind::SwitchStatement {
                 expression,
                 case_statement,
             } => self.switch_statement(expression, case_statement),
             NodeKind::CaseStatement {
                 expression,
-                statement,
+                scoped_statement,
                 next,
-            } => self.case_statement(expression, statement, next),
+            } => self.case_statement(expression, scoped_statement, next),
             NodeKind::WhileLoop {
                 expression,
-                statement,
-            } => self.while_loop(expression, statement),
+                scoped_statement,
+            } => self.while_loop(expression, scoped_statement),
             NodeKind::ForLoop {
                 iterator,
                 op,
                 from,
                 to,
                 by,
-                statement,
-            } => self.for_loop(iterator, op, from, to, by, statement),
+                scoped_statement,
+            } => self.for_loop(iterator, op, from, to, by, scoped_statement),
             NodeKind::ConstExpression { inner } => self.const_expression(inner),
             NodeKind::Binary { left, op, right } => self.binary(left, op, right),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right),
@@ -519,8 +519,8 @@ impl Typer {
             } => self.function_declaration(name, params, generic_params, return_type_name, false),
             NodeKind::Function {
                 declaration,
-                statement,
-            } => self.function(declaration, statement, None),
+                scoped_statement,
+            } => self.function(declaration, scoped_statement, None),
             NodeKind::GenericSpecifier {
                 name,
                 generic_arg_type_names,
@@ -572,8 +572,8 @@ impl Typer {
             ),
             NodeKind::Function {
                 declaration,
-                statement,
-            } => self.function(declaration, statement, generic_arg_type_kind_ids),
+                scoped_statement,
+            } => self.function(declaration, scoped_statement, generic_arg_type_kind_ids),
             NodeKind::ExternFunction {
                 declaration,
             } => self.extern_function(declaration),
@@ -968,15 +968,15 @@ impl Typer {
         })
     }
 
-    fn if_statement(&mut self, expression: NodeIndex, statement: NodeIndex, next: Option<NodeIndex>) -> NodeIndex {
+    fn if_statement(&mut self, expression: NodeIndex, scoped_statement: NodeIndex, next: Option<NodeIndex>) -> NodeIndex {
         let typed_expression = self.check_node(expression);
-        let typed_statement = self.check_node(statement);
+        let typed_scoped_statement = self.check_node(scoped_statement);
         let typed_next = self.check_optional_node(next);
 
         self.add_node(TypedNode {
             node_kind: NodeKind::IfStatement {
                 expression: typed_expression,
-                statement: typed_statement,
+                scoped_statement: typed_scoped_statement,
                 next: typed_next,
             },
             node_type: None,
@@ -999,34 +999,34 @@ impl Typer {
     fn case_statement(
         &mut self,
         expression: NodeIndex,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
         next: Option<NodeIndex>,
     ) -> NodeIndex {
         let typed_expression = self.check_node(expression);
-        let typed_statement = self.check_node(statement);
+        let typed_scoped_statement = self.check_node(scoped_statement);
         let typed_next = self.check_optional_node(next);
 
         self.add_node(TypedNode {
             node_kind: NodeKind::CaseStatement {
                 expression: typed_expression,
-                statement: typed_statement,
+                scoped_statement: typed_scoped_statement,
                 next: typed_next,
             },
             node_type: None,
         })
     }
 
-    fn while_loop(&mut self, expression: NodeIndex, statement: NodeIndex) -> NodeIndex {
+    fn while_loop(&mut self, expression: NodeIndex, scoped_statement: NodeIndex) -> NodeIndex {
         let typed_expression = self.check_node(expression);
 
         self.loop_stack += 1;
-        let typed_statement = self.check_node(statement);
+        let typed_scoped_statement = self.check_node(scoped_statement);
         self.loop_stack -= 1;
 
         self.add_node(TypedNode {
             node_kind: NodeKind::WhileLoop {
                 expression: typed_expression,
-                statement: typed_statement,
+                scoped_statement: typed_scoped_statement,
             },
             node_type: None,
         })
@@ -1039,7 +1039,7 @@ impl Typer {
         from: NodeIndex,
         to: NodeIndex,
         by: Option<NodeIndex>,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
     ) -> NodeIndex {
         let typed_iterator = self.check_node(iterator);
         let typed_from = self.check_node(from);
@@ -1047,7 +1047,7 @@ impl Typer {
         let typed_by = self.check_optional_node(by);
 
         self.loop_stack += 1;
-        let typed_statement = self.check_node(statement);
+        let typed_scoped_statement = self.check_node(scoped_statement);
         self.loop_stack -= 1;
 
         self.add_node(TypedNode {
@@ -1057,7 +1057,7 @@ impl Typer {
                 from: typed_from,
                 to: typed_to,
                 by: typed_by,
-                statement: typed_statement,
+                scoped_statement: typed_scoped_statement,
             },
             node_type: None,
         })
@@ -2242,14 +2242,14 @@ impl Typer {
     fn function(
         &mut self,
         declaration: NodeIndex,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
     ) -> NodeIndex {
         let pre_error_count = self.error_count;
 
         let is_generic = generic_arg_type_kind_ids.is_some();
 
-        let index = self.function_impl(declaration, statement, generic_arg_type_kind_ids);
+        let index = self.function_impl(declaration, scoped_statement, generic_arg_type_kind_ids);
 
         if self.error_count <= pre_error_count || !is_generic {
             return index;
@@ -2266,7 +2266,7 @@ impl Typer {
     fn function_impl(
         &mut self,
         declaration: NodeIndex,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
     ) -> NodeIndex {
         let NodeKind::FunctionDeclaration {
@@ -2323,14 +2323,14 @@ impl Typer {
 
         let is_deep_check = self.shallow_check_stack == 0 || generic_arg_type_kind_ids.is_some();
 
-        let typed_statement = if is_deep_check {
-            let typed_statement = self.check_node(statement);
+        let typed_scoped_statement = if is_deep_check {
+            let typed_scoped_statement = self.check_node(scoped_statement);
 
             let TypeKind::Function { return_type_kind_id: expected_return_type_kind_id, .. } = self.type_kinds.get_by_id(declaration_type.type_kind_id) else {
                 type_error!(self, "invalid function type");
             };
 
-            if let Some(return_type) = self.ensure_typed_statement_returns(typed_statement) {
+            if let Some(return_type) = self.ensure_typed_statement_returns(typed_scoped_statement) {
                 if return_type.type_kind_id != expected_return_type_kind_id {
                     type_error!(self, "function does not return the right type");
                 }
@@ -2338,7 +2338,7 @@ impl Typer {
                 type_error!(self, "function does not return the correct type of value on all execution paths");
             }
 
-            typed_statement
+            typed_scoped_statement
         } else {
             self.add_node(TypedNode { node_kind: NodeKind::Error, node_type: None })
         };
@@ -2349,7 +2349,7 @@ impl Typer {
         let index = self.add_node_with_file_index(TypedNode {
             node_kind: NodeKind::Function {
                 declaration: typed_declaration,
-                statement: typed_statement,
+                scoped_statement: typed_scoped_statement,
             },
             node_type: Some(Type {
                 type_kind_id: declaration_type.type_kind_id,
@@ -2579,9 +2579,9 @@ impl Typer {
             NodeKind::Statement { inner: Some(inner) } => self.ensure_typed_statement_returns(*inner),
             NodeKind::ReturnStatement { expression: Some(expression) } => self.get_typer_node(*expression).node_type.clone(),
             NodeKind::DeferStatement { statement } => self.ensure_typed_statement_returns(*statement),
-            NodeKind::IfStatement { statement, next: Some(next), .. } => self.ensure_both_typed_statements_return(*statement, *next),
+            NodeKind::IfStatement { scoped_statement, next: Some(next), .. } => self.ensure_both_typed_statements_return(*scoped_statement, *next),
             NodeKind::SwitchStatement { case_statement, .. } => self.ensure_typed_statement_returns(*case_statement),
-            NodeKind::CaseStatement { statement, next: Some(next), .. } => self.ensure_both_typed_statements_return(*statement, *next),
+            NodeKind::CaseStatement { scoped_statement, next: Some(next), .. } => self.ensure_both_typed_statements_return(*scoped_statement, *next),
             _ => None,
         }
     }

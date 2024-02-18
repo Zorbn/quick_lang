@@ -83,7 +83,7 @@ pub enum NodeKind {
     },
     Function {
         declaration: NodeIndex,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
     },
     ExternFunction {
         declaration: NodeIndex,
@@ -117,7 +117,7 @@ pub enum NodeKind {
     },
     IfStatement {
         expression: NodeIndex,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
         next: Option<NodeIndex>,
     },
     SwitchStatement {
@@ -126,12 +126,12 @@ pub enum NodeKind {
     },
     CaseStatement {
         expression: NodeIndex,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
         next: Option<NodeIndex>,
     },
     WhileLoop {
         expression: NodeIndex,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
     },
     ForLoop {
         iterator: NodeIndex,
@@ -139,7 +139,7 @@ pub enum NodeKind {
         from: NodeIndex,
         to: NodeIndex,
         by: Option<NodeIndex>,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
     },
     Binary {
         left: NodeIndex,
@@ -676,8 +676,8 @@ impl Parser {
     fn function(&mut self) -> NodeIndex {
         let start = self.token_start();
         let declaration = self.function_declaration();
-        let statement = self.statement();
-        let end = self.node_end(statement);
+        let scoped_statement = self.scoped_statement();
+        let end = self.node_end(scoped_statement);
 
         let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind else {
             parse_error!(self, "invalid function declaration", start, end);
@@ -690,7 +690,7 @@ impl Parser {
         let index = self.add_node(Node {
             kind: NodeKind::Function {
                 declaration,
-                statement,
+                scoped_statement,
             },
             start,
             end,
@@ -764,6 +764,26 @@ impl Parser {
             start,
             end,
         })
+    }
+
+    fn scoped_statement(&mut self) -> NodeIndex {
+        let start = self.token_start();
+        let statement = self.statement();
+        let end = self.node_end(statement);
+
+        let NodeKind::Statement { inner } = &self.nodes[statement.node_index].kind else {
+            parse_error!(self, "invalid statement", start, end);
+        };
+
+        if let Some(inner) = inner {
+            if matches!(self.nodes[inner.node_index].kind, NodeKind::Block { .. }) {
+                return *inner;
+            }
+        }
+
+        let statements = vec![statement];
+
+        self.add_node(Node { kind: NodeKind::Block { statements: Arc::new(statements) }, start, end })
     }
 
     fn statement(&mut self) -> NodeIndex {
@@ -930,8 +950,8 @@ impl Parser {
         assert_token!(self, TokenKind::RParen, start, self.token_end());
         self.position += 1;
 
-        let statement = self.statement();
-        let mut end = self.node_end(statement);
+        let scoped_statement = self.scoped_statement();
+        let mut end = self.node_end(scoped_statement);
 
         let next = if *self.token_kind() == TokenKind::Else {
             self.position += 1;
@@ -939,7 +959,7 @@ impl Parser {
             let next = if *self.token_kind() == TokenKind::If {
                 self.if_statement()
             } else {
-                self.statement()
+                self.scoped_statement()
             };
 
             end = self.node_end(next);
@@ -952,7 +972,7 @@ impl Parser {
         self.add_node(Node {
             kind: NodeKind::IfStatement {
                 expression,
-                statement,
+                scoped_statement,
                 next,
             },
             start,
@@ -999,8 +1019,8 @@ impl Parser {
         assert_token!(self, TokenKind::RParen, start, self.token_end());
         self.position += 1;
 
-        let statement = self.statement();
-        let mut end = self.node_end(statement);
+        let scoped_statement = self.scoped_statement();
+        let mut end = self.node_end(scoped_statement);
 
         let next = if *self.token_kind() == TokenKind::Case {
             let next = self.case_statement();
@@ -1010,7 +1030,7 @@ impl Parser {
         } else if *self.token_kind() == TokenKind::Else {
             self.position += 1;
 
-            let next = self.statement();
+            let next = self.scoped_statement();
             end = self.node_end(next);
 
             Some(next)
@@ -1021,7 +1041,7 @@ impl Parser {
         self.add_node(Node {
             kind: NodeKind::CaseStatement {
                 expression,
-                statement,
+                scoped_statement,
                 next,
             },
             start,
@@ -1042,13 +1062,13 @@ impl Parser {
         assert_token!(self, TokenKind::RParen, start, self.token_end());
         self.position += 1;
 
-        let statement = self.statement();
-        let end = self.node_end(statement);
+        let scoped_statement = self.scoped_statement();
+        let end = self.node_end(scoped_statement);
 
         self.add_node(Node {
             kind: NodeKind::WhileLoop {
                 expression,
-                statement,
+                scoped_statement,
             },
             start,
             end,
@@ -1097,8 +1117,8 @@ impl Parser {
         assert_token!(self, TokenKind::RParen, start, self.token_end());
         self.position += 1;
 
-        let statement = self.statement();
-        let end = self.node_end(statement);
+        let scoped_statement = self.scoped_statement();
+        let end = self.node_end(scoped_statement);
 
         self.add_node(Node {
             kind: NodeKind::ForLoop {
@@ -1107,7 +1127,7 @@ impl Parser {
                 from,
                 to,
                 by,
-                statement,
+                scoped_statement,
             },
             start,
             end,

@@ -173,8 +173,8 @@ impl CodeGenerator {
                 } => self.enum_definition(name, variant_names, node_type),
                 NodeKind::Function {
                     declaration,
-                    statement,
-                } => self.function(declaration, statement, node_type),
+                    scoped_statement,
+                } => self.function(declaration, scoped_statement, node_type),
                 NodeKind::ExternFunction { declaration } => self.extern_function(declaration, node_type),
                 _ => panic!("unexpected definition kind: {:?}", node_kind),
             }
@@ -208,8 +208,8 @@ impl CodeGenerator {
             NodeKind::Field { name, type_name } => self.field(name, type_name, node_type),
             NodeKind::Function {
                 declaration,
-                statement,
-            } => self.function(declaration, statement, node_type),
+                scoped_statement,
+            } => self.function(declaration, scoped_statement, node_type),
             NodeKind::FunctionDeclaration {
                 name,
                 params,
@@ -233,30 +233,30 @@ impl CodeGenerator {
             NodeKind::DeferStatement { statement } => self.defer_statement(statement, node_type),
             NodeKind::IfStatement {
                 expression,
-                statement,
+                scoped_statement,
                 next,
-            } => self.if_statement(expression, statement, next, node_type),
+            } => self.if_statement(expression, scoped_statement, next, node_type),
             NodeKind::SwitchStatement {
                 expression,
                 case_statement,
             } => self.switch_statement(expression, case_statement, node_type),
             NodeKind::CaseStatement {
                 expression,
-                statement,
+                scoped_statement,
                 next,
-            } => self.case_statement(expression, statement, next, node_type),
+            } => self.case_statement(expression, scoped_statement, next, node_type),
             NodeKind::WhileLoop {
                 expression,
-                statement,
-            } => self.while_loop(expression, statement, node_type),
+                scoped_statement,
+            } => self.while_loop(expression, scoped_statement, node_type),
             NodeKind::ForLoop {
                 iterator,
                 op,
                 from,
                 to,
                 by,
-                statement,
-            } => self.for_loop(iterator, op, from, to, by, statement, node_type),
+                scoped_statement,
+            } => self.for_loop(iterator, op, from, to, by, scoped_statement, node_type),
             NodeKind::ConstExpression { inner } => self.const_expression(inner, node_type),
             NodeKind::Binary { left, op, right } => self.binary(left, op, right, node_type),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type),
@@ -452,11 +452,12 @@ impl CodeGenerator {
         self.type_prototype_emitter.emitln(";");
     }
 
-    fn function(&mut self, declaration: NodeIndex, statement: NodeIndex, node_type: Option<Type>) {
-        if matches!(self.get_typer_node(statement).node_kind, NodeKind::Statement { .. }) {
+    fn function(&mut self, declaration: NodeIndex, scoped_statement: NodeIndex, node_type: Option<Type>) {
+        if matches!(self.get_typer_node(scoped_statement).node_kind, NodeKind::Block { .. }) {
             self.gen_node(declaration);
             self.function_declaration_needing_init = Some(declaration);
-            self.emit_scoped_statement(statement);
+            self.gen_node(scoped_statement);
+            self.body_emitters.top().body.newline();
             self.body_emitters.top().body.newline();
         } else {
             let NodeKind::FunctionDeclaration { name, params, generic_params, .. } =
@@ -757,18 +758,24 @@ impl CodeGenerator {
     fn if_statement(
         &mut self,
         expression: NodeIndex,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
         next: Option<NodeIndex>,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("if (");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
-        self.gen_node(statement);
+        self.gen_node(scoped_statement);
 
         if let Some(next) = next {
-            self.body_emitters.top().body.emit("else ");
+            self.body_emitters.top().body.emit(" else ");
             self.gen_node(next);
+
+            if !matches!(self.get_typer_node(next).node_kind, NodeKind::IfStatement { .. }) {
+                self.body_emitters.top().body.newline();
+            }
+        } else {
+            self.body_emitters.top().body.newline();
         }
     }
 
@@ -788,15 +795,15 @@ impl CodeGenerator {
     fn case_statement(
         &mut self,
         expression: NodeIndex,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
         next: Option<NodeIndex>,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("case ");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(": ");
-        self.emit_scoped_statement(statement);
-        self.body_emitters.top().body.emitln("break;");
+        self.gen_node(scoped_statement);
+        self.body_emitters.top().body.emitln(" break;");
 
         if let Some(next) = next {
             if !matches!(
@@ -804,21 +811,22 @@ impl CodeGenerator {
                 NodeKind::CaseStatement { .. }
             ) {
                 self.body_emitters.top().body.emit("default: ");
-                self.emit_scoped_statement(next);
-                self.body_emitters.top().body.emitln("break;");
+                self.gen_node(next);
+                self.body_emitters.top().body.emitln(" break;");
             } else {
                 self.gen_node(next);
             }
         }
     }
 
-    fn while_loop(&mut self, expression: NodeIndex, statement: NodeIndex, _node_type: Option<Type>) {
+    fn while_loop(&mut self, expression: NodeIndex, scoped_statement: NodeIndex, _node_type: Option<Type>) {
         self.body_emitters.top().body.emit("while (");
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
 
         self.loop_depth_stack.push(self.body_emitters.len());
-        self.gen_node(statement);
+        self.gen_node(scoped_statement);
+        self.body_emitters.top().body.newline();
         self.loop_depth_stack.pop();
     }
 
@@ -830,7 +838,7 @@ impl CodeGenerator {
         from: NodeIndex,
         to: NodeIndex,
         by: Option<NodeIndex>,
-        statement: NodeIndex,
+        scoped_statement: NodeIndex,
         _node_type: Option<Type>,
     ) {
         self.body_emitters.top().body.emit("for (intptr_t ");
@@ -854,7 +862,8 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(") ");
 
         self.loop_depth_stack.push(self.body_emitters.len());
-        self.gen_node(statement);
+        self.gen_node(scoped_statement);
+        self.body_emitters.top().body.newline();
         self.loop_depth_stack.pop();
     }
 
@@ -1727,30 +1736,6 @@ impl CodeGenerator {
                 .emit_char(((number % 10) as u8 + b'0') as char);
             number /= 10;
             digit += 1;
-        }
-    }
-
-    fn emit_scoped_statement(&mut self, statement: NodeIndex) {
-        let NodeKind::Statement { inner } = self.get_typer_node(statement).node_kind else {
-            panic!("invalid statement in scoped statement");
-        };
-
-        let needs_scope = inner.is_none()
-            || !matches!(
-                self.get_typer_node(inner.unwrap()).node_kind,
-                NodeKind::Block { .. }
-            );
-
-        if needs_scope {
-            self.body_emitters.top().body.emitln("{");
-            self.body_emitters.top().body.indent();
-        }
-
-        self.gen_node(statement);
-
-        if needs_scope {
-            self.body_emitters.top().body.unindent();
-            self.body_emitters.top().body.emitln("}");
         }
     }
 
