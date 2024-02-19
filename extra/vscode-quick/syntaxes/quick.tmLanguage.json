@@ -107,7 +107,7 @@
 			}
 		},
 		"type": {
-			"name": "storage.type.quick",
+			"name": "storage.type.quick entity.name.type.quick",
 			"match": "\\b[A-Z]\\w*\\b"
 		},
 		"variable": {
