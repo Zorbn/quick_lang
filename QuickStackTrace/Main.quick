@@ -1,46 +1,39 @@
-// Clang: cargo run . --cflags -Lc:/lib64 -lDbghelp -lKernel32
+// Clang: cargo run . --debug --cflags -Lc:/lib64 -lDbghelp -lKernel32
 // MSVC: cargo run . --msvc --debug --cflags /link Dbghelp.lib Kernel32.lib user32.lib winmm.lib shell32.lib
 func Main() Int
 {
-    const maxFrames = 100 as UInt;
+    const maxFrames UInt = 100;
 
     var stack = [0 as *var Void; maxFrames];
     var process = GetCurrentProcess();
 
-    var result = SymInitialize(process, 0 as String, 1 as Int32);
+    var result = SymInitialize(process, 0 as String, 1);
     if (result == 0 as Int32)
     {
         var lastError = GetLastError();
         puts("Failed to initialize");
     }
 
-    var frameCount = RtlCaptureStackBackTrace(0 as UInt, maxFrames, stack as *var Void, 0 as *var UInt);
+    var frameCount = RtlCaptureStackBackTrace(0, maxFrames, stack as *var Void, 0 as *var UInt);
 
-    if (frameCount > 0 as UInt16) puts("Successfully acquired stack trace:");
+    if (frameCount > 0) puts("Successfully acquired stack trace:");
 
-    var symbol = calloc(sizeof SymbolInfo + 254 as UInt * sizeof Char, 1 as UInt) as *var SymbolInfo;
-    symbol.maxNameLen = 255 as UInt32;
-    symbol.sizeOfStruct = sizeof SymbolInfo as UInt32;
+    var symbol = calloc(sizeof SymbolInfo + 254 * sizeof Char, 1) as *var SymbolInfo;
+    symbol.maxNameLen = 255;
+    symbol.sizeOfStruct = sizeof SymbolInfo;
 
-    for (i of 0 < frameCount as Int)
+    for (i of 0 < frameCount)
     {
         result = SymFromAddr(process, stack[i] as UInt64, 0 as *var UInt64, symbol);
 
-        if (result == 0 as Int32)
+        if (result == 0)
         {
             var lastError = GetLastError();
             puts("Failed to get sym");
             continue;
         }
 
-        if (symbol.name as UInt == 0 as UInt)
-        {
-            puts("Unknown symbol name");
-        }
-        else
-        {
-            puts(symbol.name as String);
-        }
+        puts(symbol.name as String);
     }
 
     free(symbol as *var Void);

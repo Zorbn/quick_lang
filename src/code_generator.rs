@@ -287,7 +287,7 @@ impl CodeGenerator {
             NodeKind::Name { .. } => self.name(index, node_type),
             NodeKind::Identifier { name } => self.identifier(name, node_type),
             NodeKind::IntLiteral { text } => self.int_literal(text, node_type),
-            NodeKind::Float32Literal { text } => self.float32_literal(text, node_type),
+            NodeKind::FloatLiteral { text } => self.float_literal(text, node_type),
             NodeKind::CharLiteral { value } => self.char_literal(value, node_type),
             NodeKind::StringLiteral { text } => self.string_literal(text, node_type),
             NodeKind::BoolLiteral { value } => self.bool_literal(value, node_type),
@@ -947,7 +947,7 @@ impl CodeGenerator {
         match const_value {
             ConstValue::Int { value } => self.body_emitters.top().body.emit(&value.to_string()),
             ConstValue::UInt { value } => self.body_emitters.top().body.emit(&value.to_string()),
-            ConstValue::Float32 { value } => self.body_emitters.top().body.emit(&value.to_string()),
+            ConstValue::Float { value } => self.body_emitters.top().body.emit(&value.to_string()),
             ConstValue::String { value } => {
                 self.body_emitters.top().body.emit_char('"');
                 self.body_emitters.top().body.emit(&value);
@@ -1323,13 +1323,22 @@ impl CodeGenerator {
         }
     }
 
-    fn int_literal(&mut self, text: Arc<str>, _node_type: Option<Type>) {
+    fn int_literal(&mut self, text: Arc<str>, node_type: Option<Type>) {
         self.body_emitters.top().body.emit(&text);
+
+        let type_kind_id = node_type.unwrap().type_kind_id;
+        if self.type_kinds.get_by_id(type_kind_id).is_unsigned() {
+            self.body_emitters.top().body.emit("u");
+        }
     }
 
-    fn float32_literal(&mut self, text: Arc<str>, _node_type: Option<Type>) {
+    fn float_literal(&mut self, text: Arc<str>, node_type: Option<Type>) {
         self.body_emitters.top().body.emit(&text);
-        self.body_emitters.top().body.emit("f");
+
+        let type_kind_id = node_type.unwrap().type_kind_id;
+        if self.type_kinds.get_by_id(type_kind_id) == TypeKind::Float32 {
+            self.body_emitters.top().body.emit("f");
+        }
     }
 
     fn char_literal(&mut self, value: char, _node_type: Option<Type>) {

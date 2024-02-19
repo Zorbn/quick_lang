@@ -77,7 +77,7 @@ pub enum TypeKind {
 }
 
 impl TypeKind {
-    pub fn is_numeric(&self) -> bool {
+    pub fn is_int(&self) -> bool {
         matches!(
             self,
             TypeKind::Int
@@ -90,9 +90,30 @@ impl TypeKind {
                 | TypeKind::UInt32
                 | TypeKind::Int64
                 | TypeKind::UInt64
-                | TypeKind::Float32
+        )
+    }
+
+    pub fn is_unsigned(&self) -> bool {
+        matches!(
+            self,
+            TypeKind::UInt
+                | TypeKind::UInt8
+                | TypeKind::UInt16
+                | TypeKind::UInt32
+                | TypeKind::UInt64
+        )
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(
+            self,
+            TypeKind::Float32
                 | TypeKind::Float64
         )
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        self.is_int() || self.is_float()
     }
 }
 

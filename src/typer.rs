@@ -438,8 +438,8 @@ impl Typer {
         self.check_node(start_index);
     }
 
-    fn check_optional_node(&mut self, index: Option<NodeIndex>) -> Option<NodeIndex> {
-        index.map(|index| self.check_node(index))
+    fn check_optional_node(&mut self, index: Option<NodeIndex>, hint: Option<usize>) -> Option<NodeIndex> {
+        index.map(|index| self.check_node_with_hint(index, hint))
     }
 
     fn check_node(&mut self, index: NodeIndex) -> NodeIndex {
@@ -462,15 +462,15 @@ impl Typer {
                 alias_name,
             } => self.alias(aliased_type_name, alias_name),
             NodeKind::Param { name, type_name } => self.param(name, type_name),
-            NodeKind::Block { statements } => self.block(statements),
-            NodeKind::Statement { inner } => self.statement(inner),
+            NodeKind::Block { statements } => self.block(statements, None),
+            NodeKind::Statement { inner } => self.statement(inner, None),
             NodeKind::VariableDeclaration {
                 declaration_kind,
                 name,
                 type_name,
                 expression,
             } => self.variable_declaration(declaration_kind, name, type_name, expression),
-            NodeKind::ReturnStatement { expression } => self.return_statement(expression),
+            NodeKind::ReturnStatement { expression } => self.return_statement(expression, None),
             NodeKind::BreakStatement => self.break_statement(),
             NodeKind::ContinueStatement => self.continue_statement(),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
@@ -500,9 +500,9 @@ impl Typer {
                 by,
                 scoped_statement,
             } => self.for_loop(iterator, op, from, to, by, scoped_statement),
-            NodeKind::ConstExpression { inner } => self.const_expression(inner),
-            NodeKind::Binary { left, op, right } => self.binary(left, op, right),
-            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right),
+            NodeKind::ConstExpression { inner } => self.const_expression(inner, None),
+            NodeKind::Binary { left, op, right } => self.binary(left, op, right, None),
+            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, None),
             NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op),
             NodeKind::Call { left, args } => self.call(left, args),
             NodeKind::IndexAccess { left, expression } => self.index_access(left, expression),
@@ -510,8 +510,8 @@ impl Typer {
             NodeKind::Cast { left, type_name } => self.cast(left, type_name),
             NodeKind::Name { text } => self.name(text),
             NodeKind::Identifier { name } => self.identifier(name),
-            NodeKind::IntLiteral { text } => self.int_literal(text),
-            NodeKind::Float32Literal { text } => self.float32_literal(text),
+            NodeKind::IntLiteral { text } => self.int_literal(text, None),
+            NodeKind::FloatLiteral { text } => self.float_literal(text, None),
             NodeKind::StringLiteral { text } => self.string_literal(text),
             NodeKind::BoolLiteral { value } => self.bool_literal(value),
             NodeKind::CharLiteral { value } => self.char_literal(value),
@@ -524,7 +524,7 @@ impl Typer {
                 field_literals,
             } => self.struct_literal(left, field_literals),
             NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
-            NodeKind::TypeSize { type_name } => self.type_size(type_name),
+            NodeKind::TypeSize { type_name } => self.type_size(type_name, None),
             NodeKind::StructDefinition {
                 name,
                 fields,
@@ -607,20 +607,45 @@ impl Typer {
         typed_index
     }
 
-    fn check_const_node(&mut self, index: NodeIndex) -> NodeIndex {
+    fn check_node_with_hint(
+        &mut self,
+        index: NodeIndex,
+        hint: Option<usize>,
+    ) -> NodeIndex {
         self.node_index_stack.push(index);
 
         let typed_index = match self.get_parser_node(index).kind.clone() {
-            NodeKind::Binary { left, op, right } => self.const_binary(left, op, right, index),
-            NodeKind::UnaryPrefix { op, right } => self.const_unary_prefix(op, right, index),
+            NodeKind::Binary { left, op, right } => self.binary(left, op, right, hint),
+            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, hint),
+            NodeKind::IntLiteral { text } => self.int_literal(text, hint),
+            NodeKind::FloatLiteral { text } => self.float_literal(text, hint),
+            NodeKind::TypeSize { type_name } => self.type_size(type_name, hint),
+            NodeKind::Block { statements } => self.block(statements, hint),
+            NodeKind::Statement { inner } => self.statement(inner, hint),
+            NodeKind::ReturnStatement { expression } => self.return_statement(expression, hint),
+            NodeKind::ConstExpression { inner } => self.const_expression(inner, hint),
+            _ => self.check_node(index),
+        };
+
+        self.node_index_stack.pop();
+
+        typed_index
+    }
+
+    fn check_const_node(&mut self, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+        self.node_index_stack.push(index);
+
+        let typed_index = match self.get_parser_node(index).kind.clone() {
+            NodeKind::Binary { left, op, right } => self.const_binary(left, op, right, index, hint),
+            NodeKind::UnaryPrefix { op, right } => self.const_unary_prefix(op, right, index, hint),
             NodeKind::Cast { left, type_name } => self.const_cast(left, type_name, index),
             NodeKind::Identifier { name } => self.const_identifier(name, index),
-            NodeKind::IntLiteral { text } => self.const_int_literal(text, index),
-            NodeKind::Float32Literal { text } => self.const_float32_literal(text, index),
+            NodeKind::IntLiteral { text } => self.const_int_literal(text, index, hint),
+            NodeKind::FloatLiteral { text } => self.const_float_literal(text, index, hint),
             NodeKind::StringLiteral { text } => self.const_string_literal(text, index),
             NodeKind::BoolLiteral { value } => self.const_bool_literal(value, index),
             NodeKind::CharLiteral { value } => self.const_char_literal(value, index),
-            NodeKind::TypeSize { type_name } => self.const_type_size(type_name, index),
+            NodeKind::TypeSize { type_name } => self.const_type_size(type_name, index, hint),
             _ => self.type_error("non-constant in constant expression"),
         };
 
@@ -904,7 +929,7 @@ impl Typer {
         })
     }
 
-    fn block(&mut self, statements: Arc<Vec<NodeIndex>>) -> NodeIndex {
+    fn block(&mut self, statements: Arc<Vec<NodeIndex>>, hint: Option<usize>) -> NodeIndex {
         if !self.was_block_already_opened {
             self.environment.push(true);
         } else {
@@ -913,7 +938,7 @@ impl Typer {
 
         let mut typed_statements = Vec::new();
         for statement in statements.iter() {
-            typed_statements.push(self.check_node(*statement));
+            typed_statements.push(self.check_node_with_hint(*statement, hint));
         }
 
         self.environment.pop();
@@ -926,8 +951,8 @@ impl Typer {
         })
     }
 
-    fn statement(&mut self, inner: Option<NodeIndex>) -> NodeIndex {
-        let typed_inner = self.check_optional_node(inner);
+    fn statement(&mut self, inner: Option<NodeIndex>, hint: Option<usize>) -> NodeIndex {
+        let typed_inner = self.check_optional_node(inner, hint);
 
         self.add_node(TypedNode {
             node_kind: NodeKind::Statement { inner: typed_inner },
@@ -943,8 +968,15 @@ impl Typer {
         expression: Option<NodeIndex>,
     ) -> NodeIndex {
         let typed_name = self.check_node(name);
+        let typed_type_name = self.check_optional_node(type_name, None);
 
-        let typed_expression = self.check_optional_node(expression);
+        let typed_expression = if let Some(typed_type_name) = typed_type_name {
+            let type_name_type = assert_typed!(self, typed_type_name);
+            self.check_optional_node(expression, Some(type_name_type.type_kind_id))
+        } else {
+            self.check_optional_node(expression, None)
+        };
+
         if let Some(typed_expression) = typed_expression {
             let expression_type = assert_typed!(self, typed_expression);
 
@@ -953,19 +985,20 @@ impl Typer {
             }
         }
 
-        let typed_type_name = self.check_optional_node(type_name);
         let mut variable_type = if let Some(typed_type_name) = typed_type_name {
             let variable_type = assert_typed!(self, typed_type_name);
 
-            if let Some(typed_expression) = typed_expression {
-                let expression_type = assert_typed!(self, typed_expression);
+            if typed_expression.is_some() || declaration_kind == DeclarationKind::Const {
+                let expression_type = assert_typed!(self, typed_expression.unwrap());
 
                 if variable_type.type_kind_id != expression_type.type_kind_id {
                     type_error!(self, "mismatched types in variable declaration");
                 }
-            }
 
-            variable_type
+                expression_type
+            } else {
+                variable_type
+            }
         } else {
             assert_typed!(self, typed_expression.unwrap())
         };
@@ -1009,8 +1042,8 @@ impl Typer {
         })
     }
 
-    fn return_statement(&mut self, expression: Option<NodeIndex>) -> NodeIndex {
-        let typed_expression = self.check_optional_node(expression);
+    fn return_statement(&mut self, expression: Option<NodeIndex>, hint: Option<usize>) -> NodeIndex {
+        let typed_expression = self.check_optional_node(expression, hint);
 
         if let Some(typed_expression) = typed_expression {
             let expression_type = assert_typed!(self, typed_expression);
@@ -1069,7 +1102,7 @@ impl Typer {
     ) -> NodeIndex {
         let typed_expression = self.check_node(expression);
         let typed_scoped_statement = self.check_node(scoped_statement);
-        let typed_next = self.check_optional_node(next);
+        let typed_next = self.check_optional_node(next, None);
 
         self.add_node(TypedNode {
             node_kind: NodeKind::IfStatement {
@@ -1102,7 +1135,7 @@ impl Typer {
     ) -> NodeIndex {
         let typed_expression = self.check_node(expression);
         let typed_scoped_statement = self.check_node(scoped_statement);
-        let typed_next = self.check_optional_node(next);
+        let typed_next = self.check_optional_node(next, None);
 
         self.add_node(TypedNode {
             node_kind: NodeKind::CaseStatement {
@@ -1140,11 +1173,38 @@ impl Typer {
         scoped_statement: NodeIndex,
     ) -> NodeIndex {
         let typed_iterator = self.check_node(iterator);
-        let typed_from = self.check_node(from);
+
+        let (typed_from, typed_to, typed_by) = if self.is_node_numeric_literal(from) && self.is_node_numeric_literal(to) && by.is_some() {
+            // "from" and "to" are both literals, but we also have a "by" node, so start with that one.
+            let typed_by = self.check_node(by.unwrap());
+            let by_type = assert_typed!(self, typed_by);
+
+            let typed_from = self.check_node_with_hint(from, Some(by_type.type_kind_id));
+            let typed_to = self.check_node_with_hint(to, Some(by_type.type_kind_id));
+
+            (typed_from, typed_to, Some(typed_by))
+        } else if self.is_node_numeric_literal(from) {
+            // "from" is a literal, so we will hint "to" in an attempt to get a hint to pass to "from"
+            let typed_to = self.check_node(to);
+            let to_type = assert_typed!(self, typed_to);
+
+            let typed_from = self.check_node_with_hint(from, Some(to_type.type_kind_id));
+            let typed_by = self.check_optional_node(by, Some(to_type.type_kind_id));
+
+            (typed_from, typed_to, typed_by)
+        } else {
+            // Check "from" first, and use it's type as a hint for the others.
+            let typed_from = self.check_node(from);
+            let from_type = assert_typed!(self, typed_from);
+
+            let typed_to = self.check_node_with_hint(to, Some(from_type.type_kind_id));
+            let typed_by = self.check_optional_node(by, Some(from_type.type_kind_id));
+
+            (typed_from, typed_to, typed_by)
+        };
+
         let from_type = assert_typed!(self, typed_from);
-        let typed_to = self.check_node(to);
         let to_type = assert_typed!(self, typed_to);
-        let typed_by = self.check_optional_node(by);
 
         if from_type.type_kind_id != to_type.type_kind_id {
             type_error!(self, "type mismatch between for loop bounds");
@@ -1200,15 +1260,27 @@ impl Typer {
         })
     }
 
-    fn const_expression(&mut self, inner: NodeIndex) -> NodeIndex {
-        self.check_const_node(inner)
+    fn const_expression(&mut self, inner: NodeIndex, hint: Option<usize>) -> NodeIndex {
+        self.check_const_node(inner, hint)
     }
 
-    fn binary(&mut self, left: NodeIndex, op: Op, right: NodeIndex) -> NodeIndex {
-        let typed_left = self.check_node(left);
-        let left_type = assert_typed!(self, typed_left);
-        let typed_right = self.check_node(right);
-        let right_type = assert_typed!(self, typed_right);
+    fn binary(&mut self, left: NodeIndex, op: Op, right: NodeIndex, hint: Option<usize>) -> NodeIndex {
+        // Maximize the accuracy of hinting by type checking the right side first if the left side is a literal, so that we might have a more useful hint to give the left side.
+        let (typed_left, left_type, typed_right, right_type) = if self.is_node_numeric_literal(left) {
+            let typed_right = self.check_node_with_hint(right, hint);
+            let right_type = assert_typed!(self, typed_right);
+            let typed_left = self.check_node_with_hint(left, Some(right_type.type_kind_id));
+            let left_type = assert_typed!(self, typed_left);
+
+            (typed_left, left_type, typed_right, right_type)
+        } else {
+            let typed_left = self.check_node_with_hint(left, hint);
+            let left_type = assert_typed!(self, typed_left);
+            let typed_right = self.check_node_with_hint(right, Some(left_type.type_kind_id));
+            let right_type = assert_typed!(self, typed_right);
+
+            (typed_left, left_type, typed_right, right_type)
+        };
 
         let node_kind = NodeKind::Binary {
             left: typed_left,
@@ -1325,17 +1397,18 @@ impl Typer {
         op: Op,
         right: NodeIndex,
         index: NodeIndex,
+        hint: Option<usize>,
     ) -> NodeIndex {
-        let typed_binary = self.check_node(index);
+        let typed_binary = self.check_node_with_hint(index, hint);
         let binary_type = assert_typed!(self, typed_binary);
 
-        let typed_left = self.check_const_node(left);
+        let typed_left = self.check_const_node(left, Some(binary_type.type_kind_id));
         let InstanceKind::Const(left_const_value) = assert_typed!(self, typed_left).instance_kind
         else {
             type_error!(self, "expected const operand")
         };
 
-        let typed_right = self.check_const_node(right);
+        let typed_right = self.check_const_node(right, Some(binary_type.type_kind_id));
         let InstanceKind::Const(right_const_value) = assert_typed!(self, typed_right).instance_kind
         else {
             type_error!(self, "expected const operand")
@@ -1378,8 +1451,8 @@ impl Typer {
         })
     }
 
-    fn unary_prefix(&mut self, op: Op, right: NodeIndex) -> NodeIndex {
-        let typed_right = self.check_node(right);
+    fn unary_prefix(&mut self, op: Op, right: NodeIndex, hint: Option<usize>) -> NodeIndex {
+        let typed_right = self.check_node_with_hint(right, hint);
         let right_type = assert_typed!(self, typed_right);
 
         if right_type.instance_kind == InstanceKind::Name {
@@ -1443,11 +1516,11 @@ impl Typer {
         }
     }
 
-    fn const_unary_prefix(&mut self, op: Op, right: NodeIndex, index: NodeIndex) -> NodeIndex {
-        let typed_unary = self.check_node(index);
+    fn const_unary_prefix(&mut self, op: Op, right: NodeIndex, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+        let typed_unary = self.check_node_with_hint(index, hint);
         let unary_type = assert_typed!(self, typed_unary);
 
-        let typed_right = self.check_const_node(right);
+        let typed_right = self.check_const_node(right, Some(unary_type.type_kind_id));
         let InstanceKind::Const(right_const_value) = assert_typed!(self, typed_right).instance_kind
         else {
             type_error!(self, "expected const operand")
@@ -1536,7 +1609,7 @@ impl Typer {
 
         let mut typed_args = Vec::new();
         for (arg, param_type_kind_id) in args.iter().zip(param_type_kind_ids.iter()) {
-            let typed_arg = self.check_node(*arg);
+            let typed_arg = self.check_node_with_hint(*arg, Some(*param_type_kind_id));
             typed_args.push(typed_arg);
 
             let arg_type = assert_typed!(self, typed_arg);
@@ -1579,8 +1652,8 @@ impl Typer {
         let typed_expression = self.check_node(expression);
         let expression_type = assert_typed!(self, typed_expression);
 
-        let TypeKind::Int = &self.type_kinds.get_by_id(expression_type.type_kind_id) else {
-            type_error!(self, "expected index to be of type int");
+        if !self.type_kinds.get_by_id(expression_type.type_kind_id).is_int() {
+            type_error!(self, "expected index to have an integer type (Int, UInt, etc.)");
         };
 
         self.add_node(TypedNode {
@@ -1735,7 +1808,7 @@ impl Typer {
         let typed_const = self.check_node(index);
         let const_type = assert_typed!(self, typed_const);
 
-        let typed_left = self.check_const_node(left);
+        let typed_left = self.check_const_node(left, None);
         let left_type = assert_typed!(self, typed_left);
 
         let typed_type_name = self.check_node(type_name);
@@ -1814,8 +1887,15 @@ impl Typer {
         })
     }
 
-    fn int_literal(&mut self, text: Arc<str>) -> NodeIndex {
-        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Int);
+    fn int_literal(&mut self, text: Arc<str>, hint: Option<usize>) -> NodeIndex {
+        let mut type_kind_id = self.type_kinds.add_or_get(TypeKind::Int);
+
+        if let Some(hint) = hint {
+            if self.type_kinds.get_by_id(hint).is_int() {
+                type_kind_id = hint;
+            }
+        }
+
         self.add_node(TypedNode {
             node_kind: NodeKind::IntLiteral { text },
             node_type: Some(Type {
@@ -1825,26 +1905,44 @@ impl Typer {
         })
     }
 
-    fn const_int_literal(&mut self, text: Arc<str>, index: NodeIndex) -> NodeIndex {
-        let typed_const = self.check_node(index);
+    fn const_int_literal(&mut self, text: Arc<str>, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+        let typed_const = self.check_node_with_hint(index, hint);
         let const_type = assert_typed!(self, typed_const);
-        let Ok(value) = text.parse::<i64>() else {
-            type_error!(self, "invalid value of int literal");
+
+        let value = if self.type_kinds.get_by_id(const_type.type_kind_id).is_unsigned() {
+            let Ok(value) = text.parse::<u64>() else {
+                type_error!(self, "invalid value of unsigned integer literal");
+            };
+
+            ConstValue::UInt { value }
+        } else {
+            let Ok(value) = text.parse::<i64>() else {
+                type_error!(self, "invalid value of integer literal");
+            };
+
+            ConstValue::Int { value }
         };
 
         self.add_node(TypedNode {
             node_kind: NodeKind::IntLiteral { text },
             node_type: Some(Type {
                 type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(ConstValue::Int { value }),
+                instance_kind: InstanceKind::Const(value),
             }),
         })
     }
 
-    fn float32_literal(&mut self, text: Arc<str>) -> NodeIndex {
-        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Float32);
+    fn float_literal(&mut self, text: Arc<str>, hint: Option<usize>) -> NodeIndex {
+        let mut type_kind_id = self.type_kinds.add_or_get(TypeKind::Float32);
+
+        if let Some(hint) = hint {
+            if self.type_kinds.get_by_id(hint).is_float() {
+                type_kind_id = hint;
+            }
+        }
+
         self.add_node(TypedNode {
-            node_kind: NodeKind::Float32Literal { text },
+            node_kind: NodeKind::FloatLiteral { text },
             node_type: Some(Type {
                 type_kind_id,
                 instance_kind: InstanceKind::Literal,
@@ -1852,18 +1950,18 @@ impl Typer {
         })
     }
 
-    fn const_float32_literal(&mut self, text: Arc<str>, index: NodeIndex) -> NodeIndex {
-        let typed_const = self.check_node(index);
+    fn const_float_literal(&mut self, text: Arc<str>, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+        let typed_const = self.check_node_with_hint(index, hint);
         let const_type = assert_typed!(self, typed_const);
-        let Ok(value) = text.parse::<f32>() else {
-            type_error!(self, "invalid value of float32 literal");
+        let Ok(value) = text.parse::<f64>() else {
+            type_error!(self, "invalid value of float literal");
         };
 
         self.add_node(TypedNode {
-            node_kind: NodeKind::Float32Literal { text },
+            node_kind: NodeKind::FloatLiteral { text },
             node_type: Some(Type {
                 type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(ConstValue::Float32 { value }),
+                instance_kind: InstanceKind::Const(ConstValue::Float { value }),
             }),
         })
     }
@@ -1980,7 +2078,7 @@ impl Typer {
         };
 
         let typed_repeat_count_const_expression =
-            self.check_optional_node(repeat_count_const_expression);
+            self.check_optional_node(repeat_count_const_expression, None);
         self.add_node(TypedNode {
             node_kind: NodeKind::ArrayLiteral {
                 elements: Arc::new(typed_elements),
@@ -2025,21 +2123,16 @@ impl Typer {
             }
 
             if field_literals.len() > 0 {
-                let typed_field_literal = self.check_node(field_literals[0]);
-                typed_field_literals.push(typed_field_literal);
-
-                let field_literal_type = assert_typed!(self, typed_field_literal);
-
                 let NodeKind::FieldLiteral {
                     name: field_name, ..
-                } = &self.get_typer_node(typed_field_literal).node_kind
+                } = &self.get_parser_node(field_literals[0]).kind
                 else {
                     type_error!(self, "invalid field literal");
                 };
 
                 let NodeKind::Name {
                     text: field_name_text,
-                } = &self.get_typer_node(*field_name).node_kind
+                } = &self.get_parser_node(*field_name).kind
                 else {
                     type_error!(self, "invalid field name");
                 };
@@ -2050,8 +2143,15 @@ impl Typer {
                     type_error!(self, "union doesn't contain a field with this name");
                 };
 
+                let expected_type_kind_id = expected_fields[expected_field_index].type_kind_id;
+
+                let typed_field_literal = self.check_node_with_hint(field_literals[0], Some(expected_type_kind_id));
+                typed_field_literals.push(typed_field_literal);
+
+                let field_literal_type = assert_typed!(self, typed_field_literal);
+
                 if field_literal_type.type_kind_id
-                    != expected_fields[expected_field_index].type_kind_id
+                    != expected_type_kind_id
                 {
                     type_error!(self, "incorrect field type");
                 }
@@ -2099,10 +2199,16 @@ impl Typer {
         })
     }
 
-    fn type_size(&mut self, type_name: NodeIndex) -> NodeIndex {
+    fn type_size(&mut self, type_name: NodeIndex, hint: Option<usize>) -> NodeIndex {
         let typed_type_name = self.check_node(type_name);
+        let mut type_kind_id = self.type_kinds.add_or_get(TypeKind::UInt);
 
-        let type_kind_id = self.type_kinds.add_or_get(TypeKind::UInt);
+        if let Some(hint) = hint {
+            if self.type_kinds.get_by_id(hint).is_int() {
+                type_kind_id = hint;
+            }
+        }
+
         self.add_node(TypedNode {
             node_kind: NodeKind::TypeSize {
                 type_name: typed_type_name,
@@ -2114,10 +2220,10 @@ impl Typer {
         })
     }
 
-    fn const_type_size(&mut self, type_name: NodeIndex, index: NodeIndex) -> NodeIndex {
+    fn const_type_size(&mut self, type_name: NodeIndex, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
         let typed_type_name = self.check_node(type_name);
         let type_name_type = assert_typed!(self, typed_type_name);
-        let typed_const = self.check_node(index);
+        let typed_const = self.check_node_with_hint(index, hint);
         let const_type = assert_typed!(self, typed_const);
 
         let native_size = mem::size_of::<NodeIndex>() as u64;
@@ -2144,13 +2250,19 @@ impl Typer {
             _ => type_error!(self, "size unknown at compile time"),
         };
 
+        let const_value = if self.type_kinds.get_by_id(const_type.type_kind_id).is_unsigned() {
+            ConstValue::UInt { value }
+        } else {
+            ConstValue::Int { value: value as i64 }
+        };
+
         self.add_node(TypedNode {
             node_kind: NodeKind::TypeSize {
                 type_name: typed_type_name,
             },
             node_type: Some(Type {
                 type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(ConstValue::UInt { value }),
+                instance_kind: InstanceKind::Const(const_value),
             }),
         })
     }
@@ -2517,8 +2629,6 @@ impl Typer {
         let is_deep_check = self.shallow_check_stack == 0 || generic_arg_type_kind_ids.is_some();
 
         let typed_scoped_statement = if is_deep_check {
-            let typed_scoped_statement = self.check_node(scoped_statement);
-
             let TypeKind::Function {
                 return_type_kind_id: expected_return_type_kind_id,
                 ..
@@ -2526,6 +2636,8 @@ impl Typer {
             else {
                 type_error!(self, "invalid function type");
             };
+
+            let typed_scoped_statement = self.check_node_with_hint(scoped_statement, Some(expected_return_type_kind_id));
 
             if let Some(return_type) = self.ensure_typed_statement_returns(typed_scoped_statement) {
                 if return_type.type_kind_id != expected_return_type_kind_id {
@@ -2658,7 +2770,11 @@ impl Typer {
             type_error!(self, "expected type name");
         }
 
-        let typed_element_count_const_expression = self.check_node(element_count_const_expression);
+        let expected_element_count_type_kind_id = self.type_kinds.add_or_get(TypeKind::Int);
+        let typed_element_count_const_expression = self.check_node_with_hint(
+            element_count_const_expression,
+            Some(expected_element_count_type_kind_id),
+        );
         let element_count_const_type = assert_typed!(self, typed_element_count_const_expression);
 
         let InstanceKind::Const(ConstValue::Int {
@@ -2770,7 +2886,7 @@ impl Typer {
             return Some(self.type_error("expected const expression"));
         };
 
-        let const_expression = self.const_expression(inner);
+        let const_expression = self.const_expression(inner, None);
 
         let Some(Type {
             instance_kind: InstanceKind::Const(const_value),
@@ -2850,5 +2966,9 @@ impl Typer {
         }
 
         None
+    }
+
+    fn is_node_numeric_literal(&self, index: NodeIndex) -> bool {
+        matches!(self.get_parser_node(index).kind, NodeKind::IntLiteral { .. } | NodeKind::FloatLiteral { .. })
     }
 }

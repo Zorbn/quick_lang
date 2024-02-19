@@ -185,7 +185,7 @@ pub enum NodeKind {
     IntLiteral {
         text: Arc<str>,
     },
-    Float32Literal {
+    FloatLiteral {
         text: Arc<str>,
     },
     StringLiteral {
@@ -1674,7 +1674,7 @@ impl Parser {
             TokenKind::LParen => self.parenthesized_expression(),
             TokenKind::Identifier { .. } => self.identifier(),
             TokenKind::IntLiteral { .. } => self.int_literal(),
-            TokenKind::Float32Literal { .. } => self.float32_literal(),
+            TokenKind::Float32Literal { .. } => self.float_literal(),
             TokenKind::CharLiteral { .. } => self.char_literal(),
             TokenKind::StringLiteral { .. } => self.string_literal(),
             TokenKind::True | TokenKind::False => self.bool_literal(),
@@ -1746,7 +1746,7 @@ impl Parser {
         })
     }
 
-    fn float32_literal(&mut self) -> NodeIndex {
+    fn float_literal(&mut self) -> NodeIndex {
         let start = self.token_start();
         let end = self.token_end();
         let text = match self.token_kind() {
@@ -1756,7 +1756,7 @@ impl Parser {
         self.position += 1;
 
         self.add_node(Node {
-            kind: NodeKind::Float32Literal { text },
+            kind: NodeKind::FloatLiteral { text },
             start,
             end,
         })
