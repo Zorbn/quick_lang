@@ -31,14 +31,34 @@ union GenericUnion<A, B>
 
 struct None {}
 
+func None.MyMethod(me *val None) Void
+{
+    puts("ran method on None");
+}
+
 union Maybe<T>
 {
     some T;
     none None;
 }
 
+struct ContainsFuncPtr
+{
+    funcPtr *val func() Void;
+}
+
+func ContainsFuncPtr.MyMethod(me *var ContainsFuncPtr) Void
+{
+    me.funcPtr = *otherPrint;
+    puts("ran method on ContainsFuncPtr");
+}
+
 func Main(argc Int, argv *val String) Int
 {
+    val containsFuncPtr = ContainsFuncPtr { funcPtr = *print };
+    containsFuncPtr.funcPtr.*();
+    containsFuncPtr.MyMethod();
+
     val myMyString MyString = "MyString";
     useMyString(myMyString);
 
@@ -289,9 +309,14 @@ func takesStruct(point Point) Void
 {
 }
 
-func print(msg String) Void
+func print() Void
 {
     puts("Hello");
+}
+
+func otherPrint() Void
+{
+    puts("Goodbye");
 }
 
 func hello(num Int, othernum Int) Int

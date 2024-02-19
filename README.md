@@ -23,10 +23,10 @@
 - Variadic arguments.
 - `for elem in array {}`
 - Possibly generic type inference, so specifiers aren't required?
-- Bring back methods, implemented better than they were originally with support for structs/unions/enums.
-    - Define methods as normal free functions, but with their owning type at the front (eg. `func PlayerStruct.JumpMethod() Void {}` called as `playerInstance.JumpMethod();`)
+- Allow generic specifiers on methods.
 - Top level const declarations.
 - Proper escape sequences (right now they are cheated in by using C's behavior).
+- Real string type, as opposed to String being a const char*.
 
 #### Missing Things and Bug Fixes
 - Struct equality comparisons.
