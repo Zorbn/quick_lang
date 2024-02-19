@@ -23,12 +23,13 @@
 - Variadic arguments.
 - `for elem in array {}`
 - Possibly generic type inference, so specifiers aren't required?
-- Allow generic specifiers on methods.
 - Top level const declarations.
 - Proper escape sequences (right now they are cheated in by using C's behavior).
 - Real string type, as opposed to String being a const char*.
 
 #### Missing Things and Bug Fixes
+- Allow generic specifiers on methods.
+- Definition lookups for methods don't take into account the extending_type_kind_id so they may return the wrong method or not a method at all.
 - Struct equality comparisons.
 - Allow `sizeof` on complex types at compile time.
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
