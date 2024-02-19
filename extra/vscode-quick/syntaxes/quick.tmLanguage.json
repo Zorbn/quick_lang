@@ -38,7 +38,7 @@
 			"match": "\\b(func)\\b\\s*(\\w+)",
 			"captures": {
 				"1": {
-					"name": "keyword.control.quick"
+					"name": "keyword.quick"
 				},
 				"2": {
 					"name": "entity.name.function.quick"
@@ -46,10 +46,16 @@
 			}
 		},
 		"keyword": {
-			"patterns": [{
-				"name": "keyword.control.quick",
-				"match": "\\b(var|val|const|func|struct|union|enum|alias|return|break|continue|extern|using|if|else|switch|case|while|for|of|by|as|defer|sizeof|true|false)\\b"
-			}]
+			"patterns": [
+				{
+					"name": "keyword.quick",
+					"match": "\\b(var|val|const|func|struct|union|enum|alias|extern|using|as|sizeof|true|false)\\b"
+				},
+				{
+					"name": "keyword.control.quick",
+					"match": "\\b(return|break|continue|if|else|switch|case|while|for|of|by|defer)\\b"
+				}
+			]
 		},
 		"string": {
 			"name": "string.quoted.double.quick",

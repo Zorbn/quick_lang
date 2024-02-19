@@ -26,6 +26,7 @@
 - Bring back methods, implemented better than they were originally with support for structs/unions/enums.
     - Define methods as normal free functions, but with their owning type at the front (eg. `func PlayerStruct.JumpMethod() Void {}` called as `playerInstance.JumpMethod();`)
 - Top level const declarations.
+- Proper escape sequences (right now they are cheated in by using C's behavior).
 
 #### Missing Things and Bug Fixes
 - Struct equality comparisons.
