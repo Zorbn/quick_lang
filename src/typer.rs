@@ -1798,7 +1798,7 @@ impl Typer {
         }
 
         // TODO: Also make it possible to have generic args here, probably requires making generic specifiers allowed as the rhs of field accesses.
-        let Some((_, name_type)) = self.lookup_identifier(name, Some(left_type.type_kind_id), None, LookupKind::Functions) else {
+        let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(left_type.type_kind_id), None, LookupKind::Functions) else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
                 node_type: None,
@@ -1806,7 +1806,10 @@ impl Typer {
         };
 
         self.add_node(TypedNode {
-            node_kind,
+            node_kind: NodeKind::FieldAccess {
+                left: typed_left,
+                name: typed_name,
+            },
             node_type: Some(name_type),
         })
     }

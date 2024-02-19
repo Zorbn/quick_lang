@@ -35,6 +35,10 @@ func genericFunction2<C, D>(a C, b D) C
 
 func callsMain() Void
 {
+    var containsFuncPtr = ContainsFuncPtr { funcPtr = *print };
+    containsFuncPtr.funcPtr.*();
+    containsFuncPtr.MyMethod();
+
     val argc = 5;
     val argv = "hello";
     Main(argc, *argv);
