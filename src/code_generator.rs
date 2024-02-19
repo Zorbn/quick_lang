@@ -10,7 +10,7 @@ use crate::{
     parser::{DeclarationKind, NodeIndex, NodeKind, Op},
     type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
     typer::{InstanceKind, Type, TypedNode},
-    utils::is_typed_expression_array_literal,
+    utils::{is_first_typed_param_me, is_typed_expression_array_literal},
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -218,12 +218,11 @@ impl CodeGenerator {
             NodeKind::FunctionDeclaration {
                 name,
                 params,
-                extending_type_name,
                 generic_params,
                 return_type_name,
                 ..
             } => {
-                self.function_declaration(name, params, extending_type_name, generic_params, return_type_name, node_type)
+                self.function_declaration(name, params, generic_params, return_type_name, node_type)
             }
             NodeKind::ExternFunction { declaration } => {
                 self.extern_function(declaration, node_type)
@@ -493,7 +492,6 @@ impl CodeGenerator {
             let NodeKind::FunctionDeclaration {
                 name,
                 params,
-                extending_type_name,
                 generic_params,
                 ..
             } = self.get_typer_node(declaration).node_kind.clone()
@@ -508,7 +506,6 @@ impl CodeGenerator {
                 EmitterKind::FunctionPrototype,
                 name,
                 &params,
-                extending_type_name,
                 has_generic_params,
                 type_kind_id,
             );
@@ -522,7 +519,6 @@ impl CodeGenerator {
         &mut self,
         name: NodeIndex,
         params: Arc<Vec<NodeIndex>>,
-        extending_type_name: Option<NodeIndex>,
         generic_params: Arc<Vec<NodeIndex>>,
         _return_type_name: NodeIndex,
         node_type: Option<Type>,
@@ -534,7 +530,6 @@ impl CodeGenerator {
             EmitterKind::FunctionPrototype,
             name,
             &params,
-            extending_type_name,
             has_generic_params,
             type_kind_id,
         );
@@ -545,7 +540,6 @@ impl CodeGenerator {
             EmitterKind::Body,
             name,
             &params,
-            extending_type_name,
             has_generic_params,
             type_kind_id,
         );
@@ -567,7 +561,6 @@ impl CodeGenerator {
             EmitterKind::FunctionPrototype,
             name,
             &params,
-            None,
             false,
             type_kind_id,
         );
@@ -1750,7 +1743,6 @@ impl CodeGenerator {
         kind: EmitterKind,
         name: NodeIndex,
         params: &Arc<Vec<NodeIndex>>,
-        extending_type_name: Option<NodeIndex>,
         has_generic_params: bool,
         type_kind_id: usize,
     ) {
@@ -1764,7 +1756,11 @@ impl CodeGenerator {
 
         self.emit_type_kind_left(return_type_kind_id, kind, true, true);
 
-        let extending_type_kind_id = extending_type_name.map(|extending_type_name| self.get_typer_node(extending_type_name).node_type.as_ref().unwrap().type_kind_id);
+        let extending_type_kind_id = if is_first_typed_param_me(&self.typed_nodes, params) {
+            Some(self.get_typer_node(params[0]).node_type.as_ref().unwrap().type_kind_id)
+        } else {
+            None
+        };
 
         self.emit_function_name(name, extending_type_kind_id, type_kind_id, has_generic_params, kind);
 

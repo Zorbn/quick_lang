@@ -79,7 +79,6 @@ pub enum NodeKind {
     FunctionDeclaration {
         name: NodeIndex,
         params: Arc<Vec<NodeIndex>>,
-        extending_type_name: Option<NodeIndex>,
         generic_params: Arc<Vec<NodeIndex>>,
         return_type_name: NodeIndex,
     },
@@ -301,15 +300,6 @@ impl Parser {
     fn token_kind(&self) -> &TokenKind {
         let tokens = self.tokens.as_ref().unwrap();
         if let Some(token) = tokens.get(self.position) {
-            &token.kind
-        } else {
-            &TokenKind::Eof
-        }
-    }
-
-    fn peek_token_kind(&self) -> &TokenKind {
-        let tokens = self.tokens.as_ref().unwrap();
-        if let Some(token) = tokens.get(self.position + 1) {
             &token.kind
         } else {
             &TokenKind::Eof
@@ -713,17 +703,6 @@ impl Parser {
         assert_token!(self, TokenKind::Func, start, self.token_end());
         self.position += 1;
 
-        let extending_type_name = if matches!(*self.peek_token_kind(), TokenKind::LParen | TokenKind::Less) {
-            None
-        } else {
-            let type_name = self.type_name();
-
-            assert_token!(self, TokenKind::Period, start, self.token_end());
-            self.position += 1;
-
-            Some(type_name)
-        };
-
         let name = self.name();
 
         let mut generic_params = Vec::new();
@@ -747,7 +726,6 @@ impl Parser {
             kind: NodeKind::FunctionDeclaration {
                 name,
                 params: Arc::new(params),
-                extending_type_name,
                 generic_params: Arc::new(generic_params),
                 return_type_name,
             },

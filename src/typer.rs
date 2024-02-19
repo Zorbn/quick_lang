@@ -5,7 +5,7 @@ use crate::{
     environment::Environment,
     file_data::FileData,
     parser::{DeclarationKind, Node, NodeIndex, NodeKind, Op},
-    type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds},
+    type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds}, utils::is_first_typed_param_me,
 };
 
 #[derive(Clone, Debug)]
@@ -513,10 +513,9 @@ impl Typer {
             NodeKind::FunctionDeclaration {
                 name,
                 params,
-                extending_type_name,
                 generic_params,
                 return_type_name,
-            } => self.function_declaration(name, params, extending_type_name, generic_params, return_type_name, false),
+            } => self.function_declaration(name, params, generic_params, return_type_name, false),
             NodeKind::Function {
                 declaration,
                 scoped_statement,
@@ -751,7 +750,6 @@ impl Typer {
         let NodeKind::FunctionDeclaration {
             name,
             params,
-            extending_type_name,
             generic_params,
             return_type_name,
             ..
@@ -768,14 +766,18 @@ impl Typer {
             type_error!(self, "extern function cannot be generic");
         }
 
-        if extending_type_name.is_some() {
-            type_error!(self, "extern function cannot be a method");
-        }
-
         self.environment.push(false);
 
         let typed_declaration =
-            self.function_declaration(name, params, extending_type_name, generic_params, return_type_name, true);
+            self.function_declaration(name, params, generic_params, return_type_name, true);
+
+        let NodeKind::FunctionDeclaration { params, .. } = &self.get_typer_node(typed_declaration).node_kind else {
+            type_error!(self, "invalid function declaration");
+        };
+
+        if is_first_typed_param_me(&self.typed_nodes, params) {
+            type_error!(self, "extern function cannot be a method");
+        }
 
         self.environment.pop();
 
@@ -1595,13 +1597,17 @@ impl Typer {
         let skip_count = if let NodeKind::FieldAccess { left, .. } = &self.get_typer_node(typed_left).node_kind {
             let left_type = assert_typed!(self, *left);
 
-            if let TypeKind::Pointer { is_inner_mutable, .. } = self.type_kinds.get_by_id(left_type.type_kind_id) {
-                let TypeKind::Pointer { is_inner_mutable: expected_is_inner_mutable, .. } = self.type_kinds.get_by_id(param_type_kind_ids[0]) else {
-                    type_error!(self, "methods must accept a pointer as their first argument");
-                };
+            let TypeKind::Pointer { is_inner_mutable: expected_is_inner_mutable, .. } = self.type_kinds.get_by_id(param_type_kind_ids[0]) else {
+                type_error!(self, "methods must accept a pointer as their first argument");
+            };
 
+            if left_type.instance_kind != InstanceKind::Var && expected_is_inner_mutable {
+                type_error!(self, "this method cannot be called on a val");
+            }
+
+            if let TypeKind::Pointer { is_inner_mutable, .. } = self.type_kinds.get_by_id(left_type.type_kind_id) {
                 if !is_inner_mutable && expected_is_inner_mutable {
-                    type_error!(self, "this method cannot accept a *val as a subject");
+                    type_error!(self, "this method cannot be called on a *val");
                 }
             }
 
@@ -2463,7 +2469,6 @@ impl Typer {
         &mut self,
         name: NodeIndex,
         params: Arc<Vec<NodeIndex>>,
-        extending_type_name: Option<NodeIndex>,
         generic_params: Arc<Vec<NodeIndex>>,
         return_type_name: NodeIndex,
         is_extern: bool,
@@ -2482,29 +2487,16 @@ impl Typer {
             let param_type = assert_typed!(self, typed_param);
             param_type_kind_ids.push(param_type.type_kind_id);
         }
+        let typed_params = Arc::new(typed_params);
         let param_type_kind_ids = Arc::new(param_type_kind_ids);
 
-        let typed_extending_type_name = self.check_optional_node(extending_type_name, None);
-        if let Some(typed_extending_type_name) = typed_extending_type_name {
-            let extending_type_name_type = assert_typed!(self, typed_extending_type_name);
+        let is_method = is_first_typed_param_me(&self.typed_nodes, &typed_params);
+        if is_method {
+            let extending_type_name_type = assert_typed!(self, typed_params[0]);
 
-            if let TypeKind::Pointer { .. } = self.type_kinds.get_by_id(extending_type_name_type.type_kind_id) {
-                type_error!(self, "methods cannot be declared on pointers ");
-            }
-
-            if typed_params.is_empty() {
-                type_error!(self, "methods must accept at least one argument");
-            }
-
-            let first_param_type = assert_typed!(self, typed_params[0]);
-
-            let TypeKind::Pointer { inner_type_kind_id, .. } = &self.type_kinds.get_by_id(first_param_type.type_kind_id) else {
-                type_error!(self, "methods must accept a pointer as their first argument");
+            let TypeKind::Pointer { .. } = &self.type_kinds.get_by_id(extending_type_name_type.type_kind_id) else {
+                type_error!(self, "the subject of a method must be a pointer");
             };
-
-            if *inner_type_kind_id != extending_type_name_type.type_kind_id {
-                type_error!(self, "methods must accept a pointer to their owning type as their first argument");
-            }
         }
 
         let mut typed_generic_params = Vec::new();
@@ -2529,8 +2521,7 @@ impl Typer {
             TypedNode {
                 node_kind: NodeKind::FunctionDeclaration {
                     name: typed_name,
-                    params: Arc::new(typed_params),
-                    extending_type_name: typed_extending_type_name,
+                    params: typed_params,
                     generic_params: Arc::new(typed_generic_params),
                     return_type_name: typed_return_type_name,
                 },
@@ -2546,7 +2537,7 @@ impl Typer {
             type_error!(self, "invalid name in function declaration");
         };
 
-        if name_text.as_ref() == "Main" && extending_type_name.is_none() {
+        if name_text.as_ref() == "Main" && !is_method {
             if is_extern {
                 type_error!(self, "Main function cannot be defined as an extern");
             }
@@ -2625,7 +2616,6 @@ impl Typer {
     ) -> NodeIndex {
         let NodeKind::FunctionDeclaration {
             name,
-            extending_type_name,
             generic_params,
             ..
         } = self.get_parser_node(declaration).kind.clone()
@@ -2668,14 +2658,18 @@ impl Typer {
             }
         }
 
-        let typed_extending_type_name = self.check_optional_node(extending_type_name, None);
-        let extending_type_kind_id = if let Some(typed_extending_type_name) = typed_extending_type_name {
-            Some(assert_typed!(self, typed_extending_type_name).type_kind_id)
+
+        let typed_declaration = self.check_node(declaration);
+        let NodeKind::FunctionDeclaration { params, .. } = &self.get_typer_node(typed_declaration).node_kind else {
+            type_error!(self, "invalid function declaration");
+        };
+
+        let extending_type_kind_id = if is_first_typed_param_me(&self.typed_nodes, params) {
+            Some(assert_typed!(self, params[0]).type_kind_id)
         } else {
             None
         };
 
-        let typed_declaration = self.check_node(declaration);
         let declaration_type = assert_typed!(self, typed_declaration);
         let identifier = GenericIdentifier {
             name: name_text.clone(),
