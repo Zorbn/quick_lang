@@ -49,7 +49,7 @@
 			"patterns": [
 				{
 					"name": "keyword.quick",
-					"match": "\\b(var|val|const|func|struct|union|enum|alias|extern|using|as|sizeof|true|false|me)\\b"
+					"match": "\\b(var|val|const|func|struct|union|enum|alias|extern|using|as|sizeof|true|false)\\b"
 				},
 				{
 					"name": "keyword.control.quick",

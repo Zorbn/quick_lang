@@ -57,8 +57,8 @@ func Main(argc Int, argv *val String) Int
 {
     var containsFuncPtr = ContainsFuncPtr { funcPtr = *print };
     containsFuncPtr.funcPtr.*();
-    containsFuncPtr.MyMethod();
-    containsFuncPtr.zero();
+    // containsFuncPtr.MyMethod();
+    // containsFuncPtr.zero();
 
     val myMyString MyString = "MyString";
     useMyString(myMyString);

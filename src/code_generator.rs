@@ -9,8 +9,8 @@ use crate::{
     emitter_stack::EmitterStack,
     parser::{DeclarationKind, NodeIndex, NodeKind, Op},
     type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
-    typer::{InstanceKind, Type, TypedNode},
-    utils::{is_first_typed_param_me, is_typed_expression_array_literal},
+    typer::{InstanceKind, Namespace, Type, TypedNode},
+    utils::is_typed_expression_array_literal,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -95,6 +95,7 @@ fn reserved_names() -> &'static HashSet<Arc<str>> {
 pub struct CodeGenerator {
     typed_nodes: Vec<TypedNode>,
     type_kinds: TypeKinds,
+    namespaces: Vec<Namespace>,
     main_function_declaration: Option<NodeIndex>,
     typed_definition_indices: Vec<NodeIndex>,
 
@@ -113,6 +114,7 @@ impl CodeGenerator {
     pub fn new(
         typed_nodes: Vec<TypedNode>,
         type_kinds: TypeKinds,
+        namespaces: Vec<Namespace>,
         main_function_declaration: Option<NodeIndex>,
         typed_definition_indices: Vec<NodeIndex>,
         is_debug_mode: bool,
@@ -120,6 +122,7 @@ impl CodeGenerator {
         let mut code_generator = Self {
             typed_nodes,
             type_kinds,
+            namespaces,
             main_function_declaration,
             typed_definition_indices,
             header_emitter: Emitter::new(0),
@@ -159,6 +162,7 @@ impl CodeGenerator {
             let TypedNode {
                 node_kind,
                 node_type,
+                namespace_id,
             } = self
                 .get_typer_node(self.typed_definition_indices[i])
                 .clone();
@@ -169,17 +173,17 @@ impl CodeGenerator {
                     fields,
                     is_union,
                     ..
-                } => self.struct_definition(name, fields, is_union, node_type),
+                } => self.struct_definition(name, fields, is_union, node_type, namespace_id),
                 NodeKind::EnumDefinition {
                     name,
                     variant_names,
-                } => self.enum_definition(name, variant_names, node_type),
+                } => self.enum_definition(name, variant_names, node_type, namespace_id),
                 NodeKind::Function {
                     declaration,
                     scoped_statement,
-                } => self.function(declaration, scoped_statement, node_type),
+                } => self.function(declaration, scoped_statement, node_type, namespace_id),
                 NodeKind::ExternFunction { declaration } => {
-                    self.extern_function(declaration, node_type)
+                    self.extern_function(declaration, node_type, namespace_id)
                 }
                 _ => panic!("unexpected definition kind: {:?}", node_kind),
             }
@@ -190,6 +194,7 @@ impl CodeGenerator {
         let TypedNode {
             node_kind,
             node_type,
+            namespace_id,
         } = self.get_typer_node(index).clone();
 
         match node_kind {
@@ -198,23 +203,23 @@ impl CodeGenerator {
                 structs,
                 enums,
                 ..
-            } => self.top_level(functions, structs, enums, node_type),
+            } => self.top_level(functions, structs, enums, node_type, namespace_id),
             NodeKind::StructDefinition {
                 name,
                 fields,
                 is_union,
                 ..
-            } => self.struct_definition(name, fields, is_union, node_type),
+            } => self.struct_definition(name, fields, is_union, node_type, namespace_id),
             NodeKind::EnumDefinition {
                 name,
                 variant_names,
                 ..
-            } => self.enum_definition(name, variant_names, node_type),
-            NodeKind::Field { name, type_name } => self.field(name, type_name, node_type),
+            } => self.enum_definition(name, variant_names, node_type, namespace_id),
+            NodeKind::Field { name, type_name } => self.field(name, type_name, node_type, namespace_id),
             NodeKind::Function {
                 declaration,
                 scoped_statement,
-            } => self.function(declaration, scoped_statement, node_type),
+            } => self.function(declaration, scoped_statement, node_type, namespace_id),
             NodeKind::FunctionDeclaration {
                 name,
                 params,
@@ -222,46 +227,46 @@ impl CodeGenerator {
                 return_type_name,
                 ..
             } => {
-                self.function_declaration(name, params, generic_params, return_type_name, node_type)
+                self.function_declaration(name, params, generic_params, return_type_name, node_type, namespace_id)
             }
             NodeKind::ExternFunction { declaration } => {
-                self.extern_function(declaration, node_type)
+                self.extern_function(declaration, node_type, namespace_id)
             }
-            NodeKind::Param { name, type_name } => self.param(name, type_name, node_type),
-            NodeKind::Block { statements } => self.block(statements, node_type),
-            NodeKind::Statement { inner } => self.statement(inner, node_type),
+            NodeKind::Param { name, type_name } => self.param(name, type_name, node_type, namespace_id),
+            NodeKind::Block { statements } => self.block(statements, node_type, namespace_id),
+            NodeKind::Statement { inner } => self.statement(inner, node_type, namespace_id),
             NodeKind::VariableDeclaration {
                 declaration_kind,
                 name,
                 type_name,
                 expression,
             } => {
-                self.variable_declaration(declaration_kind, name, type_name, expression, node_type)
+                self.variable_declaration(declaration_kind, name, type_name, expression, node_type, namespace_id)
             }
             NodeKind::ReturnStatement { expression } => {
-                self.return_statement(expression, node_type)
+                self.return_statement(expression, node_type, namespace_id)
             }
-            NodeKind::BreakStatement => self.break_statement(node_type),
-            NodeKind::ContinueStatement => self.continue_statement(node_type),
-            NodeKind::DeferStatement { statement } => self.defer_statement(statement, node_type),
+            NodeKind::BreakStatement => self.break_statement(node_type, namespace_id),
+            NodeKind::ContinueStatement => self.continue_statement(node_type, namespace_id),
+            NodeKind::DeferStatement { statement } => self.defer_statement(statement, node_type, namespace_id),
             NodeKind::IfStatement {
                 expression,
                 scoped_statement,
                 next,
-            } => self.if_statement(expression, scoped_statement, next, node_type),
+            } => self.if_statement(expression, scoped_statement, next, node_type, namespace_id),
             NodeKind::SwitchStatement {
                 expression,
                 case_statement,
-            } => self.switch_statement(expression, case_statement, node_type),
+            } => self.switch_statement(expression, case_statement, node_type, namespace_id),
             NodeKind::CaseStatement {
                 expression,
                 scoped_statement,
                 next,
-            } => self.case_statement(expression, scoped_statement, next, node_type),
+            } => self.case_statement(expression, scoped_statement, next, node_type, namespace_id),
             NodeKind::WhileLoop {
                 expression,
                 scoped_statement,
-            } => self.while_loop(expression, scoped_statement, node_type),
+            } => self.while_loop(expression, scoped_statement, node_type, namespace_id),
             NodeKind::ForLoop {
                 iterator,
                 op,
@@ -269,40 +274,40 @@ impl CodeGenerator {
                 to,
                 by,
                 scoped_statement,
-            } => self.for_loop(iterator, op, from, to, by, scoped_statement, node_type),
-            NodeKind::ConstExpression { inner } => self.const_expression(inner, node_type),
-            NodeKind::Binary { left, op, right } => self.binary(left, op, right, node_type),
-            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type),
-            NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op, node_type),
-            NodeKind::Call { left, args } => self.call(left, args, node_type),
+            } => self.for_loop(iterator, op, from, to, by, scoped_statement, node_type, namespace_id),
+            NodeKind::ConstExpression { inner } => self.const_expression(inner, node_type, namespace_id),
+            NodeKind::Binary { left, op, right } => self.binary(left, op, right, node_type, namespace_id),
+            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type, namespace_id),
+            NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op, node_type, namespace_id),
+            NodeKind::Call { left, args } => self.call(left, args, node_type, namespace_id),
             NodeKind::IndexAccess { left, expression } => {
-                self.index_access(left, expression, node_type)
+                self.index_access(left, expression, node_type, namespace_id)
             }
-            NodeKind::FieldAccess { left, name } => self.field_access(left, name, node_type),
-            NodeKind::Cast { left, type_name } => self.cast(left, type_name, node_type),
+            NodeKind::FieldAccess { left, name } => self.field_access(left, name, node_type, namespace_id),
+            NodeKind::Cast { left, type_name } => self.cast(left, type_name, node_type, namespace_id),
             NodeKind::GenericSpecifier {
                 name,
                 generic_arg_type_names,
-            } => self.generic_specifier(name, generic_arg_type_names, node_type),
-            NodeKind::Name { .. } => self.name(index, node_type),
-            NodeKind::Identifier { name } => self.identifier(name, node_type),
-            NodeKind::IntLiteral { text } => self.int_literal(text, node_type),
-            NodeKind::FloatLiteral { text } => self.float_literal(text, node_type),
-            NodeKind::CharLiteral { value } => self.char_literal(value, node_type),
-            NodeKind::StringLiteral { text } => self.string_literal(text, node_type),
-            NodeKind::BoolLiteral { value } => self.bool_literal(value, node_type),
+            } => self.generic_specifier(name, generic_arg_type_names, node_type, namespace_id),
+            NodeKind::Name { .. } => self.name(index, node_type, namespace_id),
+            NodeKind::Identifier { name } => self.identifier(name, node_type, namespace_id),
+            NodeKind::IntLiteral { text } => self.int_literal(text, node_type, namespace_id),
+            NodeKind::FloatLiteral { text } => self.float_literal(text, node_type, namespace_id),
+            NodeKind::CharLiteral { value } => self.char_literal(value, node_type, namespace_id),
+            NodeKind::StringLiteral { text } => self.string_literal(text, node_type, namespace_id),
+            NodeKind::BoolLiteral { value } => self.bool_literal(value, node_type, namespace_id),
             NodeKind::ArrayLiteral {
                 elements,
                 repeat_count_const_expression,
-            } => self.array_literal(elements, repeat_count_const_expression, node_type),
+            } => self.array_literal(elements, repeat_count_const_expression, node_type, namespace_id),
             NodeKind::StructLiteral {
                 left,
                 field_literals,
-            } => self.struct_literal(left, field_literals, node_type),
+            } => self.struct_literal(left, field_literals, node_type, namespace_id),
             NodeKind::FieldLiteral { name, expression } => {
-                self.field_literal(name, expression, node_type)
+                self.field_literal(name, expression, node_type, namespace_id)
             }
-            NodeKind::TypeSize { type_name } => self.type_size(type_name, node_type),
+            NodeKind::TypeSize { type_name } => self.type_size(type_name, node_type, namespace_id),
             NodeKind::Using { .. } => panic!("cannot generate using statement"),
             NodeKind::Alias { .. } => panic!("cannot generate alias statement"),
             NodeKind::Error => panic!("cannot generate error node"),
@@ -322,6 +327,7 @@ impl CodeGenerator {
         _structs: Arc<Vec<NodeIndex>>,
         _enums: Arc<Vec<NodeIndex>>,
         _node_type: Option<Type>,
+        _namespace_id: Option<usize>,
     ) {
     }
 
@@ -331,6 +337,7 @@ impl CodeGenerator {
         fields: Arc<Vec<NodeIndex>>,
         is_union: bool,
         node_type: Option<Type>,
+        _namespace_id: Option<usize>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
@@ -439,6 +446,7 @@ impl CodeGenerator {
         name: NodeIndex,
         variant_names: Arc<Vec<NodeIndex>>,
         _node_type: Option<Type>,
+        _namespace_id: Option<usize>,
     ) {
         self.type_prototype_emitter.emit("enum ");
         self.emit_name(name, EmitterKind::TypePrototype);
@@ -457,7 +465,7 @@ impl CodeGenerator {
         self.type_prototype_emitter.newline();
     }
 
-    fn field(&mut self, name: NodeIndex, _type_name: NodeIndex, node_type: Option<Type>) {
+    fn field(&mut self, name: NodeIndex, _type_name: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.emit_type_kind_left(
             node_type.clone().unwrap().type_kind_id,
             EmitterKind::TypePrototype,
@@ -478,6 +486,7 @@ impl CodeGenerator {
         declaration: NodeIndex,
         scoped_statement: NodeIndex,
         node_type: Option<Type>,
+        _namespace_id: Option<usize>,
     ) {
         if matches!(
             self.get_typer_node(scoped_statement).node_kind,
@@ -522,6 +531,7 @@ impl CodeGenerator {
         generic_params: Arc<Vec<NodeIndex>>,
         _return_type_name: NodeIndex,
         node_type: Option<Type>,
+        _namespace_id: Option<usize>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
         let has_generic_params = !generic_params.is_empty();
@@ -546,7 +556,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(" ");
     }
 
-    fn extern_function(&mut self, declaration: NodeIndex, node_type: Option<Type>) {
+    fn extern_function(&mut self, declaration: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.function_prototype_emitter.emit("extern ");
 
         let NodeKind::FunctionDeclaration { name, params, .. } =
@@ -569,7 +579,7 @@ impl CodeGenerator {
         self.function_prototype_emitter.newline();
     }
 
-    fn param(&mut self, name: NodeIndex, _type_name: NodeIndex, node_type: Option<Type>) {
+    fn param(&mut self, name: NodeIndex, _type_name: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.emit_param(name, node_type.unwrap().type_kind_id, EmitterKind::Body);
     }
 
@@ -584,6 +594,7 @@ impl CodeGenerator {
             let TypedNode {
                 node_kind: NodeKind::Param { name, .. },
                 node_type,
+                ..
             } = self.get_typer_node(*param).clone()
             else {
                 panic!("invalid param in function declaration needing init");
@@ -619,7 +630,7 @@ impl CodeGenerator {
         }
     }
 
-    fn block(&mut self, statements: Arc<Vec<NodeIndex>>, _node_type: Option<Type>) {
+    fn block(&mut self, statements: Arc<Vec<NodeIndex>>, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.body_emitters.top().body.emitln("{");
         self.body_emitters.push(1);
 
@@ -661,7 +672,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("}");
     }
 
-    fn statement(&mut self, inner: Option<NodeIndex>, _node_type: Option<Type>) {
+    fn statement(&mut self, inner: Option<NodeIndex>, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         let Some(inner) = inner else {
             self.body_emitters.top().body.emitln(";");
             return;
@@ -716,6 +727,7 @@ impl CodeGenerator {
         _type_name: Option<NodeIndex>,
         expression: Option<NodeIndex>,
         node_type: Option<Type>,
+        _namespace_id: Option<usize>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
@@ -750,7 +762,7 @@ impl CodeGenerator {
         }
     }
 
-    fn return_statement(&mut self, expression: Option<NodeIndex>, _node_type: Option<Type>) {
+    fn return_statement(&mut self, expression: Option<NodeIndex>, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.body_emitters.early_exiting_scopes(None);
 
         let expression = if let Some(expression) = expression {
@@ -795,21 +807,21 @@ impl CodeGenerator {
         }
     }
 
-    fn break_statement(&mut self, _node_type: Option<Type>) {
+    fn break_statement(&mut self, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         let scope_count = self.body_emitters.len() - self.loop_depth_stack.last().unwrap();
 
         self.body_emitters.early_exiting_scopes(Some(scope_count));
         self.body_emitters.top().body.emit("break");
     }
 
-    fn continue_statement(&mut self, _node_type: Option<Type>) {
+    fn continue_statement(&mut self, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         let scope_count = self.body_emitters.len() - self.loop_depth_stack.last().unwrap();
 
         self.body_emitters.early_exiting_scopes(Some(scope_count));
         self.body_emitters.top().body.emit("continue");
     }
 
-    fn defer_statement(&mut self, statement: NodeIndex, _node_type: Option<Type>) {
+    fn defer_statement(&mut self, statement: NodeIndex, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.body_emitters.push(0);
         self.gen_node(statement);
         self.body_emitters.pop_to_bottom();
@@ -821,6 +833,7 @@ impl CodeGenerator {
         scoped_statement: NodeIndex,
         next: Option<NodeIndex>,
         _node_type: Option<Type>,
+        _namespace_id: Option<usize>
     ) {
         self.body_emitters.top().body.emit("if (");
         self.gen_node(expression);
@@ -847,6 +860,7 @@ impl CodeGenerator {
         expression: NodeIndex,
         case_statement: NodeIndex,
         _node_type: Option<Type>,
+        _namespace_id: Option<usize>
     ) {
         self.body_emitters.top().body.emit("switch (");
         self.gen_node(expression);
@@ -861,6 +875,7 @@ impl CodeGenerator {
         scoped_statement: NodeIndex,
         next: Option<NodeIndex>,
         _node_type: Option<Type>,
+        _namespace_id: Option<usize>
     ) {
         self.body_emitters.top().body.emit("case ");
         self.gen_node(expression);
@@ -887,6 +902,7 @@ impl CodeGenerator {
         expression: NodeIndex,
         scoped_statement: NodeIndex,
         _node_type: Option<Type>,
+        _namespace_id: Option<usize>
     ) {
         self.body_emitters.top().body.emit("while (");
         self.gen_node(expression);
@@ -908,6 +924,7 @@ impl CodeGenerator {
         by: Option<NodeIndex>,
         scoped_statement: NodeIndex,
         _node_type: Option<Type>,
+        _namespace_id: Option<usize>
     ) {
         self.body_emitters.top().body.emit("for (intptr_t ");
         self.gen_node(iterator);
@@ -935,7 +952,7 @@ impl CodeGenerator {
         self.loop_depth_stack.pop();
     }
 
-    fn const_expression(&mut self, _inner: NodeIndex, node_type: Option<Type>) {
+    fn const_expression(&mut self, _inner: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
         let Some(Type {
             instance_kind: InstanceKind::Const(const_value),
             ..
@@ -964,7 +981,7 @@ impl CodeGenerator {
         }
     }
 
-    fn binary(&mut self, left: NodeIndex, op: Op, right: NodeIndex, node_type: Option<Type>) {
+    fn binary(&mut self, left: NodeIndex, op: Op, right: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
         if op == Op::Assign {
             let type_kind_id = node_type.unwrap().type_kind_id;
             let is_array = matches!(
@@ -1062,7 +1079,7 @@ impl CodeGenerator {
         }
     }
 
-    fn unary_prefix(&mut self, op: Op, right: NodeIndex, _node_type: Option<Type>) {
+    fn unary_prefix(&mut self, op: Op, right: NodeIndex, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.body_emitters.top().body.emit(match op {
             Op::Plus => "+",
             Op::Minus => "-",
@@ -1074,7 +1091,7 @@ impl CodeGenerator {
         self.gen_node(right);
     }
 
-    fn unary_suffix(&mut self, left: NodeIndex, op: Op, _node_type: Option<Type>) {
+    fn unary_suffix(&mut self, left: NodeIndex, op: Op, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.body_emitters.top().body.emit("(");
         self.body_emitters.top().body.emit(match op {
             Op::Dereference => "*",
@@ -1085,21 +1102,10 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn call(&mut self, left: NodeIndex, args: Arc<Vec<NodeIndex>>, node_type: Option<Type>) {
+    fn call(&mut self, left: NodeIndex, args: Arc<Vec<NodeIndex>>, node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.gen_node(left);
 
         self.body_emitters.top().body.emit("(");
-
-        // A call after a field access is a method call. A function pointer would have be to dereferenced first.
-        if let NodeKind::FieldAccess { left, .. } = self.get_typer_node(left).node_kind.clone() {
-            let left_type_kind_id = self.get_typer_node(left).node_type.as_ref().unwrap().type_kind_id;
-
-            if !matches!(self.type_kinds.get_by_id(left_type_kind_id), TypeKind::Pointer { .. }) {
-                self.body_emitters.top().body.emit("&");
-            }
-
-            self.gen_node(left);
-        }
 
         for (i, arg) in args.iter().enumerate() {
             if i > 0 {
@@ -1130,7 +1136,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn index_access(&mut self, left: NodeIndex, expression: NodeIndex, _node_type: Option<Type>) {
+    fn index_access(&mut self, left: NodeIndex, expression: NodeIndex, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.gen_node(left);
         self.body_emitters.top().body.emit("[");
 
@@ -1158,7 +1164,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("]");
     }
 
-    fn field_access(&mut self, left: NodeIndex, name: NodeIndex, node_type: Option<Type>) {
+    fn field_access(&mut self, left: NodeIndex, name: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
         let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
 
         let field_type_kind_id = node_type.unwrap().type_kind_id;
@@ -1187,12 +1193,6 @@ impl CodeGenerator {
 
                     return;
                 }
-            }
-            TypeKind::Function { .. } => {
-                // TODO: Allow this to be generic.
-                self.emit_function_name(name, Some(left_type.type_kind_id), field_type_kind_id, false, EmitterKind::Body);
-
-                return;
             }
             _ => {}
         }
@@ -1273,13 +1273,14 @@ impl CodeGenerator {
                     .emit(&element_count.to_string());
                 return;
             }
+            TypeKind::Namespace { .. } => {}
             _ => panic!("tried to access type that cannot be accessed"),
         }
 
         self.gen_node(name);
     }
 
-    fn cast(&mut self, left: NodeIndex, _type_name: NodeIndex, node_type: Option<Type>) {
+    fn cast(&mut self, left: NodeIndex, _type_name: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         if let TypeKind::Tag { .. } = &self.type_kinds.get_by_id(type_kind_id) {
@@ -1318,33 +1319,34 @@ impl CodeGenerator {
         name: NodeIndex,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
         node_type: Option<Type>,
+        _namespace_id: Option<usize>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         if let TypeKind::Function { .. } = self.type_kinds.get_by_id(type_kind_id) {
             let is_generic = !generic_arg_type_names.is_empty();
-            self.emit_function_name(name, None, type_kind_id, is_generic, EmitterKind::Body)
+            self.emit_function_name(name, type_kind_id, is_generic, EmitterKind::Body)
         } else {
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
             self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
         }
     }
 
-    fn name(&mut self, index: NodeIndex, _node_type: Option<Type>) {
+    fn name(&mut self, index: NodeIndex, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.emit_name(index, EmitterKind::Body);
     }
 
-    fn identifier(&mut self, name: NodeIndex, node_type: Option<Type>) {
+    fn identifier(&mut self, name: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
         let node_type = node_type.unwrap();
 
         if let TypeKind::Function { .. } = self.type_kinds.get_by_id(node_type.type_kind_id) {
-            self.emit_function_name(name, None, node_type.type_kind_id, false, EmitterKind::Body)
+            self.emit_function_name(name, node_type.type_kind_id, false, EmitterKind::Body)
         } else {
             self.gen_node(name);
         }
     }
 
-    fn int_literal(&mut self, text: Arc<str>, node_type: Option<Type>) {
+    fn int_literal(&mut self, text: Arc<str>, node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.body_emitters.top().body.emit(&text);
 
         let type_kind_id = node_type.unwrap().type_kind_id;
@@ -1353,7 +1355,7 @@ impl CodeGenerator {
         }
     }
 
-    fn float_literal(&mut self, text: Arc<str>, node_type: Option<Type>) {
+    fn float_literal(&mut self, text: Arc<str>, node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.body_emitters.top().body.emit(&text);
 
         let type_kind_id = node_type.unwrap().type_kind_id;
@@ -1362,7 +1364,7 @@ impl CodeGenerator {
         }
     }
 
-    fn char_literal(&mut self, value: char, _node_type: Option<Type>) {
+    fn char_literal(&mut self, value: char, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         let mut char_buffer = [0u8];
 
         self.body_emitters.top().body.emit("'");
@@ -1373,7 +1375,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("'");
     }
 
-    fn string_literal(&mut self, text: Arc<str>, _node_type: Option<Type>) {
+    fn string_literal(&mut self, text: Arc<str>, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.body_emitters.top().body.emit("\"");
         for (i, line) in text.lines().enumerate() {
             if i > 0 {
@@ -1385,7 +1387,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("\"");
     }
 
-    fn bool_literal(&mut self, value: bool, _node_type: Option<Type>) {
+    fn bool_literal(&mut self, value: bool, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         if value {
             self.body_emitters.top().body.emit("true");
         } else {
@@ -1398,6 +1400,7 @@ impl CodeGenerator {
         elements: Arc<Vec<NodeIndex>>,
         _repeat_count_const_expression: Option<NodeIndex>,
         node_type: Option<Type>,
+        _namespace_id: Option<usize>,
     ) {
         let TypeKind::Array { element_count, .. } =
             self.type_kinds.get_by_id(node_type.unwrap().type_kind_id)
@@ -1428,6 +1431,7 @@ impl CodeGenerator {
         _left: NodeIndex,
         field_literals: Arc<Vec<NodeIndex>>,
         node_type: Option<Type>,
+        _namespace_id: Option<usize>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
@@ -1500,14 +1504,14 @@ impl CodeGenerator {
         }
     }
 
-    fn field_literal(&mut self, name: NodeIndex, expression: NodeIndex, _node_type: Option<Type>) {
+    fn field_literal(&mut self, name: NodeIndex, expression: NodeIndex, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.body_emitters.top().body.emit(".");
         self.gen_node(name);
         self.body_emitters.top().body.emit(" = ");
         self.gen_node(expression);
     }
 
-    fn type_size(&mut self, type_name: NodeIndex, _node_type: Option<Type>) {
+    fn type_size(&mut self, type_name: NodeIndex, _node_type: Option<Type>, _namespace_id: Option<usize>) {
         let type_name_type_kind = &self.get_typer_node(type_name).node_type;
         self.emit_type_size(type_name_type_kind.as_ref().unwrap().type_kind_id);
     }
@@ -1648,6 +1652,7 @@ impl CodeGenerator {
                     self.emit_mangling_type_kind(*param_kind_id, kind);
                 }
             }
+            TypeKind::Namespace { namespace_id } => todo!(),
         };
     }
 
@@ -1729,6 +1734,7 @@ impl CodeGenerator {
                 self.emit_type_kind_right(return_type_kind_id, kind, true);
                 self.emitter(kind).emit("(");
             }
+            TypeKind::Namespace { namespace_id } => todo!(),
         };
 
         if needs_trailing_space {
@@ -1833,13 +1839,7 @@ impl CodeGenerator {
 
         self.emit_type_kind_left(return_type_kind_id, kind, true, true);
 
-        let extending_type_kind_id = if is_first_typed_param_me(&self.typed_nodes, params) {
-            Some(self.get_typer_node(params[0]).node_type.as_ref().unwrap().type_kind_id)
-        } else {
-            None
-        };
-
-        self.emit_function_name(name, extending_type_kind_id, type_kind_id, has_generic_params, kind);
+        self.emit_function_name(name, type_kind_id, has_generic_params, kind);
 
         let mut param_count = 0;
 
@@ -1902,10 +1902,25 @@ impl CodeGenerator {
         self.emit_type_kind_right(type_kind_id, kind, false);
     }
 
+    fn emit_namespace(&mut self, namespace_id: usize, kind: EmitterKind) {
+        if let Some(parent_id) = self.namespaces[namespace_id].parent_id {
+            self.emit_namespace(parent_id, kind);
+        }
+
+        let namespace_name = self.namespaces[namespace_id].name.clone();
+        self.emitter(kind).emit(&namespace_name);
+        self.emitter(kind).emit("__");
+
+    }
+
     fn emit_name(&mut self, name: NodeIndex, kind: EmitterKind) {
-        let NodeKind::Name { text } = self.get_typer_node(name).node_kind.clone() else {
+        let TypedNode { node_kind: NodeKind::Name { text }, namespace_id, .. } = self.get_typer_node(name).clone() else {
             panic!("invalid name");
         };
+
+        if let Some(namespace_id) = namespace_id {
+            self.emit_namespace(namespace_id, kind);
+        }
 
         if reserved_names().contains(&text) {
             self.emitter(kind).emit("__");
@@ -1957,27 +1972,11 @@ impl CodeGenerator {
     fn emit_function_name(
         &mut self,
         name: NodeIndex,
-        extending_type_kind_id: Option<usize>,
         type_kind_id: usize,
         is_generic: bool,
         kind: EmitterKind,
     ) {
-        if let Some(mut extending_type_kind_id) = extending_type_kind_id {
-            if let TypeKind::Pointer { inner_type_kind_id, .. } = self.type_kinds.get_by_id(extending_type_kind_id) {
-                extending_type_kind_id = inner_type_kind_id;
-            }
-
-            self.emitter(kind).emit("__");
-            self.emit_mangling_type_kind(extending_type_kind_id, kind);
-            self.emitter(kind).emit("_");
-        }
-
         self.emit_name(name, kind);
-
-        if let Some(file_index) = name.file_index {
-            self.emitter(kind).emit("__");
-            self.emit_number_backwards(file_index, kind);
-        }
 
         if is_generic {
             self.emitter(kind).emit("__");
@@ -1993,6 +1992,7 @@ impl CodeGenerator {
         let TypedNode {
             node_kind: NodeKind::FunctionDeclaration { name, .. },
             node_type: Some(function_type),
+            ..
         } = self.get_typer_node(main_function_declaration).clone()
         else {
             panic!("invalid main function declaration");
@@ -2013,7 +2013,7 @@ impl CodeGenerator {
                 .emitln("int main(int argc, char** argv) {");
             self.body_emitters.top().body.indent();
             self.body_emitters.top().body.emit("return (int)");
-            self.emit_function_name(name, None, function_type.type_kind_id, false, EmitterKind::Body);
+            self.emit_function_name(name, function_type.type_kind_id, false, EmitterKind::Body);
             self.body_emitters
                 .top()
                 .body
@@ -2028,7 +2028,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emitln("int main(void) {");
         self.body_emitters.top().body.indent();
         self.body_emitters.top().body.emit("return (int)");
-        self.emit_function_name(name, None, function_type.type_kind_id, false, EmitterKind::Body);
+        self.emit_function_name(name, function_type.type_kind_id, false, EmitterKind::Body);
         self.body_emitters.top().body.emitln("();");
         self.body_emitters.top().body.unindent();
         self.body_emitters.top().body.emitln("}");

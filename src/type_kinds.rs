@@ -74,6 +74,9 @@ pub enum TypeKind {
         name: NodeIndex,
         variant_names: Arc<Vec<NodeIndex>>,
     },
+    Namespace {
+        namespace_id: usize,
+    },
 }
 
 impl TypeKind {

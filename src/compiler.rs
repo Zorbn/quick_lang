@@ -1,11 +1,5 @@
 use std::{
-    ffi::{OsStr, OsString},
-    fs::{self, File},
-    io::{self, BufWriter, Write},
-    path::{Path, PathBuf},
-    process::{Command, ExitCode},
-    sync::Arc,
-    time::Instant,
+    ffi::{OsStr, OsString}, fs::{self, File}, io::{self, BufWriter, Write}, path::{Path, PathBuf}, process::{Command, ExitCode}, sync::Arc, time::Instant
 };
 
 use crate::{
@@ -142,19 +136,18 @@ fn check(
     for parser in parsers {
         all_nodes.push(parser.nodes);
         all_start_indices.push(parser.start_index);
-        all_definition_indices.push(parser.definition_indices);
+        all_definition_indices.push(Arc::new(parser.definition_indices));
     }
 
     let all_nodes = Arc::new(all_nodes);
     let all_definition_indices = Arc::new(all_definition_indices);
 
-    for (i, start_index) in all_start_indices.into_iter().enumerate() {
+    for start_index in all_start_indices.into_iter() {
         let mut typer = Typer::new(
             all_nodes.clone(),
             all_definition_indices.clone(),
             files.clone(),
             paths_components.clone(),
-            i,
         );
         typer.check(start_index);
         had_typing_error = had_typing_error || typer.error_count > 0;
@@ -173,6 +166,7 @@ fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
         let mut code_generator = CodeGenerator::new(
             typer.typed_nodes,
             typer.type_kinds,
+            typer.namespaces,
             typer.main_function_declaration,
             typer.typed_definition_indices,
             is_debug_mode,
