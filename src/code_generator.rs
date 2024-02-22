@@ -1582,84 +1582,6 @@ impl CodeGenerator {
         };
     }
 
-    fn emit_mangling_type_kind(
-        &mut self,
-        type_kind_id: usize,
-        kind: EmitterKind,
-    ) {
-        let type_kind = &self.type_kinds.get_by_id(type_kind_id);
-
-        match type_kind.clone() {
-            TypeKind::Int => self.emitter(kind).emit("Int_"),
-            TypeKind::Tag { .. } => self.emitter(kind).emit("Tag_"),
-            TypeKind::String => self.emitter(kind).emit("String_"),
-            TypeKind::Bool => self.emitter(kind).emit("Bool_"),
-            TypeKind::Char => self.emitter(kind).emit("Char_"),
-            TypeKind::Void => self.emitter(kind).emit("Void_"),
-            TypeKind::UInt => self.emitter(kind).emit("UInt_"),
-            TypeKind::Int8 => self.emitter(kind).emit("Int8_"),
-            TypeKind::UInt8 => self.emitter(kind).emit("UInt8_"),
-            TypeKind::Int16 => self.emitter(kind).emit("Int16_"),
-            TypeKind::UInt16 => self.emitter(kind).emit("UInt16_"),
-            TypeKind::Int32 => self.emitter(kind).emit("Int32_"),
-            TypeKind::UInt32 => self.emitter(kind).emit("Uint32_"),
-            TypeKind::Int64 => self.emitter(kind).emit("Int64_"),
-            TypeKind::UInt64 => self.emitter(kind).emit("Uint64_"),
-            TypeKind::Float32 => self.emitter(kind).emit("Float32_"),
-            TypeKind::Float64 => self.emitter(kind).emit("Float64_"),
-            TypeKind::Struct { name, .. } => {
-                self.emit_name(name, kind);
-                self.emitter(kind).emit("_");
-            }
-            TypeKind::Enum { name, .. } => {
-                self.emit_name(name, kind);
-                self.emitter(kind).emit("_");
-            }
-            TypeKind::Array {
-                element_type_kind_id,
-                element_count,
-                ..
-            } => {
-                self.emitter(kind).emit("array_");
-                self.emit_mangling_type_kind(element_type_kind_id, kind);
-                self.emit_number_backwards(element_count, kind);
-                self.emitter(kind).emit("_");
-            }
-            TypeKind::Pointer {
-                inner_type_kind_id,
-                is_inner_mutable,
-            } => {
-                self.emit_mangling_type_kind(inner_type_kind_id, kind);
-
-                // If the pointer points to an immutable value, then add a const to the generated code.
-                // Except for functions, because a const function has no meaning in C.
-                if is_inner_mutable {
-                    self.emitter(kind).emit("var");
-                } else {
-                    self.emitter(kind).emit("val");
-                }
-
-                self.emitter(kind).emit("ptr_");
-            }
-            TypeKind::Placeholder { .. } => {
-                panic!("can't emit placeholder type: {:?}", type_kind)
-            }
-            TypeKind::Function {
-                param_type_kind_ids,
-                return_type_kind_id,
-                ..
-            } => {
-                self.emitter(kind).emit("func_");
-                self.emit_mangling_type_kind(return_type_kind_id, kind);
-
-                for param_kind_id in param_type_kind_ids.iter() {
-                    self.emit_mangling_type_kind(*param_kind_id, kind);
-                }
-            }
-            TypeKind::Namespace { namespace_id } => todo!(),
-        };
-    }
-
     fn emit_type_kind_left(
         &mut self,
         type_kind_id: usize,
@@ -1738,7 +1660,7 @@ impl CodeGenerator {
                 self.emit_type_kind_right(return_type_kind_id, kind, true);
                 self.emitter(kind).emit("(");
             }
-            TypeKind::Namespace { namespace_id } => todo!(),
+            TypeKind::Namespace { .. } => panic!("cannot emit namespace types"),
         };
 
         if needs_trailing_space {
