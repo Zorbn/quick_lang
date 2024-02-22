@@ -142,14 +142,15 @@ fn check(
     let all_nodes = Arc::new(all_nodes);
     let all_definition_indices = Arc::new(all_definition_indices);
 
-    for start_index in all_start_indices.into_iter() {
+    for start_index in all_start_indices.iter() {
         let mut typer = Typer::new(
             all_nodes.clone(),
             all_definition_indices.clone(),
+            &all_start_indices,
             files.clone(),
             paths_components.clone(),
         );
-        typer.check(start_index);
+        typer.check(*start_index);
         had_typing_error = had_typing_error || typer.error_count > 0;
         typers.push(typer);
     }

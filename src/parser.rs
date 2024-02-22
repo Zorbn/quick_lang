@@ -90,7 +90,7 @@ pub enum NodeKind {
         declaration: NodeIndex,
     },
     Using {
-        path_component_names: Arc<Vec<NodeIndex>>,
+        namespace_type_name: NodeIndex,
     },
     Alias {
         aliased_type_name: NodeIndex,
@@ -265,10 +265,7 @@ macro_rules! parse_error {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeIndex {
     pub node_index: usize,
-    // For parser nodes the file_index is the index of the file the node comes from.
-    // For typer nodes the file_index of functions (names, definitions, usages, etc)
-    // are modified to be the index of the file that function was defined in.
-    pub file_index: Option<usize>,
+    pub file_index: usize,
 }
 
 pub struct Parser {
@@ -294,7 +291,7 @@ impl Parser {
             error_count: 0,
             start_index: NodeIndex {
                 node_index: 0,
-                file_index: None,
+                file_index: 0,
             },
             position: 0,
             file_index,
@@ -374,7 +371,7 @@ impl Parser {
 
         NodeIndex {
             node_index,
-            file_index: Some(self.file_index),
+            file_index: self.file_index,
         }
     }
 
@@ -562,18 +559,7 @@ impl Parser {
         assert_token!(self, TokenKind::Using, start, self.token_end());
         self.position += 1;
 
-        let mut path_component_names = Vec::new();
-
-        while *self.token_kind() != TokenKind::Semicolon {
-            path_component_names.push(self.name());
-
-            if *self.token_kind() != TokenKind::Period {
-                break;
-            }
-
-            assert_token!(self, TokenKind::Period, start, self.token_end());
-            self.position += 1;
-        }
+        let namespace_type_name = self.type_name();
 
         let end = self.token_end();
         assert_token!(self, TokenKind::Semicolon, start, end);
@@ -581,7 +567,7 @@ impl Parser {
 
         self.add_node(Node {
             kind: NodeKind::Using {
-                path_component_names: Arc::new(path_component_names),
+                namespace_type_name,
             },
             start,
             end,
