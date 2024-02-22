@@ -66,6 +66,12 @@ impl GenericIdentifier {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct FunctionDefinition {
+    type_kind_id: usize,
+    is_extern: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LookupKind {
     All,
     Types,
@@ -78,7 +84,7 @@ enum LookupKind {
 pub struct Namespace {
     pub name: Arc<str>,
     definition_indices: Option<Arc<HashMap<Arc<str>, NodeIndex>>>,
-    function_type_kind_ids: HashMap<GenericIdentifier, usize>,
+    function_definitions: HashMap<GenericIdentifier, FunctionDefinition>,
     type_kinds: HashMap<GenericIdentifier, usize>,
     // environment: HashMap<Arc<str>, Type>, TODO: Allow top-level constants/vals.
 
@@ -148,7 +154,7 @@ impl Typer {
             name: "".into(),
             definition_indices: None,
             type_kinds: HashMap::new(),
-            function_type_kind_ids: HashMap::new(),
+            function_definitions: HashMap::new(),
             inner_ids: HashMap::new(),
             parent_id: None,
         });
@@ -169,7 +175,7 @@ impl Typer {
                     name: new_namespace_name.clone(),
                     definition_indices: None,
                     type_kinds: HashMap::new(),
-                    function_type_kind_ids: HashMap::new(),
+                    function_definitions: HashMap::new(),
                     inner_ids: HashMap::new(),
                     parent_id: Some(current_namespace_id),
                 });
@@ -335,13 +341,19 @@ impl Typer {
         }
 
         if kind != LookupKind::Types {
-            if let Some(type_kind_id) = self.namespaces[namespace_id].function_type_kind_ids.get(identifier).copied() {
-                let typed_name = self.check_node_with_namespace(name, Some(namespace_id));
+            if let Some(function_definition) = self.namespaces[namespace_id].function_definitions.get(identifier).copied() {
+                let function_namespace_id = if function_definition.is_extern {
+                    None
+                } else {
+                    Some(namespace_id)
+                };
+
+                let typed_name = self.check_node_with_namespace(name, function_namespace_id);
 
                 return Some((
                     typed_name,
                     Type {
-                        type_kind_id,
+                        type_kind_id: function_definition.type_kind_id,
                         instance_kind: InstanceKind::Val,
                     },
                 ));
@@ -382,7 +394,14 @@ impl Typer {
         self.shallow_check_stack -= 1;
 
         let definition_type = self.get_typer_node(typed_definition).node_type.clone()?;
-        let typed_name = self.check_node_with_namespace(name, Some(namespace_id));
+
+        let definition_namespace_id = if let NodeKind::ExternFunction { .. } = self.get_typer_node(typed_definition).node_kind {
+            None
+        } else {
+            Some(namespace_id)
+        };
+
+        let typed_name = self.check_node_with_namespace(name, definition_namespace_id);
 
         Some((typed_name, definition_type))
     }
@@ -405,8 +424,8 @@ impl Typer {
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
         };
 
-        // The scope is not part of a namespace.
         let Some(namespace_id) = namespace_id else {
+            // The scope is not part of a namespace.
             if let Some(identifier_type) = self.scope_environment.get(&name_text) {
                 let typed_name = self.check_node_with_namespace(name, namespace_id);
                 return Some((typed_name, identifier_type));
@@ -851,9 +870,12 @@ impl Typer {
             name: name_text.clone(),
             generic_arg_type_kind_ids: None,
         };
-        self.get_file_namespace(file_index).function_type_kind_ids.insert(
+        self.get_file_namespace(file_index).function_definitions.insert(
             identifier,
-            type_kind_id,
+            FunctionDefinition {
+                type_kind_id,
+                is_extern: true,
+            }
         );
 
         let node_type = Some(Type {
@@ -2544,7 +2566,13 @@ impl Typer {
         is_extern: bool,
         file_index: usize,
     ) -> NodeIndex {
-        let typed_name = self.check_node_with_namespace(name, Some(self.file_namespace_ids[file_index]));
+        let namespace_id = if is_extern {
+            None
+        } else {
+            Some(self.file_namespace_ids[file_index])
+        };
+
+        let typed_name = self.check_node_with_namespace(name, namespace_id);
 
         let mut typed_params = Vec::new();
         let mut param_type_kind_ids = Vec::new();
@@ -2588,7 +2616,7 @@ impl Typer {
                     type_kind_id,
                     instance_kind: InstanceKind::Name,
                 }),
-                namespace_id: Some(self.file_namespace_ids[file_index]),
+                namespace_id,
             },
         );
 
@@ -2724,9 +2752,12 @@ impl Typer {
             name: name_text.clone(),
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
         };
-        self.get_file_namespace(file_index).function_type_kind_ids.insert(
+        self.get_file_namespace(file_index).function_definitions.insert(
             identifier,
-            declaration_type.type_kind_id,
+            FunctionDefinition {
+                type_kind_id: declaration_type.type_kind_id,
+                is_extern: false,
+            },
         );
 
         let is_deep_check = self.shallow_check_stack == 0 || generic_arg_type_kind_ids.is_some();

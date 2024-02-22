@@ -37,7 +37,6 @@ func callsMain() Void
 {
     var containsFuncPtr = ContainsFuncPtr { funcPtr = *print };
     containsFuncPtr.funcPtr.*();
-    containsFuncPtr.MyMethod();
 
     val argc = 5;
     val argv = "hello";

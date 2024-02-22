@@ -31,11 +31,6 @@ union GenericUnion<A, B>
 
 struct None {}
 
-func MyMethod(me *val None) Void
-{
-    puts("ran method on None");
-}
-
 union Maybe<T>
 {
     some T;
@@ -47,18 +42,10 @@ struct ContainsFuncPtr
     funcPtr *val func() Void;
 }
 
-func MyMethod(me *var ContainsFuncPtr) Void
-{
-    me.funcPtr = *otherPrint;
-    puts("ran method on ContainsFuncPtr");
-}
-
 func Main(argc Int, argv *val String) Int
 {
     var containsFuncPtr = ContainsFuncPtr { funcPtr = *print };
     containsFuncPtr.funcPtr.*();
-    // containsFuncPtr.MyMethod();
-    // containsFuncPtr.zero();
 
     val myMyString MyString = "MyString";
     useMyString(myMyString);
