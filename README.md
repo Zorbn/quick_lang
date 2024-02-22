@@ -13,6 +13,7 @@
     - The current hacky namespace system breaks down when you import a file, then call a function from that file that uses types from another file that you haven't imported in the first file...
       The current system basically pretends that anything you haven't imported doesn't exist which has tons of bugs associated with it, better to do things properly.
 - This could probably help with methods too, ie: each struct/union/enum has it's own namespace that functions can live in to be methods, maybe....
+- Once methods are added to structs, it might be better to call them objects instead? `obj Player {}` instead of `struct Player {}`.
 
 #### Type Checking
 - Check for duplicate names of variables, functions, types, fields, etc.
@@ -38,6 +39,7 @@
 - Allow `sizeof` on complex types at compile time.
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
 - Stack traces.
+- Make break only work on loops, not switch statements. If you break in a switch statment in a loop it should break out of the loop.
 
 #### Standard Library
 - `func alloc<T>(value T) *T` alternative to malloc for simple situations.

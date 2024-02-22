@@ -176,7 +176,7 @@ pub enum NodeKind {
         type_name: NodeIndex,
     },
     GenericSpecifier {
-        name: NodeIndex,
+        left: NodeIndex,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
     },
     Identifier {
@@ -230,8 +230,12 @@ pub enum NodeKind {
         param_type_names: Arc<Vec<NodeIndex>>,
         return_type_name: NodeIndex,
     },
-    TypeNameGenericSpecifier {
+    TypeNameFieldAccess {
+        left: NodeIndex,
         name: NodeIndex,
+    },
+    TypeNameGenericSpecifier {
+        left: NodeIndex,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
     },
     Error,
@@ -1556,18 +1560,9 @@ impl Parser {
                         return error_node;
                     }
 
-                    let NodeKind::Identifier { name } = &self.nodes[left.node_index].kind else {
-                        parse_error!(
-                            self,
-                            "expected identifier before generic specifier",
-                            start,
-                            end
-                        );
-                    };
-
                     left = self.add_node(Node {
                         kind: NodeKind::GenericSpecifier {
-                            name: *name,
+                            left,
                             generic_arg_type_names: Arc::new(generic_arg_type_names),
                         },
                         start,
@@ -1969,33 +1964,55 @@ impl Parser {
             }
             TokenKind::Identifier { .. } => {
                 let name = self.name();
+                let mut end = self.token_end();
+                let mut left = self.add_node(Node {
+                    kind: NodeKind::TypeName { name  },
+                    start,
+                    end,
+                });
 
-                if *self.token_kind() == TokenKind::GenericSpecifier {
-                    let mut generic_arg_type_names = Vec::new();
-                    let mut end = self.token_end();
-                    if let Some(error_node) = self.parse_generic_specifier_list(
-                        start,
-                        &mut end,
-                        &mut generic_arg_type_names,
-                    ) {
-                        return error_node;
+                loop {
+                    match *self.token_kind() {
+                        TokenKind::Period => {
+                            self.position += 1;
+                            let name = self.name();
+                            end = self.node_end(name);
+
+                            left = self.add_node(Node {
+                                kind: NodeKind::TypeNameFieldAccess {
+                                    left,
+                                    name,
+                                },
+                                start,
+                                end,
+                            });
+
+                        }
+                        TokenKind::GenericSpecifier => {
+                            let mut generic_arg_type_names = Vec::new();
+                            end = self.token_end();
+                            if let Some(error_node) = self.parse_generic_specifier_list(
+                                start,
+                                &mut end,
+                                &mut generic_arg_type_names,
+                            ) {
+                                return error_node;
+                            }
+
+                            return self.add_node(Node {
+                                kind: NodeKind::TypeNameGenericSpecifier {
+                                    left,
+                                    generic_arg_type_names: Arc::new(generic_arg_type_names),
+                                },
+                                start,
+                                end,
+                            });
+                        }
+                        _ => break
                     }
-
-                    return self.add_node(Node {
-                        kind: NodeKind::TypeNameGenericSpecifier {
-                            name,
-                            generic_arg_type_names: Arc::new(generic_arg_type_names),
-                        },
-                        start,
-                        end,
-                    });
                 }
 
-                self.add_node(Node {
-                    kind: NodeKind::TypeName { name },
-                    start,
-                    end: self.token_end(),
-                })
+                left
             }
             _ => parse_error!(self, "expected type name", start, self.token_end()),
         }

@@ -28,16 +28,8 @@ impl<K: Clone + Hash + PartialEq + Eq, V: Clone> Environment<K, V> {
         self.stack.pop();
     }
 
-    pub fn insert(&mut self, key: K, value: V, is_global: bool) {
-        if is_global {
-            self.stack
-                .first_mut()
-                .unwrap()
-                .name_types
-                .insert(key, value);
-        } else {
-            self.stack.last_mut().unwrap().name_types.insert(key, value);
-        }
+    pub fn insert(&mut self, key: K, value: V) {
+        self.stack.last_mut().unwrap().name_types.insert(key, value);
     }
 
     pub fn get(&self, key: &K) -> Option<V> {

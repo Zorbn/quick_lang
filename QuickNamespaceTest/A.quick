@@ -1,7 +1,10 @@
 func Main() Int
 {
     B.BFunc();
-    Folder.D.DFunc();
+    Folder.D.DFunc(Folder.D.DStruct
+    {
+
+    });
 
     return 0;
 }

@@ -1,4 +1,27 @@
-func DFunc() Void
+func DFunc(s Folder.D.DStruct) Void
 {
 
+}
+
+struct DStruct
+{
+
+}
+
+struct DGenericStruct<T>
+{
+    t T;
+}
+
+func DTakesGenericStruct<T>(t Folder.D.DGenericStruct.<T>) Void
+{
+    val otherT = t;
+}
+
+func RandomFunc() Void
+{
+    Folder.D.DTakesGenericStruct.<Int>(Folder.D.DGenericStruct.<Int>
+    {
+        t = 4,
+    });
 }

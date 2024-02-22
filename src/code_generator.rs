@@ -286,9 +286,9 @@ impl CodeGenerator {
             NodeKind::FieldAccess { left, name } => self.field_access(left, name, node_type, namespace_id),
             NodeKind::Cast { left, type_name } => self.cast(left, type_name, node_type, namespace_id),
             NodeKind::GenericSpecifier {
-                name,
+                left,
                 generic_arg_type_names,
-            } => self.generic_specifier(name, generic_arg_type_names, node_type, namespace_id),
+            } => self.generic_specifier(left, generic_arg_type_names, node_type, namespace_id),
             NodeKind::Name { .. } => self.name(index, node_type, namespace_id),
             NodeKind::Identifier { name } => self.identifier(name, node_type, namespace_id),
             NodeKind::IntLiteral { text } => self.int_literal(text, node_type, namespace_id),
@@ -315,6 +315,7 @@ impl CodeGenerator {
             | NodeKind::TypeNameArray { .. }
             | NodeKind::TypeNamePointer { .. }
             | NodeKind::TypeNameFunction { .. }
+            | NodeKind::TypeNameFieldAccess { .. }
             | NodeKind::TypeNameGenericSpecifier { .. } => {
                 panic!("cannot generate type name, generate the corresponding type kind instead")
             }
@@ -1316,12 +1317,15 @@ impl CodeGenerator {
 
     fn generic_specifier(
         &mut self,
-        name: NodeIndex,
+        left: NodeIndex,
         generic_arg_type_names: Arc<Vec<NodeIndex>>,
         node_type: Option<Type>,
         _namespace_id: Option<usize>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
+
+        // The typer will have unwrapped left into just the name node.
+        let name = left;
 
         if let TypeKind::Function { .. } = self.type_kinds.get_by_id(type_kind_id) {
             let is_generic = !generic_arg_type_names.is_empty();
