@@ -123,14 +123,14 @@ impl Typer {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         all_nodes: Arc<Vec<Vec<Node>>>,
-        all_definition_indices: Arc<Vec<Arc<HashMap<Arc<str>, NodeIndex>>>>,
+        all_definition_indices: &[Arc<HashMap<Arc<str>, NodeIndex>>],
         all_start_indices: &[NodeIndex],
         files: Arc<Vec<FileData>>,
         file_paths_components: Arc<Vec<Vec<OsString>>>,
     ) -> Self {
         let file_count = files.len();
 
-        let mut type_checker = Self {
+        let mut typer = Self {
             all_nodes,
             files,
             file_namespace_ids: Vec::with_capacity(file_count),
@@ -150,7 +150,7 @@ impl Typer {
             shallow_check_stack: 0,
         };
 
-        type_checker.namespaces.push(Namespace {
+        typer.namespaces.push(Namespace {
             name: "".into(),
             definition_indices: None,
             type_kinds: HashMap::new(),
@@ -165,13 +165,13 @@ impl Typer {
             for component in file_paths_components[i].iter() {
                 let component_str = component.to_str().unwrap();
 
-                if type_checker.namespaces[current_namespace_id].inner_ids.contains_key(component_str) {
+                if typer.namespaces[current_namespace_id].inner_ids.contains_key(component_str) {
                     continue;
                 }
 
-                let new_namespace_id = type_checker.namespaces.len();
+                let new_namespace_id = typer.namespaces.len();
                 let new_namespace_name: Arc<str> = Arc::from(component_str);
-                type_checker.namespaces.push(Namespace {
+                typer.namespaces.push(Namespace {
                     name: new_namespace_name.clone(),
                     definition_indices: None,
                     type_kinds: HashMap::new(),
@@ -179,125 +179,129 @@ impl Typer {
                     inner_ids: HashMap::new(),
                     parent_id: Some(current_namespace_id),
                 });
-                type_checker.namespaces[current_namespace_id].inner_ids.insert(new_namespace_name, new_namespace_id);
+                typer.namespaces[current_namespace_id].inner_ids.insert(new_namespace_name, new_namespace_id);
 
                 current_namespace_id = new_namespace_id;
             }
 
-            type_checker.file_namespace_ids.push(current_namespace_id);
-            type_checker.namespaces[current_namespace_id].definition_indices = Some(definition_indices.clone());
+            typer.file_namespace_ids.push(current_namespace_id);
+            typer.namespaces[current_namespace_id].definition_indices = Some(definition_indices.clone());
 
-            type_checker.file_used_namespace_ids.push(HashSet::new());
-            type_checker.file_used_namespace_ids[i].insert(current_namespace_id);
-            type_checker.file_used_namespace_ids[i].insert(GLOBAL_NAMESPACE_ID);
-            type_checker.file_used_namespace_ids_lists.push(Vec::new());
-            type_checker.file_used_namespace_ids_lists[i].push(current_namespace_id);
-            type_checker.file_used_namespace_ids_lists[i].push(GLOBAL_NAMESPACE_ID);
+            typer.file_used_namespace_ids.push(HashSet::new());
+            typer.file_used_namespace_ids[i].insert(current_namespace_id);
+            typer.file_used_namespace_ids[i].insert(GLOBAL_NAMESPACE_ID);
+            typer.file_used_namespace_ids_lists.push(Vec::new());
+            typer.file_used_namespace_ids_lists[i].push(current_namespace_id);
+            typer.file_used_namespace_ids_lists[i].push(GLOBAL_NAMESPACE_ID);
         }
 
         for (i, start_index) in all_start_indices.iter().enumerate() {
-            let NodeKind::TopLevel { usings, .. } = type_checker.get_parser_node(*start_index).kind.clone() else {
+            let NodeKind::TopLevel { usings, .. } = typer.get_parser_node(*start_index).kind.clone() else {
                 panic!("expected top level at start index");
             };
 
             for using in usings.iter() {
-                type_checker.check_node(*using);
+                typer.check_node(*using);
             }
 
             // TODO: Having to maintain this extra list is hacky!
-            type_checker.file_used_namespace_ids_lists[i].extend(type_checker.file_used_namespace_ids[i].iter());
+            typer.file_used_namespace_ids_lists[i].clear();
+            typer.file_used_namespace_ids_lists[i].extend(typer.file_used_namespace_ids[i].iter());
         }
 
-        let global_namespace = &mut type_checker.namespaces[GLOBAL_NAMESPACE_ID];
+        typer.define_global_primitives();
 
-        // All of these primitives need to be defined by default.
-        let int_id = type_checker.type_kinds.add_or_get(TypeKind::Int);
+        typer
+    }
+
+    fn define_global_primitives(&mut self) {
+        let global_namespace = &mut self.namespaces[GLOBAL_NAMESPACE_ID];
+
+        let int_id = self.type_kinds.add_or_get(TypeKind::Int);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Int".into()),
             int_id,
         );
-        let string_id = type_checker.type_kinds.add_or_get(TypeKind::String);
+        let string_id = self.type_kinds.add_or_get(TypeKind::String);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("String".into()),
             string_id,
         );
-        let bool_id = type_checker.type_kinds.add_or_get(TypeKind::Bool);
+        let bool_id = self.type_kinds.add_or_get(TypeKind::Bool);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Bool".into()),
             bool_id,
         );
-        let char_id = type_checker.type_kinds.add_or_get(TypeKind::Char);
+        let char_id = self.type_kinds.add_or_get(TypeKind::Char);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Char".into()),
             char_id,
         );
-        let void_id = type_checker.type_kinds.add_or_get(TypeKind::Void);
+        let void_id = self.type_kinds.add_or_get(TypeKind::Void);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Void".into()),
             void_id,
         );
-        let uint_id = type_checker.type_kinds.add_or_get(TypeKind::UInt);
+        let uint_id = self.type_kinds.add_or_get(TypeKind::UInt);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("UInt".into()),
             uint_id,
         );
-        let int8_id = type_checker.type_kinds.add_or_get(TypeKind::Int8);
+        let int8_id = self.type_kinds.add_or_get(TypeKind::Int8);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Int8".into()),
             int8_id,
         );
-        let uint8_id = type_checker.type_kinds.add_or_get(TypeKind::UInt8);
+        let uint8_id = self.type_kinds.add_or_get(TypeKind::UInt8);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("UInt8".into()),
             uint8_id,
         );
-        let int16_id = type_checker.type_kinds.add_or_get(TypeKind::Int16);
+        let int16_id = self.type_kinds.add_or_get(TypeKind::Int16);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Int16".into()),
             int16_id,
         );
-        let uint16_id = type_checker.type_kinds.add_or_get(TypeKind::UInt16);
+        let uint16_id = self.type_kinds.add_or_get(TypeKind::UInt16);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("UInt16".into()),
             uint16_id,
         );
-        let int32_id = type_checker.type_kinds.add_or_get(TypeKind::Int32);
+        let int32_id = self.type_kinds.add_or_get(TypeKind::Int32);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Int32".into()),
             int32_id,
         );
-        let uint32_id = type_checker.type_kinds.add_or_get(TypeKind::UInt32);
+        let uint32_id = self.type_kinds.add_or_get(TypeKind::UInt32);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("UInt32".into()),
             uint32_id,
         );
-        let int64_id = type_checker.type_kinds.add_or_get(TypeKind::Int64);
+        let int64_id = self.type_kinds.add_or_get(TypeKind::Int64);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Int64".into()),
             int64_id,
         );
-        let uint64_id = type_checker.type_kinds.add_or_get(TypeKind::UInt64);
+        let uint64_id = self.type_kinds.add_or_get(TypeKind::UInt64);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("UInt64".into()),
             uint64_id,
         );
-        let float32_id = type_checker.type_kinds.add_or_get(TypeKind::Float32);
+        let float32_id = self.type_kinds.add_or_get(TypeKind::Float32);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Float32".into()),
             float32_id,
         );
-        let float64_id = type_checker.type_kinds.add_or_get(TypeKind::Float64);
+        let float64_id = self.type_kinds.add_or_get(TypeKind::Float64);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Float64".into()),
             float64_id,
         );
-        let tag_id = type_checker.type_kinds.add_or_get(TypeKind::Tag);
+        let tag_id = self.type_kinds.add_or_get(TypeKind::Tag);
         global_namespace.type_kinds.insert(
             GenericIdentifier::new("Tag".into()),
             tag_id,
         );
-
-        type_checker
     }
 
     fn add_node(&mut self, typed_node: TypedNode) -> NodeIndex {
