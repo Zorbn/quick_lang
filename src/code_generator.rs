@@ -1256,7 +1256,7 @@ impl CodeGenerator {
                 self.gen_node(left);
                 self.body_emitters.top().body.emit("->")
             }
-            TypeKind::Struct { .. } => {
+            TypeKind::Struct { .. } if left_type.instance_kind != InstanceKind::Name => {
                 self.gen_node(left);
                 self.body_emitters.top().body.emit(".")
             }
@@ -1274,7 +1274,7 @@ impl CodeGenerator {
                     .emit(&element_count.to_string());
                 return;
             }
-            TypeKind::Namespace { .. } => {}
+            TypeKind::Namespace { .. } | TypeKind::Struct { .. } => {}
             _ => panic!("tried to access type that cannot be accessed"),
         }
 

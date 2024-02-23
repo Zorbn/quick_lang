@@ -64,6 +64,7 @@ pub enum TypeKind {
         name: NodeIndex,
         fields: Arc<Vec<Field>>,
         is_union: bool,
+        namespace_id: usize,
     },
     Placeholder,
     Function {

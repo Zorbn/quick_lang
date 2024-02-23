@@ -131,12 +131,10 @@ fn check(
 
     let mut all_nodes = Vec::with_capacity(parsers.len());
     let mut all_start_indices = Vec::with_capacity(parsers.len());
-    let mut all_definition_indices = Vec::with_capacity(parsers.len());
 
     for parser in parsers {
         all_nodes.push(parser.nodes);
         all_start_indices.push(parser.start_index);
-        all_definition_indices.push(Arc::new(parser.definition_indices));
     }
 
     let all_nodes = Arc::new(all_nodes);
@@ -144,7 +142,6 @@ fn check(
     for start_index in all_start_indices.iter() {
         let mut typer = Typer::new(
             all_nodes.clone(),
-            &all_definition_indices,
             &all_start_indices,
             files.clone(),
             paths_components.clone(),

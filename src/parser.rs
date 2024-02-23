@@ -61,11 +61,14 @@ pub enum NodeKind {
         enums: Arc<Vec<NodeIndex>>,
         usings: Arc<Vec<NodeIndex>>,
         aliases: Arc<Vec<NodeIndex>>,
+        definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
     },
     StructDefinition {
         name: NodeIndex,
         fields: Arc<Vec<NodeIndex>>,
+        functions: Arc<Vec<NodeIndex>>,
         generic_params: Arc<Vec<NodeIndex>>,
+        definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
         is_union: bool,
     },
     EnumDefinition {
@@ -272,7 +275,6 @@ pub struct Parser {
     tokens: Option<Vec<Token>>,
 
     pub nodes: Vec<Node>,
-    pub definition_indices: HashMap<Arc<str>, NodeIndex>,
     pub start_index: NodeIndex,
     pub error_count: usize,
 
@@ -287,7 +289,6 @@ impl Parser {
             files,
             tokens: None,
             nodes: Vec::new(),
-            definition_indices: HashMap::new(),
             error_count: 0,
             start_index: NodeIndex {
                 node_index: 0,
@@ -393,6 +394,9 @@ impl Parser {
         let mut enums = Vec::new();
         let mut usings = Vec::new();
         let mut aliases = Vec::new();
+
+        let mut definition_indices = HashMap::new();
+
         let start = self.token_start();
         let mut end = self.token_end();
 
@@ -401,19 +405,19 @@ impl Parser {
 
             match *self.token_kind() {
                 TokenKind::Func => {
-                    index = self.function();
+                    index = self.function(&mut definition_indices);
                     functions.push(index);
                 }
                 TokenKind::Extern => {
-                    index = self.extern_function();
+                    index = self.extern_function(&mut definition_indices);
                     functions.push(index);
                 }
                 TokenKind::Struct | TokenKind::Union => {
-                    index = self.struct_definition();
+                    index = self.struct_definition(&mut definition_indices);
                     structs.push(index);
                 }
                 TokenKind::Enum => {
-                    index = self.enum_definition();
+                    index = self.enum_definition(&mut definition_indices);
                     enums.push(index);
                 }
                 TokenKind::Using => {
@@ -421,7 +425,7 @@ impl Parser {
                     usings.push(index);
                 }
                 TokenKind::Alias => {
-                    index = self.alias();
+                    index = self.alias(&mut definition_indices);
                     aliases.push(index);
                 }
                 _ => parse_error!(self, "unexpected token at top level", start, end),
@@ -437,13 +441,14 @@ impl Parser {
                 enums: Arc::new(enums),
                 usings: Arc::new(usings),
                 aliases: Arc::new(aliases),
+                definition_indices: Arc::new(definition_indices),
             },
             start,
             end,
         })
     }
 
-    fn struct_definition(&mut self) -> NodeIndex {
+    fn struct_definition(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
         let start = self.token_start();
 
         let is_union = match *self.token_kind() {
@@ -476,8 +481,16 @@ impl Parser {
         self.position += 1;
 
         let mut fields = Vec::new();
+        let mut functions = Vec::new();
+        let mut inner_definition_indices = HashMap::new();
 
         while *self.token_kind() != TokenKind::RBrace {
+            if *self.token_kind() == TokenKind::Func {
+                let function = self.function(&mut inner_definition_indices);
+                functions.push(function);
+                continue;
+            }
+
             let field = self.field();
             fields.push(field);
 
@@ -497,19 +510,21 @@ impl Parser {
             kind: NodeKind::StructDefinition {
                 name,
                 fields: Arc::new(fields),
+                functions: Arc::new(functions),
                 generic_params: Arc::new(generic_params),
+                definition_indices: Arc::new(inner_definition_indices),
                 is_union,
             },
             start,
             end,
         });
 
-        self.definition_indices.insert(name_text, index);
+        definition_indices.insert(name_text, index);
 
         index
     }
 
-    fn enum_definition(&mut self) -> NodeIndex {
+    fn enum_definition(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
         let start = self.token_start();
 
         assert_token!(self, TokenKind::Enum, start, self.token_end());
@@ -548,7 +563,7 @@ impl Parser {
             end,
         });
 
-        self.definition_indices.insert(name_text, index);
+        definition_indices.insert(name_text, index);
 
         index
     }
@@ -574,7 +589,7 @@ impl Parser {
         })
     }
 
-    fn alias(&mut self) -> NodeIndex {
+    fn alias(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
         let start = self.token_start();
 
         assert_token!(self, TokenKind::Alias, start, self.token_end());
@@ -605,7 +620,7 @@ impl Parser {
             panic!("invalid alias name");
         };
 
-        self.definition_indices.insert(name_text, index);
+        definition_indices.insert(name_text, index);
 
         index
     }
@@ -724,7 +739,7 @@ impl Parser {
         })
     }
 
-    fn function(&mut self) -> NodeIndex {
+    fn function(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
         let start = self.token_start();
         let declaration = self.function_declaration();
         let scoped_statement = self.scoped_statement();
@@ -748,12 +763,12 @@ impl Parser {
             end,
         });
 
-        self.definition_indices.insert(name_text, index);
+        definition_indices.insert(name_text, index);
 
         index
     }
 
-    fn extern_function(&mut self) -> NodeIndex {
+    fn extern_function(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::Extern, start, self.token_end());
         self.position += 1;
@@ -779,7 +794,7 @@ impl Parser {
             end,
         });
 
-        self.definition_indices.insert(name_text, index);
+        definition_indices.insert(name_text, index);
 
         index
     }

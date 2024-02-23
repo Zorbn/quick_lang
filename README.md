@@ -40,6 +40,7 @@
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
 - Stack traces.
 - Make break only work on loops, not switch statements. If you break in a switch statment in a loop it should break out of the loop.
+- Catch ambiguous symbol lookups.
 
 #### Standard Library
 - `func alloc<T>(value T) *T` alternative to malloc for simple situations.
