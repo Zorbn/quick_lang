@@ -1169,6 +1169,7 @@ impl CodeGenerator {
         let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
 
         let field_type_kind_id = node_type.unwrap().type_kind_id;
+        let mut is_method_access = false;
         match self.type_kinds.get_by_id(field_type_kind_id) {
             TypeKind::Tag => {
                 let TypeKind::Struct {
@@ -1194,6 +1195,9 @@ impl CodeGenerator {
 
                     return;
                 }
+            }
+            TypeKind::Function { .. } => {
+                is_method_access = true;
             }
             _ => {}
         }
@@ -1256,7 +1260,7 @@ impl CodeGenerator {
                 self.gen_node(left);
                 self.body_emitters.top().body.emit("->")
             }
-            TypeKind::Struct { .. } if left_type.instance_kind != InstanceKind::Name => {
+            TypeKind::Struct { .. } if left_type.instance_kind != InstanceKind::Name && !is_method_access => {
                 self.gen_node(left);
                 self.body_emitters.top().body.emit(".")
             }

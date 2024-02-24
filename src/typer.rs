@@ -95,7 +95,8 @@ enum LookupKind {
 
     Progress:
     * Currently working on getting basic struct namespaces working. Should work with "static"-style calls.
-    * Still need to support calls on instances and allowing struct generic params to be used in methods.
+    * Still need to support calls on instances.
+    * Make sure static methods can't be called on instances. (and maybe vice-versa? but it doesn't seem helpful)
 */
 pub struct Namespace {
     pub name: Arc<str>,
@@ -445,7 +446,6 @@ impl Typer {
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
         kind: LookupKind,
     ) -> Option<(NodeIndex, Type)> {
-
         let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
             self.error("invalid identifier name");
             return None;
@@ -485,9 +485,9 @@ impl Typer {
             }
 
             if kind == LookupKind::Types {
-                self.error("undefined type");
+                self.error_at_parser_node("undefined type", name);
             } else {
-                self.error("undefined identifier");
+                self.error_at_parser_node("undefined identifier", name);
             }
 
             return None;
@@ -497,9 +497,9 @@ impl Typer {
 
         if result.is_none() {
             if kind == LookupKind::Types {
-                self.error("undefined type");
+                self.error_at_parser_node("type not found in namespace", name);
             } else {
-                self.error("undefined identifier");
+                self.error_at_parser_node("identifier not found in namespace", name);
             }
         }
 
@@ -511,8 +511,12 @@ impl Typer {
     }
 
     fn error(&mut self, message: &str) {
+        self.error_at_parser_node(message, self.node_index_stack.last().copied().unwrap());
+    }
+
+    fn error_at_parser_node(&mut self, message: &str, node: NodeIndex) {
         self.error_count += 1;
-        self.get_parser_node(self.node_index_stack.last().copied().unwrap())
+        self.get_parser_node(node)
             .start
             .error("Type", message, &self.files);
     }
@@ -1924,26 +1928,22 @@ impl Typer {
             }
         }
 
-        if field_instance_kind == InstanceKind::Name {
-            let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::All) else {
-                return self.add_node(TypedNode {
-                    node_kind: NodeKind::Error,
-                    node_type: None,
-                    namespace_id: None,
-                });
-            };
-
+        let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::All) else {
             return self.add_node(TypedNode {
-                node_kind: NodeKind::FieldAccess {
-                    left: typed_left,
-                    name: typed_name,
-                },
-                node_type: Some(name_type),
+                node_kind: NodeKind::Error,
+                node_type: None,
                 namespace_id: None,
             });
-        }
+        };
 
-        type_error!(self, "undefined field")
+        return self.add_node(TypedNode {
+            node_kind: NodeKind::FieldAccess {
+                left: typed_left,
+                name: typed_name,
+            },
+            node_type: Some(name_type),
+            namespace_id: None,
+        });
     }
 
     fn cast(&mut self, left: NodeIndex, type_name: NodeIndex) -> NodeIndex {
