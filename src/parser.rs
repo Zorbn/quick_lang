@@ -50,6 +50,14 @@ pub enum Op {
     Dereference,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MethodKind {
+    Unknown,
+    None,
+    ByValue,
+    ByReference,
+}
+
 #[derive(Clone, Debug)]
 pub enum NodeKind {
     Name {
@@ -165,6 +173,7 @@ pub enum NodeKind {
     Call {
         left: NodeIndex,
         args: Arc<Vec<NodeIndex>>,
+        method_kind: MethodKind,
     },
     IndexAccess {
         left: NodeIndex,
@@ -1545,6 +1554,7 @@ impl Parser {
                         kind: NodeKind::Call {
                             left,
                             args: Arc::new(args),
+                            method_kind: MethodKind::Unknown,
                         },
                         start,
                         end,

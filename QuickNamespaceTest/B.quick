@@ -3,9 +3,10 @@ func BFunc() Void
     var zombie = Zombie.<Int> { data = 1 };
     Zombie.<Int>.Eat(*zombie, 7);
     Zombie.<Int>.EatGeneric.<Int>(*zombie, 7, 4);
-    zombie.Eat(*zombie, 7);
-    zombie.EatGeneric.<Int>(*zombie, 7, 4);
-    zombie.DoNothing(*zombie);
+    zombie.Eat(7);
+    zombie.EatGeneric.<Int>(7, 4);
+    zombie.DoNothing();
+    zombie.Static();
 }
 
 struct Zombie<T>
@@ -24,6 +25,11 @@ struct Zombie<T>
     }
 
     func DoNothing(me *val Zombie.<T>) Void
+    {
+
+    }
+
+    func Static() Void
     {
 
     }

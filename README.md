@@ -9,17 +9,11 @@
     - It's a hobby language.
 
 ### TODOs
-- Add a namespace system like C# where everything has a namespace depending on it's location, and you can use `using` to not have to write the full namespaced path.
-    - The current hacky namespace system breaks down when you import a file, then call a function from that file that uses types from another file that you haven't imported in the first file...
-      The current system basically pretends that anything you haven't imported doesn't exist which has tons of bugs associated with it, better to do things properly.
-- This could probably help with methods too, ie: each struct/union/enum has it's own namespace that functions can live in to be methods, maybe....
-- Once methods are added to structs, it might be better to call them objects instead? `obj Player {}` instead of `struct Player {}`.
 
 #### Type Checking
 - Check for duplicate names of variables, functions, types, fields, etc.
 
 #### Project Structure
-- Namespaces.
 - Some form of incremental compilation.
 - Maybe parallel compilation too?
 
@@ -33,8 +27,6 @@
 - Real string type, as opposed to String being a const char*.
 
 #### Missing Things and Bug Fixes
-- Allow generic specifiers on methods.
-- Definition lookups for methods don't take into account the extending_type_kind_id so they may return the wrong method or not a method at all.
 - Struct equality comparisons.
 - Allow `sizeof` on complex types at compile time.
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp

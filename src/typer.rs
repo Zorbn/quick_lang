@@ -1,10 +1,16 @@
-use std::{collections::{HashMap, HashSet}, ffi::OsString, hash::Hash, mem, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+    hash::Hash,
+    mem,
+    sync::Arc,
+};
 
 use crate::{
     const_value::ConstValue,
     environment::Environment,
     file_data::FileData,
-    parser::{DeclarationKind, Node, NodeIndex, NodeKind, Op},
+    parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
     type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds},
 };
 
@@ -77,27 +83,6 @@ enum LookupKind {
     Types,
 }
 
-/*
-    TODO NAMESPACES:
-    In codegen name mangling use the namespace name for the symbol instead of the file index.
-
-    METHODS:
-    Structs also have an associated namespace.
-    To allow for generic structs with methods that inherit their parent struct's generic params, namespaces will need to be able to store generic args
-    Function definitions can accept inherited generic args, which come from their surrounding namespace if applicable.
-
-    Type check methods as part of type checking structs.
-    Type check methods of generic structs for each version of the generic struct that is defined, except for generic functions in generic structs, which will need to also be used.
-
-    Struct kinds must contain the id of their namespace.
-    You can call methods on a struct's namespace directly `GenericStruct.<Int>.DoThing();` `Struct.DoThing();`
-    Or on struct instance `myGenericStruct.DoThing();` `myStruct.DoThing();`
-
-    Progress:
-    * Currently working on getting basic struct namespaces working. Should work with "static"-style calls.
-    * Still need to support calls on instances.
-    * Make sure static methods can't be called on instances. (and maybe vice-versa? but it doesn't seem helpful)
-*/
 pub struct Namespace {
     pub name: Arc<str>,
     definition_indices: Option<Arc<HashMap<Arc<str>, NodeIndex>>>,
@@ -105,7 +90,6 @@ pub struct Namespace {
     type_kinds: HashMap<GenericIdentifier, usize>,
     generic_args: Vec<NamespaceGenericArg>,
     // environment: HashMap<Arc<str>, Type>, TODO: Allow top-level constants/vals.
-
     inner_ids: HashMap<Arc<str>, usize>,
     pub parent_id: Option<usize>,
 }
@@ -143,7 +127,6 @@ pub struct Typer {
 }
 
 impl Typer {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         all_nodes: Arc<Vec<Vec<Node>>>,
         all_start_indices: &[NodeIndex],
@@ -188,7 +171,10 @@ impl Typer {
             for component in file_paths_components[i].iter() {
                 let component_str = component.to_str().unwrap();
 
-                if typer.namespaces[current_namespace_id].inner_ids.contains_key(component_str) {
+                if typer.namespaces[current_namespace_id]
+                    .inner_ids
+                    .contains_key(component_str)
+                {
                     continue;
                 }
 
@@ -203,14 +189,19 @@ impl Typer {
                     inner_ids: HashMap::new(),
                     parent_id: Some(current_namespace_id),
                 });
-                typer.namespaces[current_namespace_id].inner_ids.insert(new_namespace_name, new_namespace_id);
+                typer.namespaces[current_namespace_id]
+                    .inner_ids
+                    .insert(new_namespace_name, new_namespace_id);
 
                 current_namespace_id = new_namespace_id;
             }
 
             typer.file_namespace_ids.push(current_namespace_id);
 
-            let NodeKind::TopLevel { definition_indices, .. } = typer.get_parser_node(*start_index).kind.clone() else {
+            let NodeKind::TopLevel {
+                definition_indices, ..
+            } = typer.get_parser_node(*start_index).kind.clone()
+            else {
                 panic!("expected top level at start index");
             };
 
@@ -225,7 +216,9 @@ impl Typer {
         }
 
         for (i, start_index) in all_start_indices.iter().enumerate() {
-            let NodeKind::TopLevel { usings, .. } = typer.get_parser_node(*start_index).kind.clone() else {
+            let NodeKind::TopLevel { usings, .. } =
+                typer.get_parser_node(*start_index).kind.clone()
+            else {
                 panic!("expected top level at start index");
             };
 
@@ -247,90 +240,73 @@ impl Typer {
         let global_namespace = &mut self.namespaces[GLOBAL_NAMESPACE_ID];
 
         let int_id = self.type_kinds.add_or_get(TypeKind::Int);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Int".into()),
-            int_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Int".into()), int_id);
         let string_id = self.type_kinds.add_or_get(TypeKind::String);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("String".into()),
-            string_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("String".into()), string_id);
         let bool_id = self.type_kinds.add_or_get(TypeKind::Bool);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Bool".into()),
-            bool_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Bool".into()), bool_id);
         let char_id = self.type_kinds.add_or_get(TypeKind::Char);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Char".into()),
-            char_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Char".into()), char_id);
         let void_id = self.type_kinds.add_or_get(TypeKind::Void);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Void".into()),
-            void_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Void".into()), void_id);
         let uint_id = self.type_kinds.add_or_get(TypeKind::UInt);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("UInt".into()),
-            uint_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("UInt".into()), uint_id);
         let int8_id = self.type_kinds.add_or_get(TypeKind::Int8);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Int8".into()),
-            int8_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Int8".into()), int8_id);
         let uint8_id = self.type_kinds.add_or_get(TypeKind::UInt8);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("UInt8".into()),
-            uint8_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("UInt8".into()), uint8_id);
         let int16_id = self.type_kinds.add_or_get(TypeKind::Int16);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Int16".into()),
-            int16_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Int16".into()), int16_id);
         let uint16_id = self.type_kinds.add_or_get(TypeKind::UInt16);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("UInt16".into()),
-            uint16_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("UInt16".into()), uint16_id);
         let int32_id = self.type_kinds.add_or_get(TypeKind::Int32);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Int32".into()),
-            int32_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Int32".into()), int32_id);
         let uint32_id = self.type_kinds.add_or_get(TypeKind::UInt32);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("UInt32".into()),
-            uint32_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("UInt32".into()), uint32_id);
         let int64_id = self.type_kinds.add_or_get(TypeKind::Int64);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Int64".into()),
-            int64_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Int64".into()), int64_id);
         let uint64_id = self.type_kinds.add_or_get(TypeKind::UInt64);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("UInt64".into()),
-            uint64_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("UInt64".into()), uint64_id);
         let float32_id = self.type_kinds.add_or_get(TypeKind::Float32);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Float32".into()),
-            float32_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Float32".into()), float32_id);
         let float64_id = self.type_kinds.add_or_get(TypeKind::Float64);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Float64".into()),
-            float64_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Float64".into()), float64_id);
         let tag_id = self.type_kinds.add_or_get(TypeKind::Tag);
-        global_namespace.type_kinds.insert(
-            GenericIdentifier::new("Tag".into()),
-            tag_id,
-        );
+        global_namespace
+            .type_kinds
+            .insert(GenericIdentifier::new("Tag".into()), tag_id);
     }
 
     fn add_node(&mut self, typed_node: TypedNode) -> NodeIndex {
@@ -360,8 +336,13 @@ impl Typer {
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
         kind: LookupKind,
     ) -> Option<(NodeIndex, Type)> {
-        if let Some(inner_namespace_id) = self.namespaces[namespace_id].inner_ids.get(&identifier.name) {
-            let type_kind_id = self.type_kinds.add_or_get(TypeKind::Namespace { namespace_id: *inner_namespace_id });
+        if let Some(inner_namespace_id) = self.namespaces[namespace_id]
+            .inner_ids
+            .get(&identifier.name)
+        {
+            let type_kind_id = self.type_kinds.add_or_get(TypeKind::Namespace {
+                namespace_id: *inner_namespace_id,
+            });
             let typed_name = self.check_node_with_namespace(name, Some(namespace_id));
 
             return Some((
@@ -374,7 +355,11 @@ impl Typer {
         }
 
         if kind != LookupKind::Types {
-            if let Some(function_definition) = self.namespaces[namespace_id].function_definitions.get(identifier).copied() {
+            if let Some(function_definition) = self.namespaces[namespace_id]
+                .function_definitions
+                .get(identifier)
+                .copied()
+            {
                 let function_namespace_id = if function_definition.is_extern {
                     None
                 } else {
@@ -393,7 +378,11 @@ impl Typer {
             }
         }
 
-        if let Some(type_kind_id) = self.namespaces[namespace_id].type_kinds.get(identifier).copied() {
+        if let Some(type_kind_id) = self.namespaces[namespace_id]
+            .type_kinds
+            .get(identifier)
+            .copied()
+        {
             let typed_name = self.check_node_with_namespace(name, Some(namespace_id));
 
             return Some((
@@ -405,30 +394,39 @@ impl Typer {
             ));
         }
 
-        let definition_index = if let Some(definition_indices) = &self.namespaces[namespace_id].definition_indices {
-            definition_indices.get(&identifier.name).copied()
-        } else {
-            None
-        };
+        let definition_index =
+            if let Some(definition_indices) = &self.namespaces[namespace_id].definition_indices {
+                definition_indices.get(&identifier.name).copied()
+            } else {
+                None
+            };
 
         let Some(definition_index) = definition_index else {
             return None;
         };
 
-        let is_function = matches!(self.get_parser_node(definition_index).kind, NodeKind::Function { .. });
+        let is_function = matches!(
+            self.get_parser_node(definition_index).kind,
+            NodeKind::Function { .. }
+        );
 
         if kind == LookupKind::Types && is_function {
             return None;
         }
 
         self.shallow_check_stack += 1;
-        let typed_definition =
-            self.check_node_with_generic_args(definition_index, generic_arg_type_kind_ids, namespace_id);
+        let typed_definition = self.check_node_with_generic_args(
+            definition_index,
+            generic_arg_type_kind_ids,
+            namespace_id,
+        );
         self.shallow_check_stack -= 1;
 
         let definition_type = self.get_typer_node(typed_definition).node_type.clone()?;
 
-        let definition_namespace_id = if let NodeKind::ExternFunction { .. } = self.get_typer_node(typed_definition).node_kind {
+        let definition_namespace_id = if let NodeKind::ExternFunction { .. } =
+            self.get_typer_node(typed_definition).node_kind
+        {
             None
         } else {
             Some(namespace_id)
@@ -477,7 +475,13 @@ impl Typer {
             let file_index = name.file_index;
             for i in 0..self.file_used_namespace_ids_lists[file_index].len() {
                 let used_namespace_id = self.file_used_namespace_ids_lists[file_index][i];
-                let result = self.lookup_identifier_in_namespace(name, &identifier, used_namespace_id, generic_arg_type_kind_ids.clone(), kind);
+                let result = self.lookup_identifier_in_namespace(
+                    name,
+                    &identifier,
+                    used_namespace_id,
+                    generic_arg_type_kind_ids.clone(),
+                    kind,
+                );
 
                 if result.is_some() {
                     return result;
@@ -493,7 +497,13 @@ impl Typer {
             return None;
         };
 
-        let result = self.lookup_identifier_in_namespace(name, &identifier, namespace_id, generic_arg_type_kind_ids, kind);
+        let result = self.lookup_identifier_in_namespace(
+            name,
+            &identifier,
+            namespace_id,
+            generic_arg_type_kind_ids,
+            kind,
+        );
 
         if result.is_none() {
             if kind == LookupKind::Types {
@@ -535,7 +545,11 @@ impl Typer {
         self.check_node(start_index);
     }
 
-    fn check_optional_node(&mut self, index: Option<NodeIndex>, hint: Option<usize>) -> Option<NodeIndex> {
+    fn check_optional_node(
+        &mut self,
+        index: Option<NodeIndex>,
+        hint: Option<usize>,
+    ) -> Option<NodeIndex> {
         index.map(|index| self.check_node_with_hint(index, hint))
     }
 
@@ -549,10 +563,17 @@ impl Typer {
                 functions,
                 structs,
                 enums,
-                usings,
                 aliases,
                 definition_indices,
-            } => self.top_level(functions, structs, enums, usings, aliases, definition_indices, file_index),
+                ..
+            } => self.top_level(
+                functions,
+                structs,
+                enums,
+                aliases,
+                definition_indices,
+                file_index,
+            ),
             NodeKind::ExternFunction { declaration } => self.extern_function(declaration),
             NodeKind::Using {
                 namespace_type_name,
@@ -604,7 +625,7 @@ impl Typer {
             NodeKind::Binary { left, op, right } => self.binary(left, op, right, None),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, None),
             NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op),
-            NodeKind::Call { left, args } => self.call(left, args),
+            NodeKind::Call { left, args, .. } => self.call(left, args),
             NodeKind::IndexAccess { left, expression } => self.index_access(left, expression),
             NodeKind::FieldAccess { left, name } => self.field_access(left, name),
             NodeKind::Cast { left, type_name } => self.cast(left, type_name),
@@ -632,7 +653,16 @@ impl Typer {
                 generic_params,
                 definition_indices,
                 is_union,
-            } => self.struct_definition(name, fields, functions, generic_params, definition_indices, is_union, None, file_index),
+            } => self.struct_definition(
+                name,
+                fields,
+                functions,
+                generic_params,
+                definition_indices,
+                is_union,
+                None,
+                file_index,
+            ),
             NodeKind::EnumDefinition {
                 name,
                 variant_names,
@@ -643,7 +673,14 @@ impl Typer {
                 params,
                 generic_params,
                 return_type_name,
-            } => self.function_declaration(name, params, generic_params, return_type_name, false, Some(file_namespace_id)),
+            } => self.function_declaration(
+                name,
+                params,
+                generic_params,
+                return_type_name,
+                false,
+                Some(file_namespace_id),
+            ),
             NodeKind::Function {
                 declaration,
                 scoped_statement,
@@ -708,7 +745,12 @@ impl Typer {
             NodeKind::Function {
                 declaration,
                 scoped_statement,
-            } => self.function(declaration, scoped_statement, generic_arg_type_kind_ids, namespace_id),
+            } => self.function(
+                declaration,
+                scoped_statement,
+                generic_arg_type_kind_ids,
+                namespace_id,
+            ),
             _ => self.check_node(index),
         };
 
@@ -717,11 +759,7 @@ impl Typer {
         typed_index
     }
 
-    fn check_node_with_hint(
-        &mut self,
-        index: NodeIndex,
-        hint: Option<usize>,
-    ) -> NodeIndex {
+    fn check_node_with_hint(&mut self, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
         self.node_index_stack.push(index);
 
         let typed_index = match self.get_parser_node(index).kind.clone() {
@@ -751,8 +789,23 @@ impl Typer {
 
         let typed_index = match self.get_parser_node(index).kind.clone() {
             NodeKind::Name { text } => self.name(text, namespace_id),
-            NodeKind::FunctionDeclaration { name, params, generic_params, return_type_name } => self.function_declaration(name, params, generic_params, return_type_name, false, namespace_id),
-            NodeKind::Function { declaration, scoped_statement } => self.function(declaration, scoped_statement, None, namespace_id.unwrap()),
+            NodeKind::FunctionDeclaration {
+                name,
+                params,
+                generic_params,
+                return_type_name,
+            } => self.function_declaration(
+                name,
+                params,
+                generic_params,
+                return_type_name,
+                false,
+                namespace_id,
+            ),
+            NodeKind::Function {
+                declaration,
+                scoped_statement,
+            } => self.function(declaration, scoped_statement, None, namespace_id.unwrap()),
             _ => self.check_node(index),
         };
 
@@ -788,7 +841,6 @@ impl Typer {
         functions: Arc<Vec<NodeIndex>>,
         structs: Arc<Vec<NodeIndex>>,
         enums: Arc<Vec<NodeIndex>>,
-        _usings: Arc<Vec<NodeIndex>>,
         aliases: Arc<Vec<NodeIndex>>,
         definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
         file_index: usize,
@@ -801,10 +853,8 @@ impl Typer {
 
         let mut typed_structs = Vec::new();
         for struct_definition in structs.iter() {
-            let NodeKind::StructDefinition {
-                generic_params,
-                ..
-            } = &self.get_parser_node(*struct_definition).kind
+            let NodeKind::StructDefinition { generic_params, .. } =
+                &self.get_parser_node(*struct_definition).kind
             else {
                 type_error!(self, "invalid struct definition");
             };
@@ -821,7 +871,7 @@ impl Typer {
             let NodeKind::EnumDefinition { name, .. } =
                 &self.get_parser_node(*enum_definition).kind
             else {
-                type_error!(self,"invalid enum definition");
+                type_error!(self, "invalid enum definition");
             };
 
             let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
@@ -834,7 +884,11 @@ impl Typer {
                 generic_arg_type_kind_ids: None,
             };
 
-            if self.get_file_namespace(file_index).type_kinds.contains_key(&identifier) {
+            if self
+                .get_file_namespace(file_index)
+                .type_kinds
+                .contains_key(&identifier)
+            {
                 continue;
             }
 
@@ -914,28 +968,28 @@ impl Typer {
             name: name_text.clone(),
             generic_arg_type_kind_ids: None,
         };
-        self.namespaces[GLOBAL_NAMESPACE_ID].function_definitions.insert(
-            identifier,
-            FunctionDefinition {
-                type_kind_id,
-                is_extern: true,
-            }
-        );
+        self.namespaces[GLOBAL_NAMESPACE_ID]
+            .function_definitions
+            .insert(
+                identifier,
+                FunctionDefinition {
+                    type_kind_id,
+                    is_extern: true,
+                },
+            );
 
         let node_type = Some(Type {
             type_kind_id,
             instance_kind: InstanceKind::Val,
         });
 
-        let index = self.add_node(
-            TypedNode {
-                node_kind: NodeKind::ExternFunction {
-                    declaration: typed_declaration,
-                },
-                node_type,
-                namespace_id: Some(GLOBAL_NAMESPACE_ID),
+        let index = self.add_node(TypedNode {
+            node_kind: NodeKind::ExternFunction {
+                declaration: typed_declaration,
             },
-        );
+            node_type,
+            namespace_id: Some(GLOBAL_NAMESPACE_ID),
+        });
 
         self.typed_definition_indices.push(index);
 
@@ -946,9 +1000,15 @@ impl Typer {
         let typed_namespace_type_name = self.check_node(namespace_type_name);
         let namespace_type_name_type = assert_typed!(self, typed_namespace_type_name);
 
-        let namespace_id = if let TypeKind::Namespace { namespace_id } = self.type_kinds.get_by_id(namespace_type_name_type.type_kind_id) {
+        let namespace_id = if let TypeKind::Namespace { namespace_id } = self
+            .type_kinds
+            .get_by_id(namespace_type_name_type.type_kind_id)
+        {
             namespace_id
-        } else if let TypeKind::Struct { namespace_id, .. } = self.type_kinds.get_by_id(namespace_type_name_type.type_kind_id) {
+        } else if let TypeKind::Struct { namespace_id, .. } = self
+            .type_kinds
+            .get_by_id(namespace_type_name_type.type_kind_id)
+        {
             namespace_id
         } else {
             type_error!(self, "expected namespace after using");
@@ -965,7 +1025,12 @@ impl Typer {
         })
     }
 
-    fn alias(&mut self, aliased_type_name: NodeIndex, alias_name: NodeIndex, file_index: usize) -> NodeIndex {
+    fn alias(
+        &mut self,
+        aliased_type_name: NodeIndex,
+        alias_name: NodeIndex,
+        file_index: usize,
+    ) -> NodeIndex {
         let typed_aliased_type_name = self.check_node(aliased_type_name);
         let aliased_type_name_type = assert_typed!(self, typed_aliased_type_name);
         let typed_alias_name = self.check_node(alias_name);
@@ -982,7 +1047,8 @@ impl Typer {
             generic_arg_type_kind_ids: None,
         };
 
-        self.get_file_namespace(file_index).type_kinds
+        self.get_file_namespace(file_index)
+            .type_kinds
             .insert(identifier, aliased_type_name_type.type_kind_id);
 
         self.add_node(TypedNode {
@@ -1092,7 +1158,9 @@ impl Typer {
             if typed_expression.is_some() || declaration_kind == DeclarationKind::Const {
                 let expression_type = assert_typed!(self, typed_expression.unwrap());
 
-                if !self.is_assignment_valid(variable_type.type_kind_id, expression_type.type_kind_id) {
+                if !self
+                    .is_assignment_valid(variable_type.type_kind_id, expression_type.type_kind_id)
+                {
                     type_error!(self, "mismatched types in variable declaration");
                 }
 
@@ -1129,7 +1197,8 @@ impl Typer {
             DeclarationKind::Const => variable_type.instance_kind,
         };
 
-        self.scope_environment.insert(name_text, variable_type.clone());
+        self.scope_environment
+            .insert(name_text, variable_type.clone());
 
         self.add_node(TypedNode {
             node_kind: NodeKind::VariableDeclaration {
@@ -1143,7 +1212,11 @@ impl Typer {
         })
     }
 
-    fn return_statement(&mut self, expression: Option<NodeIndex>, hint: Option<usize>) -> NodeIndex {
+    fn return_statement(
+        &mut self,
+        expression: Option<NodeIndex>,
+        hint: Option<usize>,
+    ) -> NodeIndex {
         let typed_expression = self.check_optional_node(expression, hint);
 
         if let Some(typed_expression) = typed_expression {
@@ -1283,7 +1356,10 @@ impl Typer {
     ) -> NodeIndex {
         let typed_iterator = self.check_node(iterator);
 
-        let (typed_from, typed_to, typed_by) = if self.is_node_numeric_literal(from) && self.is_node_numeric_literal(to) && by.is_some() {
+        let (typed_from, typed_to, typed_by) = if self.is_node_numeric_literal(from)
+            && self.is_node_numeric_literal(to)
+            && by.is_some()
+        {
             // "from" and "to" are both literals, but we also have a "by" node, so start with that one.
             let typed_by = self.check_node(by.unwrap());
             let by_type = assert_typed!(self, typed_by);
@@ -1349,7 +1425,8 @@ impl Typer {
             type_kind_id: from_type.type_kind_id,
             instance_kind: InstanceKind::Var,
         };
-        self.scope_environment.insert(iterator_text, node_type.clone());
+        self.scope_environment
+            .insert(iterator_text, node_type.clone());
 
         self.loop_stack += 1;
         let typed_scoped_statement = self.check_node(scoped_statement);
@@ -1373,9 +1450,16 @@ impl Typer {
         self.check_const_node(inner, hint)
     }
 
-    fn binary(&mut self, left: NodeIndex, op: Op, right: NodeIndex, hint: Option<usize>) -> NodeIndex {
+    fn binary(
+        &mut self,
+        left: NodeIndex,
+        op: Op,
+        right: NodeIndex,
+        hint: Option<usize>,
+    ) -> NodeIndex {
         // Maximize the accuracy of hinting by type checking the right side first if the left side is a literal, so that we might have a more useful hint to give the left side.
-        let (typed_left, left_type, typed_right, right_type) = if self.is_node_numeric_literal(left) {
+        let (typed_left, left_type, typed_right, right_type) = if self.is_node_numeric_literal(left)
+        {
             let typed_right = self.check_node_with_hint(right, hint);
             let right_type = assert_typed!(self, typed_right);
             let typed_left = self.check_node_with_hint(left, Some(right_type.type_kind_id));
@@ -1635,7 +1719,13 @@ impl Typer {
         }
     }
 
-    fn const_unary_prefix(&mut self, op: Op, right: NodeIndex, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+    fn const_unary_prefix(
+        &mut self,
+        op: Op,
+        right: NodeIndex,
+        index: NodeIndex,
+        hint: Option<usize>,
+    ) -> NodeIndex {
         let typed_unary = self.check_node_with_hint(index, hint);
         let unary_type = assert_typed!(self, typed_unary);
 
@@ -1724,12 +1814,47 @@ impl Typer {
             type_error!(self, "only functions can be called");
         };
 
-        if args.len() != param_type_kind_ids.len() {
+        // A field access of an instance on the left means this is a method call, calling a function pointer
+        // stored in an instance of a struct would require dereferencing the function pointer first.
+        let mut is_method_call = false;
+        let mut method_kind = MethodKind::None;
+
+        let mut typed_caller = typed_left;
+        if let NodeKind::GenericSpecifier { left, .. } = self.get_typer_node(typed_caller).node_kind
+        {
+            typed_caller = left;
+        }
+        if let NodeKind::FieldAccess { left, .. } = self.get_typer_node(typed_caller).node_kind {
+            let left_type = assert_typed!(self, left);
+            if left_type.instance_kind != InstanceKind::Name {
+                is_method_call = true;
+
+                if param_type_kind_ids.is_empty() {
+                    type_error!(self, "static methods cannot be called on instances");
+                }
+
+                let Some(validated_method_kind) = self.is_method_call_valid(param_type_kind_ids[0], left_type.type_kind_id) else {
+                    type_error!(
+                        self,
+                        "type mismatch, instance cannot be used as the first parameter of this method"
+                    );
+                };
+
+                method_kind = validated_method_kind;
+            }
+        }
+
+        let implicit_arg_count = if is_method_call { 1 } else { 0 };
+
+        if args.len() + implicit_arg_count != param_type_kind_ids.len() {
             type_error!(self, "wrong number of arguments");
         }
 
         let mut typed_args = Vec::new();
-        for (arg, param_type_kind_id) in args.iter().zip(param_type_kind_ids.iter()) {
+        for (arg, param_type_kind_id) in args
+            .iter()
+            .zip(param_type_kind_ids.iter().skip(implicit_arg_count))
+        {
             let typed_arg = self.check_node_with_hint(*arg, Some(*param_type_kind_id));
             typed_args.push(typed_arg);
 
@@ -1744,6 +1869,7 @@ impl Typer {
             node_kind: NodeKind::Call {
                 left: typed_left,
                 args: Arc::new(typed_args),
+                method_kind,
             },
             node_type: Some(Type {
                 type_kind_id: return_type_kind_id,
@@ -1774,8 +1900,15 @@ impl Typer {
         let typed_expression = self.check_node(expression);
         let expression_type = assert_typed!(self, typed_expression);
 
-        if !self.type_kinds.get_by_id(expression_type.type_kind_id).is_int() {
-            type_error!(self, "expected index to have an integer type (Int, UInt, etc.)");
+        if !self
+            .type_kinds
+            .get_by_id(expression_type.type_kind_id)
+            .is_int()
+        {
+            type_error!(
+                self,
+                "expected index to have an integer type (Int, UInt, etc.)"
+            );
         };
 
         self.add_node(TypedNode {
@@ -1810,7 +1943,7 @@ impl Typer {
             match &self.type_kinds.get_by_id(left_type.type_kind_id) {
                 TypeKind::Struct { is_union, .. } => {
                     is_tag_access = left_type.instance_kind == InstanceKind::Name && *is_union;
-                    (left_type.type_kind_id, left_type.instance_kind)
+                    (left_type.type_kind_id, left_type.instance_kind.clone())
                 }
                 TypeKind::Pointer {
                     inner_type_kind_id,
@@ -1863,7 +1996,9 @@ impl Typer {
                     });
                 }
                 TypeKind::Namespace { namespace_id } => {
-                    let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::All) else {
+                    let Some((typed_name, name_type)) =
+                        self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::All)
+                    else {
                         return self.add_node(TypedNode {
                             node_kind: NodeKind::Error,
                             node_type: None,
@@ -1886,7 +2021,11 @@ impl Typer {
                 ),
             };
 
-        let TypeKind::Struct { fields, namespace_id, .. } = &self.type_kinds.get_by_id(struct_type_kind_id)
+        let TypeKind::Struct {
+            fields,
+            namespace_id,
+            ..
+        } = &self.type_kinds.get_by_id(struct_type_kind_id)
         else {
             type_error!(self, "field access is only allowed on struct types");
         };
@@ -1931,7 +2070,9 @@ impl Typer {
             }
         }
 
-        let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::All) else {
+        let Some((typed_name, name_type)) =
+            self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::All)
+        else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
                 node_type: None,
@@ -1939,14 +2080,14 @@ impl Typer {
             });
         };
 
-        return self.add_node(TypedNode {
+        self.add_node(TypedNode {
             node_kind: NodeKind::FieldAccess {
                 left: typed_left,
                 name: typed_name,
             },
             node_type: Some(name_type),
             namespace_id: None,
-        });
+        })
     }
 
     fn cast(&mut self, left: NodeIndex, type_name: NodeIndex) -> NodeIndex {
@@ -2023,7 +2164,9 @@ impl Typer {
     }
 
     fn identifier(&mut self, name: NodeIndex) -> NodeIndex {
-        let Some((typed_name, name_type)) = self.lookup_identifier(name, None, None, LookupKind::All) else {
+        let Some((typed_name, name_type)) =
+            self.lookup_identifier(name, None, None, LookupKind::All)
+        else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
                 node_type: None,
@@ -2074,11 +2217,20 @@ impl Typer {
         })
     }
 
-    fn const_int_literal(&mut self, text: Arc<str>, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+    fn const_int_literal(
+        &mut self,
+        text: Arc<str>,
+        index: NodeIndex,
+        hint: Option<usize>,
+    ) -> NodeIndex {
         let typed_const = self.check_node_with_hint(index, hint);
         let const_type = assert_typed!(self, typed_const);
 
-        let value = if self.type_kinds.get_by_id(const_type.type_kind_id).is_unsigned() {
+        let value = if self
+            .type_kinds
+            .get_by_id(const_type.type_kind_id)
+            .is_unsigned()
+        {
             let Ok(value) = text.parse::<u64>() else {
                 type_error!(self, "invalid value of unsigned integer literal");
             };
@@ -2121,7 +2273,12 @@ impl Typer {
         })
     }
 
-    fn const_float_literal(&mut self, text: Arc<str>, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+    fn const_float_literal(
+        &mut self,
+        text: Arc<str>,
+        index: NodeIndex,
+        hint: Option<usize>,
+    ) -> NodeIndex {
         let typed_const = self.check_node_with_hint(index, hint);
         let const_type = assert_typed!(self, typed_const);
         let Ok(value) = text.parse::<f64>() else {
@@ -2324,12 +2481,14 @@ impl Typer {
 
                 let expected_type_kind_id = expected_fields[expected_field_index].type_kind_id;
 
-                let typed_field_literal = self.check_node_with_hint(field_literals[0], Some(expected_type_kind_id));
+                let typed_field_literal =
+                    self.check_node_with_hint(field_literals[0], Some(expected_type_kind_id));
                 typed_field_literals.push(typed_field_literal);
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                if !self.is_assignment_valid(field_literal_type.type_kind_id, expected_type_kind_id) {
+                if !self.is_assignment_valid(field_literal_type.type_kind_id, expected_type_kind_id)
+                {
                     type_error!(self, "incorrect field type");
                 }
             }
@@ -2344,7 +2503,10 @@ impl Typer {
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                if !self.is_assignment_valid(field_literal_type.type_kind_id, expected_field.type_kind_id) {
+                if !self.is_assignment_valid(
+                    field_literal_type.type_kind_id,
+                    expected_field.type_kind_id,
+                ) {
                     type_error!(self, "incorrect field type");
                 }
             }
@@ -2400,7 +2562,12 @@ impl Typer {
         })
     }
 
-    fn const_type_size(&mut self, type_name: NodeIndex, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+    fn const_type_size(
+        &mut self,
+        type_name: NodeIndex,
+        index: NodeIndex,
+        hint: Option<usize>,
+    ) -> NodeIndex {
         let typed_type_name = self.check_node(type_name);
         let type_name_type = assert_typed!(self, typed_type_name);
         let typed_const = self.check_node_with_hint(index, hint);
@@ -2430,10 +2597,16 @@ impl Typer {
             _ => type_error!(self, "size unknown at compile time"),
         };
 
-        let const_value = if self.type_kinds.get_by_id(const_type.type_kind_id).is_unsigned() {
+        let const_value = if self
+            .type_kinds
+            .get_by_id(const_type.type_kind_id)
+            .is_unsigned()
+        {
             ConstValue::UInt { value }
         } else {
-            ConstValue::Int { value: value as i64 }
+            ConstValue::Int {
+                value: value as i64,
+            }
         };
 
         self.add_node(TypedNode {
@@ -2448,6 +2621,7 @@ impl Typer {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn struct_definition(
         &mut self,
         name: NodeIndex,
@@ -2474,7 +2648,8 @@ impl Typer {
         };
 
         let type_kind_id = self.type_kinds.add_placeholder();
-        self.get_file_namespace(file_index).type_kinds
+        self.get_file_namespace(file_index)
+            .type_kinds
             .insert(identifier, type_kind_id);
 
         self.scope_type_kind_environment.push(false);
@@ -2630,7 +2805,8 @@ impl Typer {
             name: name_text,
             generic_arg_type_kind_ids: None,
         };
-        self.get_file_namespace(file_index).type_kinds
+        self.get_file_namespace(file_index)
+            .type_kinds
             .insert(identifier, type_kind_id);
 
         let index = self.add_node(TypedNode {
@@ -2714,21 +2890,19 @@ impl Typer {
         };
         let type_kind_id = self.type_kinds.add_or_get(type_kind);
 
-        let index = self.add_node(
-            TypedNode {
-                node_kind: NodeKind::FunctionDeclaration {
-                    name: typed_name,
-                    params: typed_params,
-                    generic_params: Arc::new(typed_generic_params),
-                    return_type_name: typed_return_type_name,
-                },
-                node_type: Some(Type {
-                    type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                }),
-                namespace_id,
+        let index = self.add_node(TypedNode {
+            node_kind: NodeKind::FunctionDeclaration {
+                name: typed_name,
+                params: typed_params,
+                generic_params: Arc::new(typed_generic_params),
+                return_type_name: typed_return_type_name,
             },
-        );
+            node_type: Some(Type {
+                type_kind_id,
+                instance_kind: InstanceKind::Name,
+            }),
+            namespace_id,
+        });
 
         let NodeKind::Name { text: name_text } = &self.get_typer_node(typed_name).node_kind else {
             type_error!(self, "invalid name in function declaration");
@@ -2790,7 +2964,12 @@ impl Typer {
 
         let is_generic = generic_arg_type_kind_ids.is_some();
 
-        let index = self.function_impl(declaration, scoped_statement, generic_arg_type_kind_ids, namespace_id);
+        let index = self.function_impl(
+            declaration,
+            scoped_statement,
+            generic_arg_type_kind_ids,
+            namespace_id,
+        );
 
         if self.error_count <= pre_error_count || !is_generic {
             return index;
@@ -2865,7 +3044,6 @@ impl Typer {
             }
         }
 
-
         let typed_declaration = self.check_node_with_namespace(declaration, Some(namespace_id));
         let declaration_type = assert_typed!(self, typed_declaration);
         let identifier = GenericIdentifier {
@@ -2880,7 +3058,9 @@ impl Typer {
             },
         );
 
-        let is_deep_check = self.shallow_check_stack == 0 || generic_arg_type_kind_ids.is_some() || !self.namespaces[namespace_id].generic_args.is_empty();
+        let is_deep_check = self.shallow_check_stack == 0
+            || generic_arg_type_kind_ids.is_some()
+            || !self.namespaces[namespace_id].generic_args.is_empty();
 
         let typed_scoped_statement = if is_deep_check {
             let TypeKind::Function {
@@ -2891,10 +3071,12 @@ impl Typer {
                 type_error!(self, "invalid function type");
             };
 
-            let typed_scoped_statement = self.check_node_with_hint(scoped_statement, Some(expected_return_type_kind_id));
+            let typed_scoped_statement =
+                self.check_node_with_hint(scoped_statement, Some(expected_return_type_kind_id));
 
             if let Some(return_type) = self.ensure_typed_statement_returns(typed_scoped_statement) {
-                if !self.is_assignment_valid(expected_return_type_kind_id, return_type.type_kind_id) {
+                if !self.is_assignment_valid(expected_return_type_kind_id, return_type.type_kind_id)
+                {
                     type_error!(self, "function does not return the correct type");
                 }
             } else if self.type_kinds.get_by_id(expected_return_type_kind_id) != TypeKind::Void {
@@ -2916,19 +3098,17 @@ impl Typer {
         self.scope_environment.pop();
         self.scope_type_kind_environment.pop();
 
-        let index = self.add_node(
-            TypedNode {
-                node_kind: NodeKind::Function {
-                    declaration: typed_declaration,
-                    scoped_statement: typed_scoped_statement,
-                },
-                node_type: Some(Type {
-                    type_kind_id: declaration_type.type_kind_id,
-                    instance_kind: InstanceKind::Val,
-                }),
-                namespace_id: Some(namespace_id),
+        let index = self.add_node(TypedNode {
+            node_kind: NodeKind::Function {
+                declaration: typed_declaration,
+                scoped_statement: typed_scoped_statement,
             },
-        );
+            node_type: Some(Type {
+                type_kind_id: declaration_type.type_kind_id,
+                instance_kind: InstanceKind::Val,
+            }),
+            namespace_id: Some(namespace_id),
+        });
 
         self.typed_definition_indices.push(index);
 
@@ -2958,36 +3138,72 @@ impl Typer {
         }
         let generic_arg_type_kind_ids = Arc::new(generic_arg_type_kind_ids);
 
-        let (name, namespace_id) = if let NodeKind::FieldAccess { left, name } = self.get_parser_node(left).kind {
-            let typed_left = self.check_node(left);
-            let left_type = assert_typed!(self, typed_left);
+        let (typed_left, name_type) =
+            if let NodeKind::FieldAccess { left, name } = self.get_parser_node(left).kind {
+                let typed_left = self.check_node(left);
+                let left_type = assert_typed!(self, typed_left);
 
-            let (TypeKind::Namespace { namespace_id } | TypeKind::Struct { namespace_id, .. }) = self.type_kinds.get_by_id(left_type.type_kind_id) else {
-                type_error!(self, "expected namespace before field access in type name");
+                let (TypeKind::Namespace { namespace_id } | TypeKind::Struct { namespace_id, .. }) =
+                    self.type_kinds.get_by_id(left_type.type_kind_id)
+                else {
+                    type_error!(self, "expected namespace before field access in type name");
+                };
+
+                let Some((typed_name, name_type)) = self.lookup_identifier(
+                    name,
+                    Some(namespace_id),
+                    Some(generic_arg_type_kind_ids),
+                    LookupKind::All,
+                ) else {
+                    return self.add_node(TypedNode {
+                        node_kind: NodeKind::Error,
+                        node_type: None,
+                        namespace_id: None,
+                    });
+                };
+
+                (
+                    self.add_node(TypedNode {
+                        node_kind: NodeKind::FieldAccess {
+                            left: typed_left,
+                            name: typed_name,
+                        },
+                        node_type: None,
+                        namespace_id: None,
+                    }),
+                    name_type,
+                )
+            } else {
+                let NodeKind::Identifier { name } = &self.get_parser_node(left).kind else {
+                    type_error!(self, "expected identifier before generic specifier");
+                };
+
+                let Some((typed_name, name_type)) = self.lookup_identifier(
+                    *name,
+                    None,
+                    Some(generic_arg_type_kind_ids),
+                    LookupKind::All,
+                ) else {
+                    return self.add_node(TypedNode {
+                        node_kind: NodeKind::Error,
+                        node_type: None,
+                        namespace_id: None,
+                    });
+                };
+
+                (
+                    self.add_node(TypedNode {
+                        node_kind: NodeKind::Identifier { name: typed_name },
+                        node_type: None,
+                        namespace_id: None,
+                    }),
+                    name_type,
+                )
             };
-
-            (name, Some(namespace_id))
-        } else {
-            let NodeKind::Identifier { name } = &self.get_parser_node(left).kind else {
-                type_error!(self, "expected identifier before generic specifier");
-            };
-
-            (*name, None)
-        };
-
-        let Some((typed_name, name_type)) =
-            self.lookup_identifier(name, namespace_id, Some(generic_arg_type_kind_ids), LookupKind::All)
-        else {
-            return self.add_node(TypedNode {
-                node_kind: NodeKind::Error,
-                node_type: None,
-                namespace_id: None,
-            });
-        };
 
         self.add_node(TypedNode {
             node_kind: NodeKind::GenericSpecifier {
-                left: typed_name,
+                left: typed_left,
                 generic_arg_type_names: Arc::new(typed_generic_arg_type_names),
             },
             node_type: Some(name_type),
@@ -2996,7 +3212,9 @@ impl Typer {
     }
 
     fn type_name(&mut self, name: NodeIndex) -> NodeIndex {
-        let Some((typed_name, name_type)) = self.lookup_identifier(name, None, None, LookupKind::Types) else {
+        let Some((typed_name, name_type)) =
+            self.lookup_identifier(name, None, None, LookupKind::Types)
+        else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
                 node_type: None,
@@ -3120,19 +3338,19 @@ impl Typer {
         })
     }
 
-    fn type_name_field_access(
-        &mut self,
-        left: NodeIndex,
-        name: NodeIndex,
-    ) -> NodeIndex {
+    fn type_name_field_access(&mut self, left: NodeIndex, name: NodeIndex) -> NodeIndex {
         let typed_left = self.check_node(left);
         let left_type = assert_typed!(self, typed_left);
 
-        let TypeKind::Namespace { namespace_id } = &self.type_kinds.get_by_id(left_type.type_kind_id) else {
+        let TypeKind::Namespace { namespace_id } =
+            &self.type_kinds.get_by_id(left_type.type_kind_id)
+        else {
             type_error!(self, "expected namespace before field access in type name");
         };
 
-        let Some((typed_name, name_type)) = self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::Types) else {
+        let Some((typed_name, name_type)) =
+            self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::Types)
+        else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
                 node_type: None,
@@ -3167,26 +3385,32 @@ impl Typer {
         }
         let generic_arg_type_kind_ids = Arc::new(generic_arg_type_kind_ids);
 
-        let (name, namespace_id) = if let NodeKind::TypeNameFieldAccess { left, name } = self.get_parser_node(left).kind {
-            let typed_left = self.check_node(left);
-            let left_type = assert_typed!(self, typed_left);
+        let (name, namespace_id) =
+            if let NodeKind::TypeNameFieldAccess { left, name } = self.get_parser_node(left).kind {
+                let typed_left = self.check_node(left);
+                let left_type = assert_typed!(self, typed_left);
 
-            let TypeKind::Namespace { namespace_id } = self.type_kinds.get_by_id(left_type.type_kind_id) else {
-                type_error!(self, "expected namespace before field access in type name");
+                let TypeKind::Namespace { namespace_id } =
+                    self.type_kinds.get_by_id(left_type.type_kind_id)
+                else {
+                    type_error!(self, "expected namespace before field access in type name");
+                };
+
+                (name, Some(namespace_id))
+            } else {
+                let NodeKind::TypeName { name } = &self.get_parser_node(left).kind else {
+                    type_error!(self, "expected type name before generic specifier");
+                };
+
+                (*name, None)
             };
 
-            (name, Some(namespace_id))
-        } else {
-            let NodeKind::TypeName { name } = &self.get_parser_node(left).kind else {
-                type_error!(self, "expected type name before generic specifier");
-            };
-
-            (*name, None)
-        };
-
-        let Some((typed_name, name_type)) =
-            self.lookup_identifier(name, namespace_id, Some(generic_arg_type_kind_ids), LookupKind::Types)
-        else {
+        let Some((typed_name, name_type)) = self.lookup_identifier(
+            name,
+            namespace_id,
+            Some(generic_arg_type_kind_ids),
+            LookupKind::Types,
+        ) else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
                 node_type: None,
@@ -3297,7 +3521,10 @@ impl Typer {
     }
 
     fn is_node_numeric_literal(&self, index: NodeIndex) -> bool {
-        matches!(self.get_parser_node(index).kind, NodeKind::IntLiteral { .. } | NodeKind::FloatLiteral { .. })
+        matches!(
+            self.get_parser_node(index).kind,
+            NodeKind::IntLiteral { .. } | NodeKind::FloatLiteral { .. }
+        )
     }
 
     fn is_assignment_valid(&self, to_type_kind_id: usize, from_type_kind_id: usize) -> bool {
@@ -3306,23 +3533,59 @@ impl Typer {
         }
 
         match self.type_kinds.get_by_id(to_type_kind_id) {
-            TypeKind::Array { element_type_kind_id: to_element_type_kind_id, element_count: to_element_count } => {
-                let TypeKind::Array { element_type_kind_id: from_element_type_kind_id, element_count: from_element_count } = self.type_kinds.get_by_id(from_type_kind_id) else {
+            TypeKind::Array {
+                element_type_kind_id: to_element_type_kind_id,
+                element_count: to_element_count,
+            } => {
+                let TypeKind::Array {
+                    element_type_kind_id: from_element_type_kind_id,
+                    element_count: from_element_count,
+                } = self.type_kinds.get_by_id(from_type_kind_id)
+                else {
                     return false;
                 };
 
-                from_element_count == to_element_count && self.is_assignment_valid(to_element_type_kind_id, from_element_type_kind_id)
+                from_element_count == to_element_count
+                    && self.is_assignment_valid(to_element_type_kind_id, from_element_type_kind_id)
             }
             // It's possible to assign either a val or var pointer to a val pointer, because assigning a var pointer to a val pointer
             // just reduces the number of things you can do with the type, it doesn't let you modify immutable values like going the other direction would.
-            TypeKind::Pointer { inner_type_kind_id: to_inner_type_kind_id, is_inner_mutable: false } => {
-                let TypeKind::Pointer { inner_type_kind_id: from_inner_type_kind_id, .. } = self.type_kinds.get_by_id(from_type_kind_id) else {
+            TypeKind::Pointer {
+                inner_type_kind_id: to_inner_type_kind_id,
+                is_inner_mutable: false,
+            } => {
+                let TypeKind::Pointer {
+                    inner_type_kind_id: from_inner_type_kind_id,
+                    ..
+                } = self.type_kinds.get_by_id(from_type_kind_id)
+                else {
                     return false;
                 };
 
                 from_inner_type_kind_id == to_inner_type_kind_id
-            },
+            }
             _ => false,
         }
+    }
+
+    fn is_method_call_valid(
+        &self,
+        param_type_kind_id: usize,
+        instance_type_kind_id: usize,
+    ) -> Option<MethodKind> {
+        if self.is_assignment_valid(param_type_kind_id, instance_type_kind_id) {
+            return Some(MethodKind::ByValue);
+        }
+
+        if let TypeKind::Pointer {
+            inner_type_kind_id, ..
+        } = self.type_kinds.get_by_id(param_type_kind_id)
+        {
+            if self.is_assignment_valid(inner_type_kind_id, instance_type_kind_id) {
+                return Some(MethodKind::ByReference);
+            }
+        }
+
+        None
     }
 }

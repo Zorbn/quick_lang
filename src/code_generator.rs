@@ -7,7 +7,7 @@ use crate::{
     const_value::ConstValue,
     emitter::Emitter,
     emitter_stack::EmitterStack,
-    parser::{DeclarationKind, NodeIndex, NodeKind, Op},
+    parser::{DeclarationKind, MethodKind, NodeIndex, NodeKind, Op},
     type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
     typer::{InstanceKind, Namespace, Type, TypedNode},
     utils::is_typed_expression_array_literal,
@@ -279,7 +279,7 @@ impl CodeGenerator {
             NodeKind::Binary { left, op, right } => self.binary(left, op, right, node_type, namespace_id),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type, namespace_id),
             NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op, node_type, namespace_id),
-            NodeKind::Call { left, args } => self.call(left, args, node_type, namespace_id),
+            NodeKind::Call { left, args, method_kind } => self.call(left, args, method_kind, node_type, namespace_id),
             NodeKind::IndexAccess { left, expression } => {
                 self.index_access(left, expression, node_type, namespace_id)
             }
@@ -1103,10 +1103,31 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit(")");
     }
 
-    fn call(&mut self, left: NodeIndex, args: Arc<Vec<NodeIndex>>, node_type: Option<Type>, _namespace_id: Option<usize>) {
+    fn call(&mut self, left: NodeIndex, args: Arc<Vec<NodeIndex>>, method_kind: MethodKind, node_type: Option<Type>, _namespace_id: Option<usize>) {
         self.gen_node(left);
 
         self.body_emitters.top().body.emit("(");
+
+        if method_kind != MethodKind::None {
+            let mut caller = left;
+            if let NodeKind::GenericSpecifier { left, .. } = self.get_typer_node(caller).node_kind {
+                caller = left;
+            }
+
+            let NodeKind::FieldAccess { left, .. } = self.get_typer_node(caller).node_kind else {
+                panic!("expected field access before method call");
+            };
+
+            if method_kind == MethodKind::ByReference {
+                self.body_emitters.top().body.emit("&");
+            }
+
+            self.gen_node(left);
+
+            if !args.is_empty() {
+                self.body_emitters.top().body.emit(", ");
+            }
+        }
 
         for (i, arg) in args.iter().enumerate() {
             if i > 0 {
@@ -1328,8 +1349,11 @@ impl CodeGenerator {
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
-        // The typer will have unwrapped left into just the name node.
-        let name = left;
+        let name = match self.get_typer_node(left).node_kind {
+            NodeKind::FieldAccess { name, .. } => name,
+            NodeKind::Identifier { name } => name,
+            _ => panic!("expected field access or identifier before generic specifier")
+        };
 
         if let TypeKind::Function { .. } = self.type_kinds.get_by_id(type_kind_id) {
             let is_generic = !generic_arg_type_names.is_empty();
