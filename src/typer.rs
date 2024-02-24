@@ -1092,7 +1092,7 @@ impl Typer {
             if typed_expression.is_some() || declaration_kind == DeclarationKind::Const {
                 let expression_type = assert_typed!(self, typed_expression.unwrap());
 
-                if variable_type.type_kind_id != expression_type.type_kind_id {
+                if !self.is_assignment_valid(variable_type.type_kind_id, expression_type.type_kind_id) {
                     type_error!(self, "mismatched types in variable declaration");
                 }
 
@@ -1397,10 +1397,6 @@ impl Typer {
             right: typed_right,
         };
 
-        if left_type.type_kind_id != right_type.type_kind_id {
-            type_error!(self, "type mismatch");
-        }
-
         if left_type.instance_kind == InstanceKind::Name
             || right_type.instance_kind == InstanceKind::Name
         {
@@ -1420,9 +1416,16 @@ impl Typer {
                 | Op::LeftShiftAssign
                 | Op::RightShiftAssign
                 | Op::ModuloAssign
-        ) && left_type.instance_kind != InstanceKind::Var
-        {
-            type_error!(self, "only vars can be assigned to");
+        ) {
+            if left_type.instance_kind != InstanceKind::Var {
+                type_error!(self, "only vars can be assigned to");
+            }
+
+            if !self.is_assignment_valid(left_type.type_kind_id, right_type.type_kind_id) {
+                type_error!(self, "type mismatch");
+            }
+        } else if left_type.type_kind_id != right_type.type_kind_id {
+            type_error!(self, "type mismatch");
         }
 
         match op {
@@ -1732,7 +1735,7 @@ impl Typer {
 
             let arg_type = assert_typed!(self, typed_arg);
 
-            if arg_type.type_kind_id != *param_type_kind_id {
+            if !self.is_assignment_valid(*param_type_kind_id, arg_type.type_kind_id) {
                 type_error!(self, "incorrect argument type");
             }
         }
@@ -2326,9 +2329,7 @@ impl Typer {
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                if field_literal_type.type_kind_id
-                    != expected_type_kind_id
-                {
+                if !self.is_assignment_valid(field_literal_type.type_kind_id, expected_type_kind_id) {
                     type_error!(self, "incorrect field type");
                 }
             }
@@ -2343,7 +2344,7 @@ impl Typer {
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                if field_literal_type.type_kind_id != expected_field.type_kind_id {
+                if !self.is_assignment_valid(field_literal_type.type_kind_id, expected_field.type_kind_id) {
                     type_error!(self, "incorrect field type");
                 }
             }
@@ -2893,13 +2894,13 @@ impl Typer {
             let typed_scoped_statement = self.check_node_with_hint(scoped_statement, Some(expected_return_type_kind_id));
 
             if let Some(return_type) = self.ensure_typed_statement_returns(typed_scoped_statement) {
-                if return_type.type_kind_id != expected_return_type_kind_id {
-                    type_error!(self, "function does not return the right type");
+                if !self.is_assignment_valid(expected_return_type_kind_id, return_type.type_kind_id) {
+                    type_error!(self, "function does not return the correct type");
                 }
             } else if self.type_kinds.get_by_id(expected_return_type_kind_id) != TypeKind::Void {
                 type_error!(
                     self,
-                    "function does not return the correct type of value on all execution paths"
+                    "function does not return the correct type on all execution paths"
                 );
             }
 
@@ -3297,5 +3298,31 @@ impl Typer {
 
     fn is_node_numeric_literal(&self, index: NodeIndex) -> bool {
         matches!(self.get_parser_node(index).kind, NodeKind::IntLiteral { .. } | NodeKind::FloatLiteral { .. })
+    }
+
+    fn is_assignment_valid(&self, to_type_kind_id: usize, from_type_kind_id: usize) -> bool {
+        if to_type_kind_id == from_type_kind_id {
+            return true;
+        }
+
+        match self.type_kinds.get_by_id(to_type_kind_id) {
+            TypeKind::Array { element_type_kind_id: to_element_type_kind_id, element_count: to_element_count } => {
+                let TypeKind::Array { element_type_kind_id: from_element_type_kind_id, element_count: from_element_count } = self.type_kinds.get_by_id(from_type_kind_id) else {
+                    return false;
+                };
+
+                from_element_count == to_element_count && self.is_assignment_valid(to_element_type_kind_id, from_element_type_kind_id)
+            }
+            // It's possible to assign either a val or var pointer to a val pointer, because assigning a var pointer to a val pointer
+            // just reduces the number of things you can do with the type, it doesn't let you modify immutable values like going the other direction would.
+            TypeKind::Pointer { inner_type_kind_id: to_inner_type_kind_id, is_inner_mutable: false } => {
+                let TypeKind::Pointer { inner_type_kind_id: from_inner_type_kind_id, .. } = self.type_kinds.get_by_id(from_type_kind_id) else {
+                    return false;
+                };
+
+                from_inner_type_kind_id == to_inner_type_kind_id
+            },
+            _ => false,
+        }
     }
 }

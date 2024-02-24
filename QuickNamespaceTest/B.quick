@@ -1,20 +1,3 @@
-// func BFunc() Void
-// {
-//     var zombie = Zombie.<Int> { data = 7 };
-//     zombie.Eat(8);
-//     Zombie.<Int>.Eat(zombie, 9);
-// }
-//
-// struct Zombie<T>
-// {
-//     data T;
-//
-//     func Eat(me *var Zombie.<T>, newData T) Void
-//     {
-//         me.data = newData;
-//     }
-// }
-
 func BFunc() Void
 {
     var zombie = Zombie.<Int> { data = 1 };
@@ -22,6 +5,7 @@ func BFunc() Void
     Zombie.<Int>.EatGeneric.<Int>(*zombie, 7, 4);
     zombie.Eat(*zombie, 7);
     zombie.EatGeneric.<Int>(*zombie, 7, 4);
+    zombie.DoNothing(*zombie);
 }
 
 struct Zombie<T>
@@ -37,5 +21,10 @@ struct Zombie<T>
     {
         val otherGenericThing = genericThing;
         me.data = newData;
+    }
+
+    func DoNothing(me *val Zombie.<T>) Void
+    {
+
     }
 }
