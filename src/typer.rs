@@ -102,10 +102,16 @@ pub struct Namespace {
     definition_indices: Option<Arc<HashMap<Arc<str>, NodeIndex>>>,
     function_definitions: HashMap<GenericIdentifier, FunctionDefinition>,
     type_kinds: HashMap<GenericIdentifier, usize>,
+    generic_args: Vec<NamespaceGenericArg>,
     // environment: HashMap<Arc<str>, Type>, TODO: Allow top-level constants/vals.
 
     inner_ids: HashMap<Arc<str>, usize>,
     pub parent_id: Option<usize>,
+}
+
+struct NamespaceGenericArg {
+    param_name: Arc<str>,
+    type_kind_id: usize,
 }
 
 const GLOBAL_NAMESPACE_ID: usize = 0;
@@ -170,6 +176,7 @@ impl Typer {
             definition_indices: None,
             type_kinds: HashMap::new(),
             function_definitions: HashMap::new(),
+            generic_args: Vec::new(),
             inner_ids: HashMap::new(),
             parent_id: None,
         });
@@ -191,6 +198,7 @@ impl Typer {
                     definition_indices: None,
                     type_kinds: HashMap::new(),
                     function_definitions: HashMap::new(),
+                    generic_args: Vec::new(),
                     inner_ids: HashMap::new(),
                     parent_id: Some(current_namespace_id),
                 });
@@ -790,7 +798,6 @@ impl Typer {
         let mut typed_structs = Vec::new();
         for struct_definition in structs.iter() {
             let NodeKind::StructDefinition {
-                name,
                 generic_params,
                 ..
             } = &self.get_parser_node(*struct_definition).kind
@@ -799,20 +806,6 @@ impl Typer {
             };
 
             if !generic_params.is_empty() {
-                continue;
-            }
-
-            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
-            else {
-                type_error!(self, "invalid struct name");
-            };
-
-            let identifier = GenericIdentifier {
-                name: name_text,
-                generic_arg_type_kind_ids: None,
-            };
-
-            if self.get_file_namespace(file_index).type_kinds.contains_key(&identifier) {
                 continue;
             }
 
@@ -2484,6 +2477,7 @@ impl Typer {
             .insert(identifier, type_kind_id);
 
         self.scope_type_kind_environment.push(false);
+        let mut generic_args = Vec::new();
 
         if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids.clone() {
             if generic_arg_type_kind_ids.len() != generic_params.len() {
@@ -2499,11 +2493,16 @@ impl Typer {
 
                 self.scope_type_kind_environment.insert(
                     GenericIdentifier {
-                        name: param_text,
+                        name: param_text.clone(),
                         generic_arg_type_kind_ids: None,
                     },
                     generic_arg_type_kind_ids[i],
                 );
+
+                generic_args.push(NamespaceGenericArg {
+                    param_name: param_text,
+                    type_kind_id: generic_arg_type_kind_ids[i],
+                })
             }
         }
 
@@ -2539,6 +2538,7 @@ impl Typer {
             definition_indices: Some(definition_indices.clone()),
             function_definitions: HashMap::new(),
             type_kinds: HashMap::new(),
+            generic_args,
             inner_ids: HashMap::new(),
             parent_id: Some(self.file_namespace_ids[file_index]),
         });
@@ -2832,6 +2832,16 @@ impl Typer {
         self.scope_type_kind_environment.push(false);
         self.scope_environment.push(false);
 
+        for generic_arg in &self.namespaces[namespace_id].generic_args {
+            self.scope_type_kind_environment.insert(
+                GenericIdentifier {
+                    name: generic_arg.param_name.clone(),
+                    generic_arg_type_kind_ids: None,
+                },
+                generic_arg.type_kind_id,
+            );
+        }
+
         if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids.clone() {
             if generic_arg_type_kind_ids.len() != generic_params.len() {
                 type_error!(self, "incorrect number of generic arguments");
@@ -2869,7 +2879,7 @@ impl Typer {
             },
         );
 
-        let is_deep_check = self.shallow_check_stack == 0 || generic_arg_type_kind_ids.is_some();
+        let is_deep_check = self.shallow_check_stack == 0 || generic_arg_type_kind_ids.is_some() || !self.namespaces[namespace_id].generic_args.is_empty();
 
         let typed_scoped_statement = if is_deep_check {
             let TypeKind::Function {

@@ -17,21 +17,21 @@
 
 func BFunc() Void
 {
-    var zombie = Zombie { data = 1 };
-    Zombie.Eat(*zombie, 7);
-    Zombie.EatGeneric.<Int>(*zombie, 7, 4);
+    var zombie = Zombie.<Int> { data = 1 };
+    Zombie.<Int>.Eat(*zombie, 7);
+    Zombie.<Int>.EatGeneric.<Int>(*zombie, 7, 4);
 }
 
-struct Zombie
+struct Zombie<T>
 {
     data Int;
 
-    func Eat(me *var Zombie, newData Int) Void
+    func Eat(me *var Zombie.<T>, newData Int) Void
     {
         me.data = newData;
     }
 
-    func EatGeneric<T>(me *var Zombie, newData Int, genericThing T) Void
+    func EatGeneric<A>(me *var Zombie.<T>, newData Int, genericThing A) Void
     {
         val otherGenericThing = genericThing;
         me.data = newData;
