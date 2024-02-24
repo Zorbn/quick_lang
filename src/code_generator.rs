@@ -1865,6 +1865,10 @@ impl CodeGenerator {
         self.emitter(kind).emit(&namespace_name);
         self.emitter(kind).emit("__");
 
+        if let Some(associated_type_kind_id) = self.namespaces[namespace_id].associated_type_kind_id {
+            self.emit_number_backwards(associated_type_kind_id, kind);
+            self.emitter(kind).emit("__");
+        }
     }
 
     fn emit_name(&mut self, name: NodeIndex, kind: EmitterKind) {

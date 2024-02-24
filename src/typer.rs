@@ -85,6 +85,7 @@ enum LookupKind {
 
 pub struct Namespace {
     pub name: Arc<str>,
+    pub associated_type_kind_id: Option<usize>,
     definition_indices: Option<Arc<HashMap<Arc<str>, NodeIndex>>>,
     function_definitions: HashMap<GenericIdentifier, FunctionDefinition>,
     type_kinds: HashMap<GenericIdentifier, usize>,
@@ -157,6 +158,7 @@ impl Typer {
 
         typer.namespaces.push(Namespace {
             name: "".into(),
+            associated_type_kind_id: None,
             definition_indices: None,
             type_kinds: HashMap::new(),
             function_definitions: HashMap::new(),
@@ -182,6 +184,7 @@ impl Typer {
                 let new_namespace_name: Arc<str> = Arc::from(component_str);
                 typer.namespaces.push(Namespace {
                     name: new_namespace_name.clone(),
+                    associated_type_kind_id: None,
                     definition_indices: None,
                     type_kinds: HashMap::new(),
                     function_definitions: HashMap::new(),
@@ -2711,6 +2714,7 @@ impl Typer {
         let namespace_id = self.namespaces.len();
         self.namespaces.push(Namespace {
             name: name_text.clone(),
+            associated_type_kind_id: Some(type_kind_id),
             definition_indices: Some(definition_indices.clone()),
             function_definitions: HashMap::new(),
             type_kinds: HashMap::new(),

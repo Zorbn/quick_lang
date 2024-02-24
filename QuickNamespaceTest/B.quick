@@ -6,7 +6,7 @@ func BFunc() Void
     zombie.Eat(7);
     zombie.EatGeneric.<Int>(7, 4);
     zombie.DoNothing();
-    zombie.Static();
+    Zombie.<String>.Static();
 }
 
 struct Zombie<T>
