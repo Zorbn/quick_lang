@@ -92,6 +92,13 @@ fn reserved_names() -> &'static HashSet<Arc<str>> {
     })
 }
 
+#[derive(Clone, Copy, Debug)]
+struct LoopDepth {
+    index: NodeIndex,
+    depth: usize,
+    was_label_used: bool,
+}
+
 pub struct CodeGenerator {
     typed_nodes: Vec<TypedNode>,
     type_kinds: TypeKinds,
@@ -106,7 +113,8 @@ pub struct CodeGenerator {
 
     function_declaration_needing_init: Option<NodeIndex>,
     temp_variable_count: usize,
-    loop_depth_stack: Vec<usize>,
+    loop_depth_stack: Vec<LoopDepth>,
+    switch_depth_stack: Vec<usize>,
     is_debug_mode: bool,
 }
 
@@ -132,6 +140,7 @@ impl CodeGenerator {
             function_declaration_needing_init: None,
             temp_variable_count: 0,
             loop_depth_stack: Vec::new(),
+            switch_depth_stack: Vec::new(),
             is_debug_mode,
         };
 
@@ -266,7 +275,7 @@ impl CodeGenerator {
             NodeKind::WhileLoop {
                 expression,
                 scoped_statement,
-            } => self.while_loop(expression, scoped_statement, node_type, namespace_id),
+            } => self.while_loop(expression, scoped_statement, index, node_type, namespace_id),
             NodeKind::ForLoop {
                 iterator,
                 op,
@@ -274,7 +283,7 @@ impl CodeGenerator {
                 to,
                 by,
                 scoped_statement,
-            } => self.for_loop(iterator, op, from, to, by, scoped_statement, node_type, namespace_id),
+            } => self.for_loop(iterator, op, from, to, by, scoped_statement, index, node_type, namespace_id),
             NodeKind::ConstExpression { inner } => self.const_expression(inner, node_type, namespace_id),
             NodeKind::Binary { left, op, right } => self.binary(left, op, right, node_type, namespace_id),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type, namespace_id),
@@ -809,14 +818,28 @@ impl CodeGenerator {
     }
 
     fn break_statement(&mut self, _node_type: Option<Type>, _namespace_id: Option<usize>) {
-        let scope_count = self.body_emitters.len() - self.loop_depth_stack.last().unwrap();
+        let last_loop = self.loop_depth_stack.last_mut().unwrap();
+        let scope_count = self.body_emitters.len() - last_loop.depth;
 
         self.body_emitters.early_exiting_scopes(Some(scope_count));
+
+        if let Some(last_switch_depth) = self.switch_depth_stack.last() {
+            if *last_switch_depth > last_loop.depth {
+                last_loop.was_label_used = true;
+
+                let node_index = last_loop.index.node_index;
+                self.body_emitters.top().body.emit("goto __break");
+                self.emit_number_backwards(node_index, EmitterKind::Body);
+
+                return;
+            }
+        }
+
         self.body_emitters.top().body.emit("break");
     }
 
     fn continue_statement(&mut self, _node_type: Option<Type>, _namespace_id: Option<usize>) {
-        let scope_count = self.body_emitters.len() - self.loop_depth_stack.last().unwrap();
+        let scope_count = self.body_emitters.len() - self.loop_depth_stack.last().unwrap().depth;
 
         self.body_emitters.early_exiting_scopes(Some(scope_count));
         self.body_emitters.top().body.emit("continue");
@@ -863,11 +886,15 @@ impl CodeGenerator {
         _node_type: Option<Type>,
         _namespace_id: Option<usize>
     ) {
+        self.switch_depth_stack.push(self.body_emitters.len());
+
         self.body_emitters.top().body.emit("switch (");
         self.gen_node(expression);
         self.body_emitters.top().body.emitln(") {");
         self.gen_node(case_statement);
         self.body_emitters.top().body.emitln("}");
+
+        self.switch_depth_stack.pop();
     }
 
     fn case_statement(
@@ -898,10 +925,25 @@ impl CodeGenerator {
         }
     }
 
+    fn emit_break_label_if_used(&mut self, index: NodeIndex, loop_depth: Option<LoopDepth>) {
+        let Some(loop_depth) = loop_depth else {
+            return;
+        };
+
+        if !loop_depth.was_label_used {
+            return;
+        }
+
+        self.body_emitters.top().body.emit("__break");
+        self.emit_number_backwards(index.node_index, EmitterKind::Body);
+        self.body_emitters.top().body.emitln(":;");
+    }
+
     fn while_loop(
         &mut self,
         expression: NodeIndex,
         scoped_statement: NodeIndex,
+        index: NodeIndex,
         _node_type: Option<Type>,
         _namespace_id: Option<usize>
     ) {
@@ -909,10 +951,17 @@ impl CodeGenerator {
         self.gen_node(expression);
         self.body_emitters.top().body.emit(") ");
 
-        self.loop_depth_stack.push(self.body_emitters.len());
+        self.loop_depth_stack.push(LoopDepth {
+            index,
+            depth: self.body_emitters.len(),
+            was_label_used: false
+        });
+
         self.gen_node(scoped_statement);
         self.body_emitters.top().body.newline();
-        self.loop_depth_stack.pop();
+
+        let loop_depth = self.loop_depth_stack.pop();
+        self.emit_break_label_if_used(index, loop_depth)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -924,6 +973,7 @@ impl CodeGenerator {
         to: NodeIndex,
         by: Option<NodeIndex>,
         scoped_statement: NodeIndex,
+        index: NodeIndex,
         _node_type: Option<Type>,
         _namespace_id: Option<usize>
     ) {
@@ -947,10 +997,17 @@ impl CodeGenerator {
         }
         self.body_emitters.top().body.emit(") ");
 
-        self.loop_depth_stack.push(self.body_emitters.len());
+        self.loop_depth_stack.push(LoopDepth {
+            index,
+            depth: self.body_emitters.len(),
+            was_label_used: false
+        });
+
         self.gen_node(scoped_statement);
         self.body_emitters.top().body.newline();
-        self.loop_depth_stack.pop();
+
+        let loop_depth = self.loop_depth_stack.pop();
+        self.emit_break_label_if_used(index, loop_depth)
     }
 
     fn const_expression(&mut self, _inner: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
