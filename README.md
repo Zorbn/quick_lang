@@ -27,7 +27,7 @@
 - Real string type, as opposed to String being a const char*.
 
 #### Missing Things and Bug Fixes
-- Struct equality comparisons.
+- Struct and static array equality comparisons.
 - Allow `sizeof` on complex types at compile time.
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
 - Stack traces.
@@ -37,7 +37,6 @@
 - `func alloc<T>(value T) *T` alternative to malloc for simple situations.
 
 #### Cleanup
-- Code that generates and uses union `__WithTag/__CheckTag` needs factoring.
 - Refer to TODOs in source files.
 
 #### Notes

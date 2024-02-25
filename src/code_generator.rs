@@ -352,66 +352,8 @@ impl CodeGenerator {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         if is_union {
-            // TODO: Refactor, emit_union_check_tag
-            self.function_prototype_emitter.emit("inline ");
-            self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
-            self.function_prototype_emitter.emit("* ");
-            self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
-            self.function_prototype_emitter.emit("__CheckTag(");
-            self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
-            self.function_prototype_emitter.emit(" *self");
-            self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, false);
-            self.function_prototype_emitter.emitln(", intptr_t tag);");
-            self.function_prototype_emitter.newline();
-
-            self.body_emitters.top().body.emit("inline ");
-            self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
-            self.body_emitters.top().body.emit("* ");
-            self.emit_struct_name(type_kind_id, EmitterKind::Body);
-            self.body_emitters.top().body.emit("__CheckTag(");
-            self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
-            self.body_emitters.top().body.emit(" *self");
-            self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
-            self.body_emitters.top().body.emitln(", intptr_t tag) {");
-            self.body_emitters.top().body.indent();
-            self.body_emitters
-                .top()
-                .body
-                .emitln("assert(self->tag == tag);");
-            self.body_emitters.top().body.emitln("return self;");
-            self.body_emitters.top().body.unindent();
-            self.body_emitters.top().body.emitln("}");
-            self.body_emitters.top().body.newline();
-
-            // TODO: Refactor, emit_union_set_tag
-            self.function_prototype_emitter.emit("inline ");
-            self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
-            self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, true);
-            self.function_prototype_emitter.emit("* ");
-            self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
-            self.function_prototype_emitter.emit("__WithTag(");
-            self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
-            self.function_prototype_emitter.emit(" *self");
-            self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, false);
-            self.function_prototype_emitter.emitln(", intptr_t tag);");
-            self.function_prototype_emitter.newline();
-
-            self.body_emitters.top().body.emit("inline ");
-            self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
-            self.emit_type_kind_right(type_kind_id, EmitterKind::Body, true);
-            self.body_emitters.top().body.emit("* ");
-            self.emit_struct_name(type_kind_id, EmitterKind::Body);
-            self.body_emitters.top().body.emit("__WithTag(");
-            self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
-            self.body_emitters.top().body.emit(" *self");
-            self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
-            self.body_emitters.top().body.emitln(", intptr_t tag) {");
-            self.body_emitters.top().body.indent();
-            self.body_emitters.top().body.emitln("self->tag = tag;");
-            self.body_emitters.top().body.emitln("return self;");
-            self.body_emitters.top().body.unindent();
-            self.body_emitters.top().body.emitln("}");
-            self.body_emitters.top().body.newline();
+            self.emit_union_check_tag(type_kind_id);
+            self.emit_union_with_tag(type_kind_id);
         }
 
         self.type_prototype_emitter.emit("struct ");
@@ -1052,7 +994,6 @@ impl CodeGenerator {
                 return;
             }
 
-            // TODO: Needs refactor into it's own fn, also consider the similar code that exists in field access.
             if let NodeKind::FieldAccess { left, name } = self.get_typer_node(left).node_kind {
                 let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
 
@@ -1083,33 +1024,7 @@ impl CodeGenerator {
                             panic!("tag not found in union assignment");
                         };
 
-                        self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
-                        self.body_emitters.top().body.emit("__WithTag((");
-                        self.emit_type_kind_left(
-                            dereferenced_left_type_kind_id,
-                            EmitterKind::Body,
-                            false,
-                            false,
-                        );
-                        self.emit_type_kind_right(
-                            dereferenced_left_type_kind_id,
-                            EmitterKind::Body,
-                            false,
-                        );
-                        self.body_emitters.top().body.emit("*)");
-
-                        if !is_left_pointer {
-                            self.body_emitters.top().body.emit("&");
-                        }
-
-                        self.gen_node(left);
-
-                        self.body_emitters.top().body.emit(", ");
-                        self.body_emitters.top().body.emit(&tag.to_string());
-
-                        self.body_emitters.top().body.emit(")->variant.");
-                        self.gen_node(name);
-
+                        self.emit_union_with_tag_usage(dereferenced_left_type_kind_id, is_left_pointer, left, name, tag);
                         self.emit_binary_op(op);
                         self.gen_node(right);
 
@@ -1306,28 +1221,7 @@ impl CodeGenerator {
                     panic!("tag not found in field access");
                 };
 
-                self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
-                self.body_emitters.top().body.emit("__CheckTag((");
-                self.emit_type_kind_left(
-                    dereferenced_left_type_kind_id,
-                    EmitterKind::Body,
-                    false,
-                    false,
-                );
-                self.emit_type_kind_right(dereferenced_left_type_kind_id, EmitterKind::Body, false);
-                self.body_emitters.top().body.emit("*)");
-
-                if !is_left_pointer {
-                    self.body_emitters.top().body.emit("&");
-                }
-
-                self.gen_node(left);
-
-                self.body_emitters.top().body.emit(", ");
-                self.body_emitters.top().body.emit(&tag.to_string());
-
-                self.body_emitters.top().body.emit(")->variant.");
-                self.gen_node(name);
+                self.emit_union_check_tag_usage(dereferenced_left_type_kind_id, is_left_pointer, left, name, tag);
 
                 return;
             }
@@ -2065,4 +1959,122 @@ impl CodeGenerator {
 
         format!("__{}{}", prefix, temp_variable_index)
     }
+
+    fn emit_union_check_tag(&mut self, type_kind_id: usize) {
+        self.function_prototype_emitter.emit("inline ");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.function_prototype_emitter.emit("* ");
+        self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
+        self.function_prototype_emitter.emit("__CheckTag(");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.function_prototype_emitter.emit(" *self");
+        self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, false);
+        self.function_prototype_emitter.emitln(", intptr_t tag);");
+        self.function_prototype_emitter.newline();
+
+        self.body_emitters.top().body.emit("inline ");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
+        self.body_emitters.top().body.emit("* ");
+        self.emit_struct_name(type_kind_id, EmitterKind::Body);
+        self.body_emitters.top().body.emit("__CheckTag(");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
+        self.body_emitters.top().body.emit(" *self");
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
+        self.body_emitters.top().body.emitln(", intptr_t tag) {");
+        self.body_emitters.top().body.indent();
+        self.body_emitters
+            .top()
+            .body
+            .emitln("assert(self->tag == tag);");
+        self.body_emitters.top().body.emitln("return self;");
+        self.body_emitters.top().body.unindent();
+        self.body_emitters.top().body.emitln("}");
+        self.body_emitters.top().body.newline();
+    }
+
+    fn emit_union_check_tag_usage(&mut self, dereferenced_left_type_kind_id: usize, is_left_pointer: bool, left: NodeIndex, name: NodeIndex, tag: usize) {
+        self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
+        self.body_emitters.top().body.emit("__CheckTag((");
+        self.emit_type_kind_left(
+            dereferenced_left_type_kind_id,
+            EmitterKind::Body,
+            false,
+            false,
+        );
+        self.emit_type_kind_right(dereferenced_left_type_kind_id, EmitterKind::Body, false);
+        self.body_emitters.top().body.emit("*)");
+
+        if !is_left_pointer {
+            self.body_emitters.top().body.emit("&");
+        }
+
+        self.gen_node(left);
+
+        self.body_emitters.top().body.emit(", ");
+        self.body_emitters.top().body.emit(&tag.to_string());
+
+        self.body_emitters.top().body.emit(")->variant.");
+        self.gen_node(name);
+    }
+
+    fn emit_union_with_tag(&mut self, type_kind_id: usize) {
+        self.function_prototype_emitter.emit("inline ");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, true);
+        self.function_prototype_emitter.emit("* ");
+        self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
+        self.function_prototype_emitter.emit("__WithTag(");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.function_prototype_emitter.emit(" *self");
+        self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, false);
+        self.function_prototype_emitter.emitln(", intptr_t tag);");
+        self.function_prototype_emitter.newline();
+
+        self.body_emitters.top().body.emit("inline ");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, true);
+        self.body_emitters.top().body.emit("* ");
+        self.emit_struct_name(type_kind_id, EmitterKind::Body);
+        self.body_emitters.top().body.emit("__WithTag(");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
+        self.body_emitters.top().body.emit(" *self");
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
+        self.body_emitters.top().body.emitln(", intptr_t tag) {");
+        self.body_emitters.top().body.indent();
+        self.body_emitters.top().body.emitln("self->tag = tag;");
+        self.body_emitters.top().body.emitln("return self;");
+        self.body_emitters.top().body.unindent();
+        self.body_emitters.top().body.emitln("}");
+        self.body_emitters.top().body.newline();
+    }
+
+    fn emit_union_with_tag_usage(&mut self, dereferenced_left_type_kind_id: usize, is_left_pointer: bool, left: NodeIndex, name: NodeIndex, tag: usize) {
+        self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
+        self.body_emitters.top().body.emit("__WithTag((");
+        self.emit_type_kind_left(
+            dereferenced_left_type_kind_id,
+            EmitterKind::Body,
+            false,
+            false,
+        );
+        self.emit_type_kind_right(
+            dereferenced_left_type_kind_id,
+            EmitterKind::Body,
+            false,
+        );
+        self.body_emitters.top().body.emit("*)");
+
+        if !is_left_pointer {
+            self.body_emitters.top().body.emit("&");
+        }
+
+        self.gen_node(left);
+
+        self.body_emitters.top().body.emit(", ");
+        self.body_emitters.top().body.emit(&tag.to_string());
+
+        self.body_emitters.top().body.emit(")->variant.");
+        self.gen_node(name);
+    }
+
 }
