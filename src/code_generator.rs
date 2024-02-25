@@ -150,6 +150,12 @@ impl CodeGenerator {
         code_generator
             .header_emitter
             .emitln("void *memmove(void *dst, const void *src, size_t size);");
+        code_generator
+            .header_emitter
+            .emitln("int memcmp(const void *ptr1, const void *ptr2, size_t num);");
+        code_generator
+            .header_emitter
+            .emitln("int strcmp(const char *lhs, const char *rhs);");
         code_generator.header_emitter.newline();
         code_generator.body_emitters.push(1);
 
@@ -350,6 +356,8 @@ impl CodeGenerator {
         _namespace_id: Option<usize>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
+
+        self.emit_struct_equals(type_kind_id);
 
         if is_union {
             self.emit_union_check_tag(type_kind_id);
@@ -982,8 +990,9 @@ impl CodeGenerator {
     }
 
     fn binary(&mut self, left: NodeIndex, op: Op, right: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>) {
+        let type_kind_id = node_type.unwrap().type_kind_id;
+
         if op == Op::Assign {
-            let type_kind_id = node_type.unwrap().type_kind_id;
             let is_array = matches!(
                 &self.type_kinds.get_by_id(type_kind_id),
                 TypeKind::Array { .. }
@@ -1043,9 +1052,13 @@ impl CodeGenerator {
             self.body_emitters.top().body.emit("(")
         }
 
-        self.gen_node(left);
-        self.emit_binary_op(op);
-        self.gen_node(right);
+        if matches!(op, Op::Equal | Op::NotEqual) {
+            self.emit_equality(type_kind_id, None, left, None, right, op == Op::Equal);
+        } else {
+            self.gen_node(left);
+            self.emit_binary_op(op);
+            self.gen_node(right);
+        }
 
         if needs_increased_precedence {
             self.body_emitters.top().body.emit(")")
@@ -1693,8 +1706,6 @@ impl CodeGenerator {
 
     fn emit_binary_op(&mut self, op: Op) {
         self.body_emitters.top().body.emit(match op {
-            Op::Equal => " == ",
-            Op::NotEqual => " != ",
             Op::Less => " < ",
             Op::Greater => " > ",
             Op::LessEqual => " <= ",
@@ -1722,7 +1733,7 @@ impl CodeGenerator {
             Op::BitwiseAndAssign => " &= ",
             Op::BitwiseOrAssign => " |= ",
             Op::XorAssign => " ^= ",
-            _ => panic!("expected binary operator"),
+            _ => panic!("this operator cannot be emitted using emit_binary_op"),
         });
     }
 
@@ -2077,4 +2088,165 @@ impl CodeGenerator {
         self.gen_node(name);
     }
 
+    fn emit_equality(&mut self, type_kind_id: usize, left_prefix: Option<&str>, left: NodeIndex, right_prefix: Option<&str>, right: NodeIndex, is_equal: bool) {
+        match self.type_kinds.get_by_id(type_kind_id) {
+            TypeKind::Struct { .. } => {
+                if !is_equal {
+                    self.body_emitters.top().body.emit("!");
+                }
+
+                self.emit_struct_equals_usage(type_kind_id, left_prefix, left, right_prefix, right)
+            },
+            TypeKind::Array { .. } => {
+                if !is_equal {
+                    self.body_emitters.top().body.emit("!");
+                }
+
+                self.body_emitters.top().body.emit("memcmp(");
+
+                if let Some(left_prefix) = left_prefix {
+                    self.body_emitters.top().body.emit(left_prefix);
+                }
+
+                self.gen_node(left);
+
+                self.body_emitters.top().body.emit(", ");
+
+                if let Some(right_prefix) = right_prefix {
+                    self.body_emitters.top().body.emit(right_prefix);
+                }
+
+                self.gen_node(right);
+
+                self.body_emitters.top().body.emit(", ");
+                self.emit_type_size(type_kind_id);
+                self.body_emitters.top().body.emit(")");
+            },
+            TypeKind::String => {
+                if !is_equal {
+                    self.body_emitters.top().body.emit("!");
+                }
+
+                self.body_emitters.top().body.emit("strcmp(");
+
+                if let Some(left_prefix) = left_prefix {
+                    self.body_emitters.top().body.emit(left_prefix);
+                }
+
+                self.gen_node(left);
+
+                self.body_emitters.top().body.emit(", ");
+
+                if let Some(right_prefix) = right_prefix {
+                    self.body_emitters.top().body.emit(right_prefix);
+                }
+
+                self.gen_node(right);
+
+                self.body_emitters.top().body.emit(")");
+            },
+            _ => {
+                if let Some(left_prefix) = left_prefix {
+                    self.body_emitters.top().body.emit(left_prefix);
+                }
+
+                self.gen_node(left);
+
+                if is_equal {
+                    self.body_emitters.top().body.emit(" == ");
+                } else {
+                    self.body_emitters.top().body.emit(" != ");
+                }
+
+                if let Some(right_prefix) = right_prefix {
+                    self.body_emitters.top().body.emit(right_prefix);
+                }
+
+                self.gen_node(right);
+            }
+        }
+    }
+
+    fn emit_struct_equals(&mut self, type_kind_id: usize) {
+        self.function_prototype_emitter.emit("inline bool ");
+        self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
+        self.function_prototype_emitter.emit("__Equals(");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.function_prototype_emitter.emit(" *left, ");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.function_prototype_emitter.emitln(" *right);");
+        self.function_prototype_emitter.newline();
+
+        self.body_emitters.top().body.emit("inline bool ");
+        self.emit_struct_name(type_kind_id, EmitterKind::Body);
+        self.body_emitters.top().body.emit("__Equals(");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
+        self.body_emitters.top().body.emit(" *left, ");
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
+        self.body_emitters.top().body.emitln(" *right) {");
+        self.body_emitters.top().body.indent();
+
+        let TypeKind::Struct { fields, is_union, .. } = self.type_kinds.get_by_id(type_kind_id) else {
+            panic!("cannot emit struct comparison for non-struct type");
+        };
+
+        if is_union {
+            self.body_emitters.top().body.emitln("if (left->tag != right->tag) {");
+            self.body_emitters.top().body.indent();
+            self.body_emitters.top().body.emitln("return false;");
+            self.body_emitters.top().body.unindent();
+            self.body_emitters.top().body.emitln("}");
+
+            self.body_emitters.top().body.emitln("switch (left->tag) {");
+            for (i, field) in fields.iter().enumerate() {
+                self.body_emitters.top().body.emit("case ");
+                self.body_emitters.top().body.emit(&i.to_string());
+                self.body_emitters.top().body.emit(": return ");
+                self.emit_equality(field.type_kind_id, Some("left->variant."), field.name, Some("right->variant."), field.name, true);
+                self.body_emitters.top().body.emitln(";");
+            }
+            self.body_emitters.top().body.emitln("}");
+        } else {
+            self.body_emitters.top().body.emit("return ");
+
+            if fields.is_empty() {
+                self.body_emitters.top().body.emit("true");
+            }
+
+            for (i, field) in fields.iter().enumerate() {
+                if i > 0 {
+                    self.body_emitters.top().body.emit(" && ");
+                }
+
+                self.emit_equality(field.type_kind_id, Some("left->"), field.name, Some("right->"), field.name, true);
+            }
+
+            self.body_emitters.top().body.emitln(";");
+        }
+
+        self.body_emitters.top().body.unindent();
+        self.body_emitters.top().body.emitln("}");
+        self.body_emitters.top().body.newline();
+    }
+
+    fn emit_struct_equals_usage(&mut self, type_kind_id: usize, left_prefix: Option<&str>, left: NodeIndex, right_prefix: Option<&str>, right: NodeIndex) {
+        self.emit_struct_name(type_kind_id, EmitterKind::Body);
+        self.body_emitters.top().body.emit("__Equals(&");
+
+        if let Some(left_prefix) = left_prefix {
+            self.body_emitters.top().body.emit(left_prefix);
+        }
+
+        self.gen_node(left);
+
+        self.body_emitters.top().body.emit(", &");
+
+        if let Some(right_prefix) = right_prefix {
+            self.body_emitters.top().body.emit(right_prefix);
+        }
+
+        self.gen_node(right);
+
+        self.body_emitters.top().body.emit(")");
+    }
 }

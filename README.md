@@ -27,7 +27,6 @@
 - Real string type, as opposed to String being a const char*.
 
 #### Missing Things and Bug Fixes
-- Struct and static array equality comparisons.
 - Allow `sizeof` on complex types at compile time.
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
 - Stack traces.
