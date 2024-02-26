@@ -67,8 +67,9 @@ pub enum NodeKind {
         functions: Arc<Vec<NodeIndex>>,
         structs: Arc<Vec<NodeIndex>>,
         enums: Arc<Vec<NodeIndex>>,
-        usings: Arc<Vec<NodeIndex>>,
         aliases: Arc<Vec<NodeIndex>>,
+        variable_declarations: Arc<Vec<NodeIndex>>,
+        usings: Arc<Vec<NodeIndex>>,
         definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
     },
     StructDefinition {
@@ -401,8 +402,9 @@ impl Parser {
         let mut functions = Vec::new();
         let mut structs = Vec::new();
         let mut enums = Vec::new();
-        let mut usings = Vec::new();
         let mut aliases = Vec::new();
+        let mut variable_declarations = Vec::new();
+        let mut usings = Vec::new();
 
         let mut definition_indices = HashMap::new();
 
@@ -437,6 +439,14 @@ impl Parser {
                     index = self.alias(&mut definition_indices);
                     aliases.push(index);
                 }
+                TokenKind::Val | TokenKind::Const => {
+                    index = self.variable_declaration(Some(&mut definition_indices));
+
+                    assert_token!(self, TokenKind::Semicolon, start, self.token_end());
+                    self.position += 1;
+
+                    variable_declarations.push(index);
+                }
                 _ => parse_error!(self, "unexpected token at top level", start, end),
             }
 
@@ -448,8 +458,9 @@ impl Parser {
                 functions: Arc::new(functions),
                 structs: Arc::new(structs),
                 enums: Arc::new(enums),
-                usings: Arc::new(usings),
                 aliases: Arc::new(aliases),
+                variable_declarations: Arc::new(variable_declarations),
+                usings: Arc::new(usings),
                 definition_indices: Arc::new(definition_indices),
             },
             start,
@@ -886,7 +897,7 @@ impl Parser {
 
         let inner = match self.token_kind() {
             TokenKind::Semicolon => None,
-            TokenKind::Var | TokenKind::Val | TokenKind::Const => Some(self.variable_declaration()),
+            TokenKind::Var | TokenKind::Val | TokenKind::Const => Some(self.variable_declaration(None)),
             TokenKind::Return => Some(self.return_statement()),
             TokenKind::Break => Some(self.break_statement()),
             TokenKind::Continue => Some(self.continue_statement()),
@@ -917,7 +928,7 @@ impl Parser {
         })
     }
 
-    fn variable_declaration(&mut self) -> NodeIndex {
+    fn variable_declaration(&mut self, definition_indices: Option<&mut HashMap<Arc<str>, NodeIndex>>) -> NodeIndex {
         let start = self.token_start();
         let declaration_kind = match self.token_kind() {
             TokenKind::Var => DeclarationKind::Var,
@@ -973,7 +984,7 @@ impl Parser {
             (Some(expression), end)
         };
 
-        self.add_node(Node {
+        let index = self.add_node(Node {
             kind: NodeKind::VariableDeclaration {
                 declaration_kind,
                 name,
@@ -982,7 +993,17 @@ impl Parser {
             },
             start,
             end,
-        })
+        });
+
+        if let Some(definition_indices) = definition_indices {
+            let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
+                parse_error!(self, "invalid variable name", start, end);
+            };
+
+            definition_indices.insert(name_text, index);
+        }
+
+        index
     }
 
     fn return_statement(&mut self) -> NodeIndex {

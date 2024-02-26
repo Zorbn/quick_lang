@@ -89,8 +89,8 @@ pub struct Namespace {
     definition_indices: Option<Arc<HashMap<Arc<str>, NodeIndex>>>,
     function_definitions: HashMap<GenericIdentifier, FunctionDefinition>,
     type_kinds: HashMap<GenericIdentifier, usize>,
+    variable_types: HashMap<Arc<str>, Type>,
     generic_args: Vec<NamespaceGenericArg>,
-    // environment: HashMap<Arc<str>, Type>, TODO: Allow top-level constants/vals.
     inner_ids: HashMap<Arc<str>, usize>,
     pub parent_id: Option<usize>,
 }
@@ -100,13 +100,19 @@ struct NamespaceGenericArg {
     type_kind_id: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct TypedDefinition {
+    pub index: NodeIndex,
+    pub is_shallow: bool,
+}
+
 const GLOBAL_NAMESPACE_ID: usize = 0;
 
 pub struct Typer {
     all_nodes: Arc<Vec<Vec<Node>>>,
 
     pub typed_nodes: Vec<TypedNode>,
-    pub typed_definition_indices: Vec<NodeIndex>,
+    pub typed_definitions: Vec<TypedDefinition>,
     pub type_kinds: TypeKinds,
     pub namespaces: Vec<Namespace>,
     pub main_function_declaration: Option<NodeIndex>,
@@ -144,7 +150,7 @@ impl Typer {
             file_used_namespace_ids_lists: Vec::new(),
             namespaces: Vec::with_capacity(file_count),
             typed_nodes: Vec::new(),
-            typed_definition_indices: Vec::new(),
+            typed_definitions: Vec::new(),
             type_kinds: TypeKinds::new(),
             main_function_declaration: None,
             error_count: 0,
@@ -162,6 +168,7 @@ impl Typer {
             definition_indices: None,
             type_kinds: HashMap::new(),
             function_definitions: HashMap::new(),
+            variable_types: HashMap::new(),
             generic_args: Vec::new(),
             inner_ids: HashMap::new(),
             parent_id: None,
@@ -188,6 +195,7 @@ impl Typer {
                     definition_indices: None,
                     type_kinds: HashMap::new(),
                     function_definitions: HashMap::new(),
+                    variable_types: HashMap::new(),
                     generic_args: Vec::new(),
                     inner_ids: HashMap::new(),
                     parent_id: Some(current_namespace_id),
@@ -331,6 +339,10 @@ impl Typer {
         &self.typed_nodes[index.node_index]
     }
 
+    fn add_typed_definition(&mut self, index: NodeIndex) {
+        self.typed_definitions.push(TypedDefinition { index, is_shallow: self.shallow_check_stack > 0 })
+    }
+
     fn lookup_identifier_in_namespace(
         &mut self,
         name: NodeIndex,
@@ -379,6 +391,19 @@ impl Typer {
                     },
                 ));
             }
+
+            if let Some(variable_type) = self.namespaces[namespace_id].variable_types.get(&identifier.name).cloned() {
+                if generic_arg_type_kind_ids.is_some() {
+                    return None;
+                }
+
+                let typed_name = self.check_node_with_namespace(name, Some(namespace_id));
+
+                return Some((
+                    typed_name,
+                    variable_type,
+                ));
+            }
         }
 
         if let Some(type_kind_id) = self.namespaces[namespace_id]
@@ -424,6 +449,10 @@ impl Typer {
             namespace_id,
         );
         self.shallow_check_stack -= 1;
+
+        let Some(typed_definition) = typed_definition else {
+            return None;
+        };
 
         let definition_type = self.get_typer_node(typed_definition).node_type.clone()?;
 
@@ -567,6 +596,7 @@ impl Typer {
                 structs,
                 enums,
                 aliases,
+                variable_declarations,
                 definition_indices,
                 ..
             } => self.top_level(
@@ -574,6 +604,7 @@ impl Typer {
                 structs,
                 enums,
                 aliases,
+                variable_declarations,
                 definition_indices,
                 file_index,
             ),
@@ -593,7 +624,7 @@ impl Typer {
                 name,
                 type_name,
                 expression,
-            } => self.variable_declaration(declaration_kind, name, type_name, expression),
+            } => self.variable_declaration(declaration_kind, name, type_name, expression, None),
             NodeKind::ReturnStatement { expression } => self.return_statement(expression, None),
             NodeKind::BreakStatement => self.break_statement(),
             NodeKind::ContinueStatement => self.continue_statement(),
@@ -723,7 +754,7 @@ impl Typer {
         index: NodeIndex,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
         namespace_id: usize,
-    ) -> NodeIndex {
+    ) -> Option<NodeIndex> {
         self.node_index_stack.push(index);
         let file_index = index.file_index;
 
@@ -735,7 +766,7 @@ impl Typer {
                 generic_params,
                 definition_indices,
                 is_union,
-            } => self.struct_definition(
+            } => Some(self.struct_definition(
                 name,
                 fields,
                 functions,
@@ -744,17 +775,18 @@ impl Typer {
                 is_union,
                 generic_arg_type_kind_ids,
                 file_index,
-            ),
+            )),
             NodeKind::Function {
                 declaration,
                 scoped_statement,
-            } => self.function(
+            } => Some(self.function(
                 declaration,
                 scoped_statement,
                 generic_arg_type_kind_ids,
                 namespace_id,
-            ),
-            _ => self.check_node(index),
+            )),
+            _ if generic_arg_type_kind_ids.is_none() => Some(self.check_node_with_namespace(index, Some(namespace_id))),
+            _ => None
         };
 
         self.node_index_stack.pop();
@@ -809,6 +841,12 @@ impl Typer {
                 declaration,
                 scoped_statement,
             } => self.function(declaration, scoped_statement, None, namespace_id.unwrap()),
+            NodeKind::VariableDeclaration {
+                declaration_kind,
+                name,
+                type_name,
+                expression
+            } => self.variable_declaration(declaration_kind, name, type_name, expression, namespace_id),
             _ => self.check_node(index),
         };
 
@@ -839,12 +877,14 @@ impl Typer {
         typed_index
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn top_level(
         &mut self,
         functions: Arc<Vec<NodeIndex>>,
         structs: Arc<Vec<NodeIndex>>,
         enums: Arc<Vec<NodeIndex>>,
         aliases: Arc<Vec<NodeIndex>>,
+        variable_declarations: Arc<Vec<NodeIndex>>,
         definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
         file_index: usize,
     ) -> NodeIndex {
@@ -925,13 +965,20 @@ impl Typer {
             typed_functions.push(self.check_node(*function));
         }
 
+        let mut typed_variable_declarations = Vec::new();
+        for variable_declaration in variable_declarations.iter() {
+            let namespace_id = self.file_namespace_ids[file_index];
+            typed_variable_declarations.push(self.check_node_with_namespace(*variable_declaration, Some(namespace_id)));
+        }
+
         self.add_node(TypedNode {
             node_kind: NodeKind::TopLevel {
                 functions: Arc::new(typed_functions),
                 structs: Arc::new(typed_structs),
                 enums: Arc::new(typed_enums),
-                usings: Arc::new(Vec::new()),
                 aliases: Arc::new(typed_aliases),
+                variable_declarations: Arc::new(typed_variable_declarations),
+                usings: Arc::new(Vec::new()),
                 definition_indices,
             },
             node_type: None,
@@ -994,7 +1041,7 @@ impl Typer {
             namespace_id: Some(GLOBAL_NAMESPACE_ID),
         });
 
-        self.typed_definition_indices.push(index);
+        self.add_typed_definition(index);
 
         index
     }
@@ -1136,6 +1183,7 @@ impl Typer {
         name: NodeIndex,
         type_name: Option<NodeIndex>,
         expression: Option<NodeIndex>,
+        namespace_id: Option<usize>,
     ) -> NodeIndex {
         let typed_name = self.check_node(name);
         let typed_type_name = self.check_optional_node(type_name, None);
@@ -1200,19 +1248,26 @@ impl Typer {
             DeclarationKind::Const => variable_type.instance_kind,
         };
 
-        self.scope_environment
-            .insert(name_text, variable_type.clone());
-
-        self.add_node(TypedNode {
+        let index = self.add_node(TypedNode {
             node_kind: NodeKind::VariableDeclaration {
                 declaration_kind,
                 name: typed_name,
                 type_name: typed_type_name,
                 expression: typed_expression,
             },
-            node_type: Some(variable_type),
-            namespace_id: None,
-        })
+            node_type: Some(variable_type.clone()),
+            namespace_id,
+        });
+
+        if let Some(namespace_id) = namespace_id {
+            self.namespaces[namespace_id].variable_types.insert(name_text, variable_type);
+            self.add_typed_definition(index);
+        } else {
+            self.scope_environment
+                .insert(name_text, variable_type);
+        }
+
+        index
     }
 
     fn return_statement(
@@ -2718,6 +2773,7 @@ impl Typer {
             definition_indices: Some(definition_indices.clone()),
             function_definitions: HashMap::new(),
             type_kinds: HashMap::new(),
+            variable_types: HashMap::new(),
             generic_args,
             inner_ids: HashMap::new(),
             parent_id: Some(self.file_namespace_ids[file_index]),
@@ -2777,7 +2833,7 @@ impl Typer {
             namespace_id: Some(self.file_namespace_ids[file_index]),
         });
 
-        self.typed_definition_indices.push(index);
+        self.add_typed_definition(index);
 
         index
     }
@@ -2825,7 +2881,7 @@ impl Typer {
             namespace_id: Some(self.file_namespace_ids[file_index]),
         });
 
-        self.typed_definition_indices.push(index);
+        self.add_typed_definition(index);
 
         index
     }
@@ -3114,7 +3170,7 @@ impl Typer {
             namespace_id: Some(namespace_id),
         });
 
-        self.typed_definition_indices.push(index);
+        self.typed_definitions.push(TypedDefinition { index, is_shallow: !is_deep_check });
 
         index
     }

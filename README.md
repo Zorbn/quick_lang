@@ -22,9 +22,8 @@
 - Variadic arguments.
 - `for elem in array {}`
 - Possibly generic type inference, so specifiers aren't required?
-- Top level const declarations.
 - Proper escape sequences (right now they are cheated in by using C's behavior).
-- Real string type, as opposed to String being a const char*.
+- Real string type, as opposed to String being a const char* (at least support .count).
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.

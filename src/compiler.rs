@@ -165,7 +165,7 @@ fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
             typer.type_kinds,
             typer.namespaces,
             typer.main_function_declaration,
-            typer.typed_definition_indices,
+            typer.typed_definitions,
             is_debug_mode,
         );
         code_generator.gen();
@@ -180,6 +180,9 @@ fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
             .write(&mut output_file);
         code_generator
             .function_prototype_emitter
+            .write(&mut output_file);
+        code_generator
+            .global_variable_emitter
             .write(&mut output_file);
         code_generator.body_emitters.write(&mut output_file);
 
