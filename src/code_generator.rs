@@ -1925,7 +1925,7 @@ impl CodeGenerator {
 
     fn emit_bounds_check(&mut self) {
         self.function_prototype_emitter
-            .emitln("intptr_t __BoundsCheck(intptr_t index, intptr_t count);");
+            .emitln("static inline intptr_t __BoundsCheck(intptr_t index, intptr_t count);");
         self.function_prototype_emitter.newline();
 
         self.body_emitters
