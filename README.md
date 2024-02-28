@@ -31,6 +31,7 @@
 - Stack traces.
 - Catch ambiguous symbol lookups.
 - Don't allow methods that take a mutable me ptr to be called on vals.
+- C doesn't allow expressions, struct literals, etc in top level declarations, so in codegen they need to be defined at top level and initialized at main instead.
 
 #### Standard Library
 - `func alloc<T>(value T) *T` alternative to malloc for simple situations.

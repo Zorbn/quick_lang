@@ -13,7 +13,7 @@ use crate::{
     utils::is_typed_expression_array_literal,
 };
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum EmitterKind {
     TypePrototype,
     FunctionPrototype,
@@ -757,7 +757,7 @@ impl CodeGenerator {
             &self.type_kinds.get_by_id(type_kind_id),
             TypeKind::Array { .. }
         );
-        let needs_const = declaration_kind != DeclarationKind::Var && !is_array;
+        let needs_const = declaration_kind != DeclarationKind::Var && !is_array && kind != EmitterKind::GlobalVariable;
 
         self.emit_type_kind_left(type_kind_id, kind, false, true);
 
@@ -1473,7 +1473,7 @@ impl CodeGenerator {
         self.emitter(kind).emitln("\",");
 
         self.emitter(kind).unindent();
-        self.emitter(kind).emitln("}");
+        self.emitter(kind).emit("}");
     }
 
     fn bool_literal(&mut self, value: bool, _node_type: Option<Type>, _namespace_id: Option<usize>, kind: EmitterKind) {
