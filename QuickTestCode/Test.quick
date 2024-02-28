@@ -3,7 +3,8 @@ using QuickCode.Test;
 
 alias MyString = String;
 
-extern func puts(str String) UInt;
+extern func puts(str *val Char) UInt;
+
 extern func malloc(size UInt) *var Void;
 extern func free(ptr *var Void) Void;
 

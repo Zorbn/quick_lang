@@ -11,4 +11,15 @@ struct StringView
 
         return dataPointer.*;
     }
+
+    func Equals(me *val StringView, other *val StringView) Bool
+    {
+        if (me.count != other.count) return false;
+
+        for (i of 0 < me.count)
+            if (me.Get(i) != other.Get(i))
+                return false;
+
+        return true;
+    }
 }

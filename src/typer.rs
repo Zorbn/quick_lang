@@ -122,8 +122,11 @@ pub struct Typer {
     file_namespace_ids: Vec<usize>,
     file_used_namespace_ids: Vec<HashSet<usize>>,
     file_used_namespace_ids_lists: Vec<Vec<usize>>,
+
     scope_type_kind_environment: Environment<GenericIdentifier, usize>,
     scope_environment: Environment<Arc<str>, Type>,
+    string_view_type_kind_id: usize,
+
     was_block_already_opened: bool,
     node_index_stack: Vec<NodeIndex>,
     loop_stack: usize,
@@ -139,23 +142,29 @@ impl Typer {
         all_start_indices: &[NodeIndex],
         files: Arc<Vec<FileData>>,
         file_paths_components: Arc<Vec<Vec<OsString>>>,
+        file_index: usize,
     ) -> Self {
         let file_count = files.len();
 
         let mut typer = Self {
             all_nodes,
+
+            typed_nodes: Vec::new(),
+            typed_definitions: Vec::new(),
+            type_kinds: TypeKinds::new(),
+            namespaces: Vec::with_capacity(file_count),
+            main_function_declaration: None,
+            error_count: 0,
+
             files,
             file_namespace_ids: Vec::with_capacity(file_count),
             file_used_namespace_ids: Vec::new(),
             file_used_namespace_ids_lists: Vec::new(),
-            namespaces: Vec::with_capacity(file_count),
-            typed_nodes: Vec::new(),
-            typed_definitions: Vec::new(),
-            type_kinds: TypeKinds::new(),
-            main_function_declaration: None,
-            error_count: 0,
+
             scope_type_kind_environment: Environment::new(),
             scope_environment: Environment::new(),
+            string_view_type_kind_id: 0,
+
             was_block_already_opened: false,
             node_index_stack: Vec::new(),
             loop_stack: 0,
@@ -244,6 +253,12 @@ impl Typer {
 
         typer.define_global_primitives();
 
+        typer.string_view_type_kind_id = if let Some((_, string_view_type)) = typer.lookup_identifier("StringView".into(), file_index, None, None, LookupKind::Types) {
+            string_view_type.type_kind_id
+        } else {
+            panic!("StringView type not found");
+        };
+
         typer
     }
 
@@ -254,10 +269,6 @@ impl Typer {
         global_namespace
             .type_kinds
             .insert(GenericIdentifier::new("Int".into()), int_id);
-        let string_id = self.type_kinds.add_or_get(TypeKind::String);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("String".into()), string_id);
         let bool_id = self.type_kinds.add_or_get(TypeKind::Bool);
         global_namespace
             .type_kinds
@@ -345,12 +356,11 @@ impl Typer {
 
     fn lookup_identifier_in_namespace(
         &mut self,
-        name: NodeIndex,
         identifier: &GenericIdentifier,
         namespace_id: usize,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
         kind: LookupKind,
-    ) -> Option<(NodeIndex, Type)> {
+    ) -> Option<(Option<usize>, Type)> {
         if let Some(inner_namespace_id) = self.namespaces[namespace_id]
             .inner_ids
             .get(&identifier.name)
@@ -358,10 +368,9 @@ impl Typer {
             let type_kind_id = self.type_kinds.add_or_get(TypeKind::Namespace {
                 namespace_id: *inner_namespace_id,
             });
-            let typed_name = self.check_node_with_namespace(name, Some(namespace_id));
 
             return Some((
-                typed_name,
+                Some(namespace_id),
                 Type {
                     type_kind_id,
                     instance_kind: InstanceKind::Name,
@@ -381,10 +390,8 @@ impl Typer {
                     Some(namespace_id)
                 };
 
-                let typed_name = self.check_node_with_namespace(name, function_namespace_id);
-
                 return Some((
-                    typed_name,
+                    function_namespace_id,
                     Type {
                         type_kind_id: function_definition.type_kind_id,
                         instance_kind: InstanceKind::Val,
@@ -397,10 +404,8 @@ impl Typer {
                     return None;
                 }
 
-                let typed_name = self.check_node_with_namespace(name, Some(namespace_id));
-
                 return Some((
-                    typed_name,
+                    Some(namespace_id),
                     variable_type,
                 ));
             }
@@ -411,10 +416,8 @@ impl Typer {
             .get(identifier)
             .copied()
         {
-            let typed_name = self.check_node_with_namespace(name, Some(namespace_id));
-
             return Some((
-                typed_name,
+                Some(namespace_id),
                 Type {
                     type_kind_id,
                     instance_kind: InstanceKind::Name,
@@ -464,23 +467,17 @@ impl Typer {
             Some(namespace_id)
         };
 
-        let typed_name = self.check_node_with_namespace(name, definition_namespace_id);
-
-        Some((typed_name, definition_type))
+        Some((definition_namespace_id, definition_type))
     }
 
     fn lookup_identifier(
         &mut self,
-        name: NodeIndex,
+        name_text: Arc<str>,
+        file_index: usize,
         namespace_id: Option<usize>,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
         kind: LookupKind,
-    ) -> Option<(NodeIndex, Type)> {
-        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            self.error("invalid identifier name");
-            return None;
-        };
-
+    ) -> Option<(Option<usize>, Type)> {
         let identifier = GenericIdentifier {
             name: name_text.clone(),
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
@@ -489,14 +486,12 @@ impl Typer {
         let Some(namespace_id) = namespace_id else {
             // The scope is not part of a namespace.
             if let Some(identifier_type) = self.scope_environment.get(&name_text) {
-                let typed_name = self.check_node_with_namespace(name, namespace_id);
-                return Some((typed_name, identifier_type));
+                return Some((namespace_id, identifier_type));
             };
 
             if let Some(type_kind_id) = self.scope_type_kind_environment.get(&identifier) {
-                let typed_name = self.check_node_with_namespace(name, namespace_id);
                 return Some((
-                    typed_name,
+                    namespace_id,
                     Type {
                         type_kind_id,
                         instance_kind: InstanceKind::Name,
@@ -504,11 +499,9 @@ impl Typer {
                 ));
             };
 
-            let file_index = name.file_index;
             for i in 0..self.file_used_namespace_ids_lists[file_index].len() {
                 let used_namespace_id = self.file_used_namespace_ids_lists[file_index][i];
                 let result = self.lookup_identifier_in_namespace(
-                    name,
                     &identifier,
                     used_namespace_id,
                     generic_arg_type_kind_ids.clone(),
@@ -520,6 +513,30 @@ impl Typer {
                 }
             }
 
+            return None;
+        };
+
+        self.lookup_identifier_in_namespace(
+            &identifier,
+            namespace_id,
+            generic_arg_type_kind_ids,
+            kind,
+        )
+    }
+
+    fn lookup_identifier_name(
+        &mut self,
+        name: NodeIndex,
+        namespace_id: Option<usize>,
+        generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
+        kind: LookupKind,
+    ) -> Option<(NodeIndex, Type)> {
+        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
+            self.error("invalid identifier name");
+            return None;
+        };
+
+        let Some((namespace_id, name_type)) = self.lookup_identifier(name_text, name.file_index, namespace_id, generic_arg_type_kind_ids, kind) else {
             if kind == LookupKind::Types {
                 self.error_at_parser_node("undefined type", name);
             } else {
@@ -529,23 +546,9 @@ impl Typer {
             return None;
         };
 
-        let result = self.lookup_identifier_in_namespace(
-            name,
-            &identifier,
-            namespace_id,
-            generic_arg_type_kind_ids,
-            kind,
-        );
+        let typed_name = self.check_node_with_namespace(name, namespace_id);
 
-        if result.is_none() {
-            if kind == LookupKind::Types {
-                self.error_at_parser_node("type not found in namespace", name);
-            } else {
-                self.error_at_parser_node("identifier not found in namespace", name);
-            }
-        }
-
-        result
+        Some((typed_name, name_type))
     }
 
     fn get_file_namespace(&mut self, file_index: usize) -> &mut Namespace {
@@ -2055,7 +2058,7 @@ impl Typer {
                 }
                 TypeKind::Namespace { namespace_id } => {
                     let Some((typed_name, name_type)) =
-                        self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::All)
+                        self.lookup_identifier_name(name, Some(*namespace_id), None, LookupKind::All)
                     else {
                         return self.add_node(TypedNode {
                             node_kind: NodeKind::Error,
@@ -2129,7 +2132,7 @@ impl Typer {
         }
 
         let Some((typed_name, name_type)) =
-            self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::All)
+            self.lookup_identifier_name(name, Some(*namespace_id), None, LookupKind::All)
         else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
@@ -2223,7 +2226,7 @@ impl Typer {
 
     fn identifier(&mut self, name: NodeIndex) -> NodeIndex {
         let Some((typed_name, name_type)) =
-            self.lookup_identifier(name, None, None, LookupKind::All)
+            self.lookup_identifier_name(name, None, None, LookupKind::All)
         else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
@@ -2354,11 +2357,10 @@ impl Typer {
     }
 
     fn string_literal(&mut self, text: Arc<str>) -> NodeIndex {
-        let type_kind_id = self.type_kinds.add_or_get(TypeKind::String);
         self.add_node(TypedNode {
             node_kind: NodeKind::StringLiteral { text },
             node_type: Some(Type {
-                type_kind_id,
+                type_kind_id: self.string_view_type_kind_id,
                 instance_kind: InstanceKind::Literal,
             }),
             namespace_id: None,
@@ -2635,7 +2637,6 @@ impl Typer {
 
         let value = match self.type_kinds.get_by_id(type_name_type.type_kind_id) {
             TypeKind::Int => native_size,
-            TypeKind::String => native_size,
             TypeKind::Bool => 1,
             TypeKind::Char => 1,
             TypeKind::Void => 0,
@@ -3001,12 +3002,12 @@ impl Typer {
                     is_inner_mutable: false,
                 } = second_type_kind
                 else {
-                    type_error!(self, "expected second argument of Main to be *val String");
+                    type_error!(self, "expected second argument of Main to be *val StringView");
                 };
 
-                let TypeKind::String = self.type_kinds.get_by_id(inner_type_kind_id) else {
-                    type_error!(self, "expected second argument of Main to be *String");
-                };
+                if inner_type_kind_id != self.string_view_type_kind_id {
+                    type_error!(self, "expected second argument of Main to be *StringView");
+                }
             }
         }
 
@@ -3209,7 +3210,7 @@ impl Typer {
                     type_error!(self, "expected namespace before field access in type name");
                 };
 
-                let Some((typed_name, name_type)) = self.lookup_identifier(
+                let Some((typed_name, name_type)) = self.lookup_identifier_name(
                     name,
                     Some(namespace_id),
                     Some(generic_arg_type_kind_ids),
@@ -3238,7 +3239,7 @@ impl Typer {
                     type_error!(self, "expected identifier before generic specifier");
                 };
 
-                let Some((typed_name, name_type)) = self.lookup_identifier(
+                let Some((typed_name, name_type)) = self.lookup_identifier_name(
                     *name,
                     None,
                     Some(generic_arg_type_kind_ids),
@@ -3273,7 +3274,7 @@ impl Typer {
 
     fn type_name(&mut self, name: NodeIndex) -> NodeIndex {
         let Some((typed_name, name_type)) =
-            self.lookup_identifier(name, None, None, LookupKind::Types)
+            self.lookup_identifier_name(name, None, None, LookupKind::Types)
         else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
@@ -3409,7 +3410,7 @@ impl Typer {
         };
 
         let Some((typed_name, name_type)) =
-            self.lookup_identifier(name, Some(*namespace_id), None, LookupKind::Types)
+            self.lookup_identifier_name(name, Some(*namespace_id), None, LookupKind::Types)
         else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
@@ -3465,7 +3466,7 @@ impl Typer {
                 (*name, None)
             };
 
-        let Some((typed_name, name_type)) = self.lookup_identifier(
+        let Some((typed_name, name_type)) = self.lookup_identifier_name(
             name,
             namespace_id,
             Some(generic_arg_type_kind_ids),

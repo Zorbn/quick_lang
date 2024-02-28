@@ -21,8 +21,8 @@ pub fn compile(
 ) -> ExitCode {
     let mut files = Vec::new();
 
-    let core_path = Path::new(core_path);
-    collect_source_files(core_path, core_path, Some(Path::new("Core")), &mut files).unwrap();
+    // let core_path = Path::new(core_path);
+    // collect_source_files(core_path, core_path, &mut files).unwrap();
 
     let project_path = Path::new(project_path);
     if is_path_source_file(project_path) {
@@ -35,7 +35,7 @@ pub fn compile(
             chars,
         });
     } else if project_path.is_dir() {
-        collect_source_files(project_path, project_path, None, &mut files).unwrap();
+        collect_source_files(project_path, project_path, &mut files).unwrap();
     }
 
     let files = Arc::new(files);
@@ -154,12 +154,13 @@ fn check(
 
     let all_nodes = Arc::new(all_nodes);
 
-    for start_index in all_start_indices.iter() {
+    for (i, start_index) in all_start_indices.iter().enumerate() {
         let mut typer = Typer::new(
             all_nodes.clone(),
             &all_start_indices,
             files.clone(),
             paths_components.clone(),
+            i,
         );
         typer.check(*start_index);
         had_typing_error = had_typing_error || typer.error_count > 0;
@@ -238,7 +239,6 @@ fn get_paths_components(files: &Arc<Vec<FileData>>) -> Vec<Vec<OsString>> {
 fn collect_source_files(
     root_directory: &Path,
     directory: &Path,
-    prefix: Option<&Path>,
     files: &mut Vec<FileData>,
 ) -> io::Result<()> {
     if !directory.is_dir() {
@@ -250,14 +250,10 @@ fn collect_source_files(
         let path = entry.path();
 
         if path.is_dir() {
-            collect_source_files(root_directory, &path, prefix, files)?;
+            collect_source_files(root_directory, &path, files)?;
         } else if is_path_source_file(&path) {
             let chars = read_chars_at_path(&path);
-            let mut path = path.strip_prefix(root_directory).unwrap().to_path_buf();
-
-            if let Some(prefix) = prefix {
-                path = prefix.join(path);
-            }
+            let path = path.strip_prefix(root_directory).unwrap().to_path_buf();
 
             files.push(FileData {
                 path,

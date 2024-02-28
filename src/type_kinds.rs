@@ -36,7 +36,6 @@ pub fn get_field_index_by_name(
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeKind {
     Int,
-    String,
     Bool,
     Char,
     Void,

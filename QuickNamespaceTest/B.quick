@@ -6,7 +6,20 @@ func BFunc() Void
     zombie.Eat(7);
     zombie.EatGeneric.<Int>(7, 4);
     zombie.DoNothing();
-    Zombie.<String>.Static();
+    Zombie.<Bool>.Static();
+
+    val person = Person { data = 1 };
+    person.Eat(4);
+}
+
+struct Person
+{
+    data Int;
+
+    func Eat(me *var Person, newData Int) Void
+    {
+        me.data = newData;
+    }
 }
 
 struct Zombie<T>

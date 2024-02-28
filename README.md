@@ -30,6 +30,8 @@
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
 - Stack traces.
 - Catch ambiguous symbol lookups.
+- Don't allow methods that take a mutable me ptr to be called on vals.
+- Create namespaces for directories only, not files so that StringView.quick can contain `struct StringView` without conflicting, for example.
 
 #### Standard Library
 - `func alloc<T>(value T) *T` alternative to malloc for simple situations.

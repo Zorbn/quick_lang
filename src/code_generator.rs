@@ -156,9 +156,6 @@ impl CodeGenerator {
         code_generator
             .header_emitter
             .emitln("int memcmp(const void *ptr1, const void *ptr2, size_t num);");
-        code_generator
-            .header_emitter
-            .emitln("int strcmp(const char *lhs, const char *rhs);");
         code_generator.header_emitter.newline();
         code_generator.body_emitters.push(1);
 
@@ -1314,14 +1311,15 @@ impl CodeGenerator {
             }
         }
 
-        match self.type_kinds.get_by_id(left_type.type_kind_id) {
-            TypeKind::Pointer { .. } => {
-                self.gen_node_with_emitter(left, kind);
-                self.emitter(kind).emit("->")
-            }
+        match self.type_kinds.get_by_id(dereferenced_left_type_kind_id) {
             TypeKind::Struct { .. } if left_type.instance_kind != InstanceKind::Name && !is_method_access => {
                 self.gen_node_with_emitter(left, kind);
-                self.emitter(kind).emit(".")
+
+                if is_left_pointer {
+                    self.emitter(kind).emit("->")
+                } else {
+                    self.emitter(kind).emit(".")
+                }
             }
             TypeKind::Enum {
                 name: enum_name, ..
@@ -1671,7 +1669,6 @@ impl CodeGenerator {
 
         match type_kind.clone() {
             TypeKind::Int | TypeKind::Tag { .. } => self.emitter(kind).emit("intptr_t"),
-            TypeKind::String => self.emitter(kind).emit("const char*"),
             TypeKind::Bool => self.emitter(kind).emit("bool"),
             TypeKind::Char => self.emitter(kind).emit("char"),
             TypeKind::Void => self.emitter(kind).emit("void"),
@@ -2198,29 +2195,6 @@ impl CodeGenerator {
 
                 self.emitter(kind).emit(", ");
                 self.emit_type_size(type_kind_id, kind);
-                self.emitter(kind).emit(")");
-            },
-            TypeKind::String => {
-                if !is_equal {
-                    self.emitter(kind).emit("!");
-                }
-
-                self.emitter(kind).emit("strcmp(");
-
-                if let Some(left_prefix) = left_prefix {
-                    self.emitter(kind).emit(left_prefix);
-                }
-
-                self.gen_node_with_emitter(left, kind);
-
-                self.emitter(kind).emit(", ");
-
-                if let Some(right_prefix) = right_prefix {
-                    self.emitter(kind).emit(right_prefix);
-                }
-
-                self.gen_node_with_emitter(right, kind);
-
                 self.emitter(kind).emit(")");
             },
             _ => {
