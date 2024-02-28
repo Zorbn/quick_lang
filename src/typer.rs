@@ -2718,10 +2718,16 @@ impl Typer {
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
         };
 
-        let type_kind_id = self.type_kinds.add_placeholder();
-        self.get_file_namespace(file_index)
-            .type_kinds
-            .insert(identifier, type_kind_id);
+        let (type_kind_id, is_new_definition) = if let Some(type_kind_id) = self.get_file_namespace(file_index).type_kinds.get(&identifier) {
+            (*type_kind_id, false)
+        } else {
+            let type_kind_id = self.type_kinds.add_placeholder();
+            self.get_file_namespace(file_index)
+                .type_kinds
+                .insert(identifier, type_kind_id);
+
+            (type_kind_id, true)
+        };
 
         self.scope_type_kind_environment.push(false);
         let mut generic_args = Vec::new();
@@ -2779,28 +2785,34 @@ impl Typer {
 
         self.scope_type_kind_environment.pop();
 
-        let namespace_id = self.namespaces.len();
-        self.namespaces.push(Namespace {
-            name: name_text.clone(),
-            associated_type_kind_id: Some(type_kind_id),
-            definition_indices: vec![definition_indices.clone()],
-            function_definitions: HashMap::new(),
-            type_kinds: HashMap::new(),
-            variable_types: HashMap::new(),
-            generic_args,
-            inner_ids: HashMap::new(),
-            parent_id: Some(self.file_namespace_ids[file_index]),
-        });
+        let namespace_id = if let TypeKind::Struct { namespace_id, .. } = self.type_kinds.get_by_id(type_kind_id) {
+            namespace_id
+        } else {
+            let namespace_id = self.namespaces.len();
+            self.namespaces.push(Namespace {
+                name: name_text.clone(),
+                associated_type_kind_id: Some(type_kind_id),
+                definition_indices: vec![definition_indices.clone()],
+                function_definitions: HashMap::new(),
+                type_kinds: HashMap::new(),
+                variable_types: HashMap::new(),
+                generic_args,
+                inner_ids: HashMap::new(),
+                parent_id: Some(self.file_namespace_ids[file_index]),
+            });
 
-        self.type_kinds.replace_placeholder(
-            type_kind_id,
-            TypeKind::Struct {
-                name: typed_name,
-                fields: Arc::new(type_kind_fields),
-                is_union,
-                namespace_id,
-            },
-        );
+            self.type_kinds.replace_placeholder(
+                type_kind_id,
+                TypeKind::Struct {
+                    name: typed_name,
+                    fields: Arc::new(type_kind_fields),
+                    is_union,
+                    namespace_id,
+                },
+            );
+
+            namespace_id
+        };
 
         // TODO: Code duplication. Could probably combine this loop with the one for functions in top-level.
         let mut typed_functions = Vec::new();
@@ -2846,7 +2858,9 @@ impl Typer {
             namespace_id: Some(self.file_namespace_ids[file_index]),
         });
 
-        self.add_typed_definition(index);
+        if is_new_definition {
+            self.add_typed_definition(index);
+        }
 
         index
     }
