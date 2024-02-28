@@ -1,5 +1,11 @@
 use std::{
-    ffi::{OsStr, OsString}, fs::{self, File}, io::{self, BufWriter, Write}, path::{Path, PathBuf}, process::{Command, ExitCode}, sync::Arc, time::Instant
+    ffi::{OsStr, OsString},
+    fs::{self, File},
+    io::{self, BufWriter, Write},
+    path::{Path, PathBuf},
+    process::{Command, ExitCode},
+    sync::Arc,
+    time::Instant,
 };
 
 use crate::{
@@ -16,17 +22,20 @@ pub fn compile(
     let mut files = Vec::new();
 
     let core_path = Path::new(core_path);
-    collect_source_files(core_path, &mut files).unwrap();
+    collect_source_files(core_path, core_path, Some(Path::new("Core")), &mut files).unwrap();
 
     let project_path = Path::new(project_path);
     if is_path_source_file(project_path) {
         let chars = read_chars_at_path(project_path);
         files.push(FileData {
-            path: project_path.to_path_buf(),
+            path: project_path
+                .strip_prefix(project_path.parent().unwrap())
+                .unwrap()
+                .to_path_buf(),
             chars,
         });
     } else if project_path.is_dir() {
-        collect_source_files(project_path, &mut files).unwrap();
+        collect_source_files(project_path, project_path, None, &mut files).unwrap();
     }
 
     let files = Arc::new(files);
@@ -215,7 +224,7 @@ fn get_paths_components(files: &Arc<Vec<FileData>>) -> Vec<Vec<OsString>> {
         let mut components = Vec::new();
         let path = file.path.with_extension("");
 
-        for component in path.components().skip(1) {
+        for component in path.components() {
             let component = component.as_os_str().to_os_string();
             components.push(component);
         }
@@ -226,7 +235,12 @@ fn get_paths_components(files: &Arc<Vec<FileData>>) -> Vec<Vec<OsString>> {
     paths_components
 }
 
-fn collect_source_files(directory: &Path, files: &mut Vec<FileData>) -> io::Result<()> {
+fn collect_source_files(
+    root_directory: &Path,
+    directory: &Path,
+    prefix: Option<&Path>,
+    files: &mut Vec<FileData>,
+) -> io::Result<()> {
     if !directory.is_dir() {
         return Ok(());
     }
@@ -236,10 +250,19 @@ fn collect_source_files(directory: &Path, files: &mut Vec<FileData>) -> io::Resu
         let path = entry.path();
 
         if path.is_dir() {
-            collect_source_files(&path, files)?;
+            collect_source_files(root_directory, &path, prefix, files)?;
         } else if is_path_source_file(&path) {
             let chars = read_chars_at_path(&path);
-            files.push(FileData { path, chars });
+            let mut path = path.strip_prefix(root_directory).unwrap().to_path_buf();
+
+            if let Some(prefix) = prefix {
+                path = prefix.join(path);
+            }
+
+            files.push(FileData {
+                path,
+                chars,
+            });
         }
     }
 
