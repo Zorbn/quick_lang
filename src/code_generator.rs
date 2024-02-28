@@ -736,6 +736,28 @@ impl CodeGenerator {
         }
     }
 
+    fn emit_variable_declaration_initializer(&mut self, name: NodeIndex, expression: NodeIndex, node_type: Option<Type>, kind: EmitterKind) {
+        let type_kind_id = node_type.unwrap().type_kind_id;
+
+        let is_array = matches!(
+            &self.type_kinds.get_by_id(type_kind_id),
+            TypeKind::Array { .. }
+        );
+
+        if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
+            self.emitter(kind).emitln(";");
+
+            let NodeKind::Name { text: name_text } = self.get_typer_node(name).node_kind.clone()
+            else {
+                panic!("invalid variable name");
+            };
+            self.emit_memmove_expression_to_name(&name_text, expression, type_kind_id, kind);
+        } else {
+            self.emitter(kind).emit(" = ");
+            self.gen_node_with_emitter(expression, kind);
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn variable_declaration(
         &mut self,
@@ -751,7 +773,7 @@ impl CodeGenerator {
             self.emitter(kind).emit("extern ");
         }
 
-        let type_kind_id = node_type.unwrap().type_kind_id;
+        let type_kind_id = node_type.as_ref().unwrap().type_kind_id;
 
         let is_array = matches!(
             &self.type_kinds.get_by_id(type_kind_id),
@@ -773,7 +795,7 @@ impl CodeGenerator {
 
         self.emit_type_kind_right(type_kind_id, kind, false);
 
-        if is_shallow {
+        if is_shallow || kind == EmitterKind::GlobalVariable {
             return;
         }
 
@@ -781,18 +803,7 @@ impl CodeGenerator {
             return;
         };
 
-        if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
-            self.emitter(kind).emitln(";");
-
-            let NodeKind::Name { text: name_text } = self.get_typer_node(name).node_kind.clone()
-            else {
-                panic!("invalid variable name");
-            };
-            self.emit_memmove_expression_to_name(&name_text, expression, type_kind_id, kind);
-        } else {
-            self.emitter(kind).emit(" = ");
-            self.gen_node_with_emitter(expression, kind);
-        }
+        self.emit_variable_declaration_initializer(name, expression, node_type, kind);
     }
 
     fn return_statement(&mut self, expression: Option<NodeIndex>, _node_type: Option<Type>, _namespace_id: Option<usize>) {
@@ -1983,6 +1994,36 @@ impl CodeGenerator {
         }
     }
 
+    fn emit_top_level_variable_initializers(&mut self) {
+        for i in 0..self.typed_definitions.len() {
+            let TypedDefinition { index, .. } = self.typed_definitions[i];
+
+            let TypedNode {
+                node_kind,
+                node_type,
+                namespace_id,
+            } = self
+                .get_typer_node(index)
+                .clone();
+
+            if let NodeKind::VariableDeclaration {
+                name,
+                expression,
+                ..
+            } = node_kind {
+                if let Some(namespace_id) = namespace_id {
+                    self.emit_namespace(namespace_id, EmitterKind::Body);
+                }
+
+                self.gen_node_with_emitter(name, EmitterKind::Body);
+
+                self.emit_variable_declaration_initializer(name, expression.unwrap(), node_type, EmitterKind::Body);
+                self.body_emitters.top().body.emitln(";");
+                self.body_emitters.top().body.newline()
+            }
+        }
+    }
+
     fn emit_main_function(&mut self) {
         let Some(main_function_declaration) = self.main_function_declaration else {
             return;
@@ -2011,6 +2052,7 @@ impl CodeGenerator {
                 .body
                 .emitln("int main(int argc, char** argv) {");
             self.body_emitters.top().body.indent();
+            self.emit_top_level_variable_initializers();
             self.body_emitters.top().body.emit("return (int)");
             self.emit_function_name(name, function_type.type_kind_id, false, EmitterKind::Body);
             self.body_emitters
@@ -2026,6 +2068,7 @@ impl CodeGenerator {
 
         self.body_emitters.top().body.emitln("int main(void) {");
         self.body_emitters.top().body.indent();
+        self.emit_top_level_variable_initializers();
         self.body_emitters.top().body.emit("return (int)");
         self.emit_function_name(name, function_type.type_kind_id, false, EmitterKind::Body);
         self.body_emitters.top().body.emitln("();");
