@@ -52,5 +52,5 @@ struct Point
     x Int;
     y Int;
 
-    func DoThingWithPoint(me *val Point) Void;
+    func DoThingWithPoint(me *var Point) Void;
 }

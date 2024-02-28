@@ -53,6 +53,7 @@ func Main(argc Int, argv *val *val Char) Int
 {
     {
         var pointA = Point { x = 0, y = 0 };
+        pointA.DoThingWithPoint();
         var pointB = Point { x = 0, y = 0 };
         val isEqual = pointA == pointB;
     }

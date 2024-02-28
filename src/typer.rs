@@ -1951,7 +1951,7 @@ impl Typer {
                     type_error!(self, "static methods cannot be called on instances");
                 }
 
-                let Some(validated_method_kind) = self.is_method_call_valid(param_type_kind_ids[0], left_type.type_kind_id) else {
+                let Some(validated_method_kind) = self.is_method_call_valid(param_type_kind_ids[0], left_type) else {
                     type_error!(
                         self,
                         "type mismatch, instance cannot be used as the first parameter of this method"
@@ -3701,17 +3701,22 @@ impl Typer {
     fn is_method_call_valid(
         &self,
         param_type_kind_id: usize,
-        instance_type_kind_id: usize,
+        instance_type: Type,
     ) -> Option<MethodKind> {
-        if self.is_assignment_valid(param_type_kind_id, instance_type_kind_id) {
+        if self.is_assignment_valid(param_type_kind_id, instance_type.type_kind_id) {
             return Some(MethodKind::ByValue);
         }
 
         if let TypeKind::Pointer {
-            inner_type_kind_id, ..
+            inner_type_kind_id,
+            is_inner_mutable,
         } = self.type_kinds.get_by_id(param_type_kind_id)
         {
-            if self.is_assignment_valid(inner_type_kind_id, instance_type_kind_id) {
+            if is_inner_mutable && instance_type.instance_kind != InstanceKind::Var {
+                return None;
+            }
+
+            if self.is_assignment_valid(inner_type_kind_id, instance_type.type_kind_id) {
                 return Some(MethodKind::ByReference);
             }
         }

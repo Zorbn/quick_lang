@@ -23,14 +23,12 @@
 - `for elem in array {}`
 - Possibly generic type inference, so specifiers aren't required?
 - Proper escape sequences (right now they are cheated in by using C's behavior).
-- Real string type, as opposed to String being a const char* (at least support .count).
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
 - Stack traces.
 - Catch ambiguous symbol lookups.
-- Don't allow methods that take a mutable me ptr to be called on vals.
 
 #### Standard Library
 - `func alloc<T>(value T) *T` alternative to malloc for simple situations.
