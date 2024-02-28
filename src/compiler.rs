@@ -21,8 +21,8 @@ pub fn compile(
 ) -> ExitCode {
     let mut files = Vec::new();
 
-    // let core_path = Path::new(core_path);
-    // collect_source_files(core_path, core_path, &mut files).unwrap();
+    let core_path = Path::new(core_path);
+    collect_source_files(core_path, core_path, &mut files).unwrap();
 
     let project_path = Path::new(project_path);
     if is_path_source_file(project_path) {
@@ -180,6 +180,7 @@ fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
             typer.typed_nodes,
             typer.type_kinds,
             typer.namespaces,
+            typer.string_view_type_kind_id,
             typer.main_function_declaration,
             typer.typed_definitions,
             is_debug_mode,

@@ -42,6 +42,12 @@ macro_rules! type_error {
     }};
 }
 
+macro_rules! type_error_at_parser_node {
+    ($self:ident, $message:expr, $node:expr) => {{
+        return $self.type_error_at_parser_node($message, $node);
+    }};
+}
+
 macro_rules! assert_typed {
     ($self:ident, $index:expr) => {{
         let Some(node_type) = $self.get_typer_node($index).node_type.clone() else {
@@ -86,7 +92,7 @@ enum LookupKind {
 pub struct Namespace {
     pub name: Arc<str>,
     pub associated_type_kind_id: Option<usize>,
-    definition_indices: Option<Arc<HashMap<Arc<str>, NodeIndex>>>,
+    definition_indices: Vec<Arc<HashMap<Arc<str>, NodeIndex>>>,
     function_definitions: HashMap<GenericIdentifier, FunctionDefinition>,
     type_kinds: HashMap<GenericIdentifier, usize>,
     variable_types: HashMap<Arc<str>, Type>,
@@ -115,6 +121,7 @@ pub struct Typer {
     pub typed_definitions: Vec<TypedDefinition>,
     pub type_kinds: TypeKinds,
     pub namespaces: Vec<Namespace>,
+    pub string_view_type_kind_id: usize,
     pub main_function_declaration: Option<NodeIndex>,
     pub error_count: usize,
 
@@ -125,7 +132,6 @@ pub struct Typer {
 
     scope_type_kind_environment: Environment<GenericIdentifier, usize>,
     scope_environment: Environment<Arc<str>, Type>,
-    string_view_type_kind_id: usize,
 
     was_block_already_opened: bool,
     node_index_stack: Vec<NodeIndex>,
@@ -153,6 +159,7 @@ impl Typer {
             typed_definitions: Vec::new(),
             type_kinds: TypeKinds::new(),
             namespaces: Vec::with_capacity(file_count),
+            string_view_type_kind_id: 0,
             main_function_declaration: None,
             error_count: 0,
 
@@ -163,7 +170,6 @@ impl Typer {
 
             scope_type_kind_environment: Environment::new(),
             scope_environment: Environment::new(),
-            string_view_type_kind_id: 0,
 
             was_block_already_opened: false,
             node_index_stack: Vec::new(),
@@ -174,7 +180,7 @@ impl Typer {
         typer.namespaces.push(Namespace {
             name: "".into(),
             associated_type_kind_id: None,
-            definition_indices: None,
+            definition_indices: Vec::new(),
             type_kinds: HashMap::new(),
             function_definitions: HashMap::new(),
             variable_types: HashMap::new(),
@@ -186,8 +192,8 @@ impl Typer {
         for (i, start_index) in all_start_indices.iter().enumerate() {
             let mut current_namespace_id = GLOBAL_NAMESPACE_ID;
 
-            for component in file_paths_components[i].iter() {
-                let component_str = component.to_str().unwrap();
+            for j in 0..(file_paths_components[i].len() - 1) {
+                let component_str = file_paths_components[i][j].to_str().unwrap();
 
                 if typer.namespaces[current_namespace_id]
                     .inner_ids
@@ -201,7 +207,7 @@ impl Typer {
                 typer.namespaces.push(Namespace {
                     name: new_namespace_name.clone(),
                     associated_type_kind_id: None,
-                    definition_indices: None,
+                    definition_indices: Vec::new(),
                     type_kinds: HashMap::new(),
                     function_definitions: HashMap::new(),
                     variable_types: HashMap::new(),
@@ -225,7 +231,7 @@ impl Typer {
                 panic!("expected top level at start index");
             };
 
-            typer.namespaces[current_namespace_id].definition_indices = Some(definition_indices);
+            typer.namespaces[current_namespace_id].definition_indices.push(definition_indices);
 
             typer.file_used_namespace_ids.push(HashSet::new());
             typer.file_used_namespace_ids[i].insert(current_namespace_id);
@@ -425,12 +431,14 @@ impl Typer {
             ));
         }
 
-        let definition_index =
-            if let Some(definition_indices) = &self.namespaces[namespace_id].definition_indices {
-                definition_indices.get(&identifier.name).copied()
-            } else {
-                None
-            };
+        let mut definition_index = None;
+        for definition_index_list in &self.namespaces[namespace_id].definition_indices {
+            definition_index = definition_index_list.get(&identifier.name).copied();
+
+            if definition_index.is_some() {
+                break;
+            }
+        }
 
         let Some(definition_index) = definition_index else {
             return None;
@@ -567,7 +575,11 @@ impl Typer {
     }
 
     fn type_error(&mut self, message: &str) -> NodeIndex {
-        self.error(message);
+        self.type_error_at_parser_node(message, self.node_index_stack.last().copied().unwrap())
+    }
+
+    fn type_error_at_parser_node(&mut self, message: &str, node: NodeIndex) -> NodeIndex {
+        self.error_at_parser_node(message, node);
 
         self.add_node(TypedNode {
             node_kind: NodeKind::Error,
@@ -1922,7 +1934,7 @@ impl Typer {
             let arg_type = assert_typed!(self, typed_arg);
 
             if !self.is_assignment_valid(*param_type_kind_id, arg_type.type_kind_id) {
-                type_error!(self, "incorrect argument type");
+                type_error_at_parser_node!(self, "incorrect argument type", *arg);
             }
         }
 
@@ -2771,7 +2783,7 @@ impl Typer {
         self.namespaces.push(Namespace {
             name: name_text.clone(),
             associated_type_kind_id: Some(type_kind_id),
-            definition_indices: Some(definition_indices.clone()),
+            definition_indices: vec![definition_indices.clone()],
             function_definitions: HashMap::new(),
             type_kinds: HashMap::new(),
             variable_types: HashMap::new(),
@@ -2996,17 +3008,24 @@ impl Typer {
                     type_error!(self, "expected first argument of Main to be an Int");
                 }
 
-                let second_type_kind = self.type_kinds.get_by_id(param_type_kind_ids[1]);
                 let TypeKind::Pointer {
                     inner_type_kind_id,
                     is_inner_mutable: false,
-                } = second_type_kind
+                } = self.type_kinds.get_by_id(param_type_kind_ids[1])
                 else {
-                    type_error!(self, "expected second argument of Main to be *val StringView");
+                    type_error!(self, "expected second argument of Main to be a *val *val Char");
                 };
 
-                if inner_type_kind_id != self.string_view_type_kind_id {
-                    type_error!(self, "expected second argument of Main to be *StringView");
+                let TypeKind::Pointer {
+                    inner_type_kind_id,
+                    is_inner_mutable: false,
+                } = self.type_kinds.get_by_id(inner_type_kind_id)
+                else {
+                    type_error!(self, "expected second argument of Main to be a *val *val Char");
+                };
+
+                if self.type_kinds.get_by_id(inner_type_kind_id) != TypeKind::Char {
+                    type_error!(self, "expected second argument of Main to be *val *val Char");
                 }
             }
         }

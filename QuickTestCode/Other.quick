@@ -1,13 +1,4 @@
-using Test;
 using Conflictor;
-
-struct Point
-{
-    x Int;
-    y Int;
-
-    func DoThingWithPoint(me *val Point) Void;
-}
 
 struct GenericStruct<A, B>
 {
@@ -20,10 +11,15 @@ struct SimpleGeneric<A>
     a A;
 }
 
+struct ContainsPoint
+{
+    point Point;
+}
+
 func takesPoint(point Point) Void
 {
-    puts("got point");
-    puts(hi);
+    Puts("got point");
+    Puts(hi);
 }
 
 func genericFunction2<C, D>(a C, b D) C
@@ -43,10 +39,18 @@ func callsMain() Void
 
     val argc = 5;
     val argv = "hello";
-    Main(argc, *argv);
+    Main(argc, *argv.data);
 }
 
-func useMyString(myString MyString) Void
+func useMyString(myString MyStringView) Void
 {
 
+}
+
+struct Point
+{
+    x Int;
+    y Int;
+
+    func DoThingWithPoint(me *val Point) Void;
 }

@@ -104,6 +104,7 @@ pub struct CodeGenerator {
     typed_nodes: Vec<TypedNode>,
     type_kinds: TypeKinds,
     namespaces: Vec<Namespace>,
+    string_view_type_kind_id: usize,
     main_function_declaration: Option<NodeIndex>,
     typed_definitions: Vec<TypedDefinition>,
 
@@ -125,6 +126,7 @@ impl CodeGenerator {
         typed_nodes: Vec<TypedNode>,
         type_kinds: TypeKinds,
         namespaces: Vec<Namespace>,
+        string_view_type_kind_id: usize,
         main_function_declaration: Option<NodeIndex>,
         typed_definitions: Vec<TypedDefinition>,
         is_debug_mode: bool,
@@ -133,6 +135,7 @@ impl CodeGenerator {
             typed_nodes,
             type_kinds,
             namespaces,
+            string_view_type_kind_id,
             main_function_declaration,
             typed_definitions,
             header_emitter: Emitter::new(0),
@@ -1450,6 +1453,15 @@ impl CodeGenerator {
     }
 
     fn string_literal(&mut self, text: Arc<str>, _node_type: Option<Type>, _namespace_id: Option<usize>, kind: EmitterKind) {
+        self.emitter(kind).emit("(struct ");
+        self.emit_struct_name(self.string_view_type_kind_id, kind);
+        self.emitter(kind).emitln(") {");
+        self.emitter(kind).indent();
+        self.emitter(kind).emit(".count = ");
+        self.emitter(kind).emit(&text.len().to_string());
+        self.emitter(kind).emitln(",");
+        self.emitter(kind).emit(".data = ");
+
         self.emitter(kind).emit("\"");
         for (i, line) in text.lines().enumerate() {
             if i > 0 {
@@ -1458,7 +1470,10 @@ impl CodeGenerator {
 
             self.emitter(kind).emit(line);
         }
-        self.emitter(kind).emit("\"");
+        self.emitter(kind).emitln("\",");
+
+        self.emitter(kind).unindent();
+        self.emitter(kind).emitln("}");
     }
 
     fn bool_literal(&mut self, value: bool, _node_type: Option<Type>, _namespace_id: Option<usize>, kind: EmitterKind) {

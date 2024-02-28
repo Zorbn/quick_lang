@@ -1,9 +1,13 @@
-using Other;
-using QuickCode.Test;
+using QuickCode;
 
-alias MyString = String;
+alias MyStringView = StringView;
 
 extern func puts(str *val Char) UInt;
+
+func Puts(str StringView) UInt
+{
+    return puts(str.data);
+}
 
 extern func malloc(size UInt) *var Void;
 extern func free(ptr *var Void) Void;
@@ -21,7 +25,7 @@ union SimpleUnion
     a Int;
     b Bool;
     c Int;
-    d String;
+    d StringView;
 }
 
 union GenericUnion<A, B>
@@ -45,7 +49,7 @@ struct ContainsFuncPtr
 
 const hi = "hi";
 
-func Main(argc Int, argv *val String) Int
+func Main(argc Int, argv *val *val Char) Int
 {
     {
         var pointA = Point { x = 0, y = 0 };
@@ -53,7 +57,7 @@ func Main(argc Int, argv *val String) Int
         val isEqual = pointA == pointB;
     }
 
-    puts(hi);
+    Puts(hi);
 
     while (true)
     {
@@ -69,7 +73,7 @@ func Main(argc Int, argv *val String) Int
     var containsFuncPtr = ContainsFuncPtr { funcPtr = *print };
     containsFuncPtr.funcPtr.*();
 
-    val myMyString MyString = "MyString";
+    val myMyString MyStringView = "MyString";
     useMyString(myMyString);
 
     var uninitializedPoint Point = ?;
@@ -114,7 +118,7 @@ func Main(argc Int, argv *val String) Int
 
     defer
     {
-        puts("defer in main");
+        Puts("defer in main");
     }
 
     var inferTwoD = [1, 5];
@@ -124,8 +128,8 @@ func Main(argc Int, argv *val String) Int
     var b Int = a * 2;
     val c = b /= b / 4;
 
-    val str String = "hello world";
-    puts(str);
+    val str StringView = "hello world";
+    Puts(str);
 
     var byte UInt8 = 255 as UInt8;
     var bytePtr *var UInt8 = *byte;
@@ -150,13 +154,13 @@ func Main(argc Int, argv *val String) Int
     var myArrayCopy [3]Int = takeArray(myArray);
     var otherCopy [3]Int = myArrayCopy;
     var repeatArray [400]Int = [1, 2, 3, 4; 100];
-    var repeatStringArray [400]String = ["a", "bb", "ccc", "dddd"; 100];
+    var repeatStringArray [400]StringView = ["a", "bb", "ccc", "dddd"; 100];
     repeatStringArray[0] = "hello";
-    puts(repeatStringArray[377]);
+    Puts(repeatStringArray[377]);
 
-    var multiA [2][3]String = [["a", "b", "ccc"], ["d", "e", "f"]];
-    var multiB [2][3]String = multiA;
-    puts(multiA[1][2]);
+    var multiA [2][3]StringView = [["a", "b", "ccc"], ["d", "e", "f"]];
+    var multiB [2][3]StringView = multiA;
+    Puts(multiA[1][2]);
 
     var xy [2]Point = [
         Point
@@ -180,19 +184,19 @@ func Main(argc Int, argv *val String) Int
 
     {
         {
-            puts("in
+            Puts("in
             a block");
         }
     }
 
     if (boolean)
     {
-        puts("boolean is true");
+        Puts("boolean is true");
     }
 
     if (boolean && boolean)
     {
-        puts("boolean is true");
+        Puts("boolean is true");
     }
     else if (boolean)
     {
@@ -210,8 +214,8 @@ func Main(argc Int, argv *val String) Int
 
     for (i of -10 < 10)
     {
-        defer puts("defer in loop1");
-        defer puts("defer in loop2");
+        defer Puts("defer in loop1");
+        defer Puts("defer in loop2");
 
         if (false)
         {
@@ -228,13 +232,13 @@ func Main(argc Int, argv *val String) Int
 
     for (i of zero() <= 10)
     {
-        defer puts("defer in loop");
+        defer Puts("defer in loop");
 
         {
-            defer puts("defer in block in loop");
+            defer Puts("defer in block in loop");
         }
 
-        defer puts("defer later in loop");
+        defer Puts("defer later in loop");
 
         return 0;
     }
@@ -255,23 +259,23 @@ func Main(argc Int, argv *val String) Int
     switch (si)
     case (1)
     {
-        puts("1");
+        Puts("1");
     }
     case (2)
     {
-        puts("2");
+        Puts("2");
     }
-    case (3) puts("3");
+    case (3) Puts("3");
     else
     {
-        puts("other");
+        Puts("other");
     }
 
     switch (si)
-    case (1) puts("1");
-    case (2) puts("2");
-    case (3) puts("3");
-    else puts("other");
+    case (1) Puts("1");
+    case (2) Puts("2");
+    case (3) Puts("3");
+    else Puts("other");
 
     hello(
         a,
@@ -290,7 +294,7 @@ func Main(argc Int, argv *val String) Int
     val genericStruct3 = GenericStruct.<Int, Int> { a = 5, b = 6 };
     val genericStruct4 GenericStruct.<Int, Int> = returnsGeneric();
 
-    puts("reached end"); // Shouldn't happen because of all of the returns, recursions, etc above.
+    Puts("reached end"); // Shouldn't happen because of all of the returns, recursions, etc above.
 
     return 0;
 }
@@ -314,7 +318,7 @@ func takesEnum(name Name) Void
 {
     if (name == Name.Albert)
     {
-        puts("albert");
+        Puts("albert");
     }
 }
 
@@ -324,12 +328,12 @@ func takesStruct(point Point) Void
 
 func print() Void
 {
-    puts("Hello");
+    Puts("Hello");
 }
 
 func otherPrint() Void
 {
-    puts("Goodbye");
+    Puts("Goodbye");
 }
 
 func hello(num Int, othernum Int) Int
