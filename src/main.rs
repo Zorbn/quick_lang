@@ -1,4 +1,4 @@
-use std::{env, process::ExitCode};
+use std::{env, path::PathBuf, process::ExitCode};
 
 mod code_generator;
 mod compiler;
@@ -24,13 +24,30 @@ fn main() -> ExitCode {
     let mut c_flags_start = None;
     let mut is_debug_mode = false;
     let mut use_msvc = false;
+
+    let Some(core_path) = get_core_path() else {
+        println!("Couldn't determine default core path");
+        return ExitCode::FAILURE;
+    };
+    let mut core_path = core_path.to_str();
+    let mut is_looking_for_core_path = false;
+
     for (i, arg) in args.iter().enumerate().skip(2) {
+        if is_looking_for_core_path {
+            is_looking_for_core_path = false;
+            core_path = Some(arg);
+            continue;
+        }
+
         match arg.as_str() {
             "--debug" => {
                 is_debug_mode = true;
             }
             "--msvc" => {
                 use_msvc = true;
+            }
+            "--core-path" => {
+                is_looking_for_core_path = true;
             }
             "--cflags" => {
                 c_flags_start = Some(i + 1);
@@ -43,11 +60,25 @@ fn main() -> ExitCode {
         }
     }
 
+    if is_looking_for_core_path {
+        println!("Expected \"--core-path\" to be followed by a path");
+        return ExitCode::FAILURE;
+    }
+
     let c_flags = if let Some(c_flags_start) = c_flags_start {
         &args[c_flags_start..]
     } else {
         &[]
     };
 
-    compiler::compile(&args[1], is_debug_mode, use_msvc, c_flags)
+    let Some(core_path) = core_path else {
+        println!("No core path available");
+        return ExitCode::FAILURE;
+    };
+
+    compiler::compile(&args[1], core_path, is_debug_mode, use_msvc, c_flags)
+}
+
+fn get_core_path() -> Option<PathBuf> {
+    Some(env::current_exe().ok()?.parent()?.join("Core/"))
 }

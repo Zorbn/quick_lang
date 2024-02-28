@@ -46,6 +46,12 @@ const hi = "hi";
 
 func Main(argc Int, argv *val String) Int
 {
+    {
+        var pointA = Point { x = 0, y = 0 };
+        var pointB = Point { x = 0, y = 0 };
+        val isEqual = pointA == pointB;
+    }
+
     puts(hi);
 
     while (true)
@@ -66,6 +72,9 @@ func Main(argc Int, argv *val String) Int
     useMyString(myMyString);
 
     var uninitializedPoint Point = ?;
+    uninitializedPoint = Point { x = 0, y = 0 };
+
+    uninitializedPoint.DoThingWithPoint();
     QuickCodeTest();
     takesPoint(Point { x = 1, y = 2 });
 

@@ -90,12 +90,12 @@ pub struct Namespace {
     function_definitions: HashMap<GenericIdentifier, FunctionDefinition>,
     type_kinds: HashMap<GenericIdentifier, usize>,
     variable_types: HashMap<Arc<str>, Type>,
-    generic_args: Vec<NamespaceGenericArg>,
+    pub generic_args: Vec<NamespaceGenericArg>,
     inner_ids: HashMap<Arc<str>, usize>,
     pub parent_id: Option<usize>,
 }
 
-struct NamespaceGenericArg {
+pub struct NamespaceGenericArg {
     param_name: Arc<str>,
     type_kind_id: usize,
 }

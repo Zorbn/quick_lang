@@ -8,21 +8,27 @@ use crate::{
 
 pub fn compile(
     project_path: &str,
+    core_path: &str,
     is_debug_mode: bool,
     use_msvc: bool,
     c_flags: &[String],
 ) -> ExitCode {
     let mut files = Vec::new();
-    let path = Path::new(project_path);
-    if is_path_source_file(path) {
-        let chars = read_chars_at_path(path);
+
+    let core_path = Path::new(core_path);
+    collect_source_files(core_path, &mut files).unwrap();
+
+    let project_path = Path::new(project_path);
+    if is_path_source_file(project_path) {
+        let chars = read_chars_at_path(project_path);
         files.push(FileData {
-            path: path.to_path_buf(),
+            path: project_path.to_path_buf(),
             chars,
         });
-    } else if path.is_dir() {
-        collect_source_files(path, &mut files).unwrap();
+    } else if project_path.is_dir() {
+        collect_source_files(project_path, &mut files).unwrap();
     }
+
     let files = Arc::new(files);
 
     if files.is_empty() {

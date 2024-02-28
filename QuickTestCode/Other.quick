@@ -5,6 +5,8 @@ struct Point
 {
     x Int;
     y Int;
+
+    func DoThingWithPoint(me *val Point) Void;
 }
 
 struct GenericStruct<A, B>

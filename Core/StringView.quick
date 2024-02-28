@@ -1,0 +1,14 @@
+struct StringView
+{
+    data *val Char;
+    count Int;
+
+    func Get(me *val StringView, index Int) Char
+    {
+        val dataStart = me.data as UInt;
+        val dataIndex = dataStart + index as UInt * sizeof Char;
+        val dataPointer = dataIndex as *val Char;
+
+        return dataPointer.*;
+    }
+}

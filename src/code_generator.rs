@@ -1063,9 +1063,10 @@ impl CodeGenerator {
     }
 
     fn binary(&mut self, left: NodeIndex, op: Op, right: NodeIndex, node_type: Option<Type>, _namespace_id: Option<usize>, kind: EmitterKind) {
-        let type_kind_id = node_type.unwrap().type_kind_id;
+        let left_type_kind_id = self.get_typer_node(left).node_type.as_ref().unwrap().type_kind_id;
 
         if op == Op::Assign {
+            let type_kind_id = node_type.unwrap().type_kind_id;
             let is_array = matches!(
                 &self.type_kinds.get_by_id(type_kind_id),
                 TypeKind::Array { .. }
@@ -1126,7 +1127,7 @@ impl CodeGenerator {
         }
 
         if matches!(op, Op::Equal | Op::NotEqual) {
-            self.emit_equality(type_kind_id, None, left, None, right, op == Op::Equal, kind);
+            self.emit_equality(left_type_kind_id, None, left, None, right, op == Op::Equal, kind);
         } else {
             self.gen_node_with_emitter(left, kind);
             self.emit_binary_op(op, kind);
@@ -1908,8 +1909,10 @@ impl CodeGenerator {
         self.emitter(kind).emit("__");
 
         if let Some(associated_type_kind_id) = self.namespaces[namespace_id].associated_type_kind_id {
-            self.emit_number_backwards(associated_type_kind_id, kind);
-            self.emitter(kind).emit("__");
+            if !self.namespaces[namespace_id].generic_args.is_empty() {
+                self.emit_number_backwards(associated_type_kind_id, kind);
+                self.emitter(kind).emit("__");
+            }
         }
     }
 
@@ -2037,7 +2040,7 @@ impl CodeGenerator {
     }
 
     fn emit_union_check_tag(&mut self, type_kind_id: usize) {
-        self.function_prototype_emitter.emit("inline ");
+        self.function_prototype_emitter.emit("static inline ");
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
         self.function_prototype_emitter.emit("* ");
         self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
@@ -2048,7 +2051,7 @@ impl CodeGenerator {
         self.function_prototype_emitter.emitln(", intptr_t tag);");
         self.function_prototype_emitter.newline();
 
-        self.body_emitters.top().body.emit("inline ");
+        self.body_emitters.top().body.emit("static inline ");
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
         self.body_emitters.top().body.emit("* ");
         self.emit_struct_name(type_kind_id, EmitterKind::Body);
@@ -2094,7 +2097,7 @@ impl CodeGenerator {
     }
 
     fn emit_union_with_tag(&mut self, type_kind_id: usize) {
-        self.function_prototype_emitter.emit("inline ");
+        self.function_prototype_emitter.emit("static inline ");
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
         self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, true);
         self.function_prototype_emitter.emit("* ");
@@ -2106,7 +2109,7 @@ impl CodeGenerator {
         self.function_prototype_emitter.emitln(", intptr_t tag);");
         self.function_prototype_emitter.newline();
 
-        self.body_emitters.top().body.emit("inline ");
+        self.body_emitters.top().body.emit("static inline ");
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
         self.emit_type_kind_right(type_kind_id, EmitterKind::Body, true);
         self.body_emitters.top().body.emit("* ");
@@ -2243,7 +2246,7 @@ impl CodeGenerator {
     }
 
     fn emit_struct_equals(&mut self, type_kind_id: usize) {
-        self.function_prototype_emitter.emit("inline bool ");
+        self.function_prototype_emitter.emit("static inline bool ");
         self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
         self.function_prototype_emitter.emit("__Equals(");
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
@@ -2252,7 +2255,7 @@ impl CodeGenerator {
         self.function_prototype_emitter.emitln(" *right);");
         self.function_prototype_emitter.newline();
 
-        self.body_emitters.top().body.emit("inline bool ");
+        self.body_emitters.top().body.emit("static inline bool ");
         self.emit_struct_name(type_kind_id, EmitterKind::Body);
         self.body_emitters.top().body.emit("__Equals(");
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
