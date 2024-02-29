@@ -12,7 +12,6 @@ mod parser;
 mod position;
 mod type_kinds;
 mod typer;
-mod utils;
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();

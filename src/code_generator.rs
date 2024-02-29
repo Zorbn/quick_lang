@@ -10,7 +10,6 @@ use crate::{
     parser::{DeclarationKind, MethodKind, NodeIndex, NodeKind, Op},
     type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
     typer::{InstanceKind, Namespace, Type, TypedDefinition, TypedNode},
-    utils::is_typed_expression_array_literal,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -744,7 +743,7 @@ impl CodeGenerator {
             TypeKind::Array { .. }
         );
 
-        if is_array && !is_typed_expression_array_literal(&self.typed_nodes, expression) {
+        if is_array && !self.is_typed_expression_array_literal(expression) {
             self.emitter(kind).emitln(";");
 
             let NodeKind::Name { text: name_text } = self.get_typer_node(name).node_kind.clone()
@@ -827,7 +826,7 @@ impl CodeGenerator {
             &self.type_kinds.get_by_id(type_kind_id),
             TypeKind::Array { .. }
         ) {
-            if is_typed_expression_array_literal(&self.typed_nodes, expression) {
+            if self.is_typed_expression_array_literal(expression) {
                 let temp_name = self.temp_variable_name("temp");
 
                 self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, true);
@@ -1083,7 +1082,7 @@ impl CodeGenerator {
                 TypeKind::Array { .. }
             );
 
-            if is_array && !is_typed_expression_array_literal(&self.typed_nodes, left) {
+            if is_array && !self.is_typed_expression_array_literal(left) {
                 self.emit_memmove_expression_to_variable(left, right, type_kind_id, kind);
                 return;
             }
@@ -2366,5 +2365,12 @@ impl CodeGenerator {
         self.gen_node_with_emitter(right, kind);
 
         self.emitter(kind).emit(")");
+    }
+
+    fn is_typed_expression_array_literal(&self, expression: NodeIndex) -> bool {
+        matches!(
+            self.get_typer_node(expression).node_kind,
+            NodeKind::ArrayLiteral { .. }
+        )
     }
 }
