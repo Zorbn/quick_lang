@@ -887,6 +887,52 @@ impl Typer {
         typed_index
     }
 
+    fn check_functions(&mut self, functions: Arc<Vec<NodeIndex>>, namespace_id: usize, typed_functions: &mut Vec<NodeIndex>) {
+        for function in functions.iter() {
+            let declaration = if let NodeKind::Function { declaration, .. } =
+                &self.get_parser_node(*function).kind
+            {
+                declaration
+            } else if let NodeKind::ExternFunction { declaration } =
+                &self.get_parser_node(*function).kind
+            {
+                declaration
+            } else {
+                panic!("invalid function");
+            };
+
+            let NodeKind::FunctionDeclaration { name, generic_params, .. } =
+                &self.get_parser_node(*declaration).kind
+            else {
+                panic!("invalid function declaration");
+            };
+
+            if !generic_params.is_empty() {
+                continue;
+            }
+
+            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
+            else {
+                panic!("invalid function name");
+            };
+
+            let identifier = GenericIdentifier {
+                name: name_text,
+                generic_arg_type_kind_ids: None,
+            };
+
+            if self
+                .namespaces[namespace_id]
+                .function_definitions
+                .contains_key(&identifier)
+            {
+                continue;
+            }
+
+            typed_functions.push(self.check_node_with_namespace(*function, Some(namespace_id)));
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn top_level(
         &mut self,
@@ -967,49 +1013,7 @@ impl Typer {
         }
 
         let mut typed_functions = Vec::new();
-        for function in functions.iter() {
-            let declaration = if let NodeKind::Function { declaration, .. } =
-                &self.get_parser_node(*function).kind
-            {
-                declaration
-            } else if let NodeKind::ExternFunction { declaration } =
-                &self.get_parser_node(*function).kind
-            {
-                declaration
-            } else {
-                type_error!(self, "invalid function");
-            };
-
-            let NodeKind::FunctionDeclaration { name, generic_params, .. } =
-                &self.get_parser_node(*declaration).kind
-            else {
-                type_error!(self, "invalid function declaration");
-            };
-
-            if !generic_params.is_empty() {
-                continue;
-            }
-
-            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
-            else {
-                type_error!(self, "invalid function name");
-            };
-
-            let identifier = GenericIdentifier {
-                name: name_text,
-                generic_arg_type_kind_ids: None,
-            };
-
-            if self
-                .get_file_namespace(file_index)
-                .function_definitions
-                .contains_key(&identifier)
-            {
-                continue;
-            }
-
-            typed_functions.push(self.check_node(*function));
-        }
+        self.check_functions(functions, self.file_namespace_ids[file_index], &mut typed_functions);
 
         let mut typed_variable_declarations = Vec::new();
         for variable_declaration in variable_declarations.iter() {
@@ -2847,33 +2851,8 @@ impl Typer {
             },
         );
 
-        // TODO: Code duplication. Could probably combine this loop with the one for functions in top-level.
         let mut typed_functions = Vec::new();
-        for function in functions.iter() {
-            let declaration = if let NodeKind::Function { declaration, .. } =
-                &self.get_parser_node(*function).kind
-            {
-                declaration
-            } else if let NodeKind::ExternFunction { declaration } =
-                &self.get_parser_node(*function).kind
-            {
-                declaration
-            } else {
-                type_error!(self, "invalid function");
-            };
-
-            let NodeKind::FunctionDeclaration { generic_params, .. } =
-                self.get_parser_node(*declaration).kind.clone()
-            else {
-                type_error!(self, "invalid function declaration");
-            };
-
-            if !generic_params.is_empty() {
-                continue;
-            }
-
-            typed_functions.push(self.check_node_with_namespace(*function, Some(namespace_id)));
-        }
+        self.check_functions(functions, namespace_id, &mut typed_functions);
 
         let index = self.add_node(TypedNode {
             node_kind: NodeKind::StructDefinition {
