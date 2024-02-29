@@ -80,7 +80,7 @@ pub enum TokenKind {
     IntLiteral { text: Arc<str> },
     Float32Literal { text: Arc<str> },
     CharLiteral { value: char },
-    StringLiteral { text: Arc<str> },
+    StringLiteral { text: Arc<String> },
     Identifier { text: Arc<str> },
     Eof,
     Error,
@@ -328,6 +328,73 @@ impl Lexer {
         }
     }
 
+    fn handle_escape_sequence(&mut self) -> char {
+        self.position.advance();
+        let c = self.char();
+
+        match c {
+            '\'' => '\'',
+            '"' => '\"',
+            '\\' => '\\',
+            '\0' => '\0',
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            _ => {
+                self.error("unexpected escape sequence in string literal");
+                '\\'
+            },
+        }
+    }
+
+    fn handle_string_literal(&mut self) {
+        self.position.advance();
+        let mut c = self.char();
+        let start = self.position;
+        let mut text = String::new();
+
+        loop {
+            match c {
+                '\0' => {
+                    self.tokens.push(Token {
+                        kind: TokenKind::Error,
+                        start,
+                        end: self.position,
+                    });
+                    self.error("reached end of file during string literal");
+                    self.position.advance();
+
+                    return;
+                }
+                '\"' => break,
+                '\n' => {
+                    text.push('\n');
+                    self.position.newline()
+                },
+                '\\' => {
+                    text.push(self.handle_escape_sequence());
+                    self.position.advance();
+                }
+                _ => {
+                    text.push(c);
+                    self.position.advance()
+                },
+            }
+
+            c = self.char();
+        }
+
+        let end = self.position;
+        self.tokens.push(Token {
+            kind: TokenKind::StringLiteral {
+                text: Arc::new(text),
+            },
+            start,
+            end,
+        });
+        self.position.advance();
+    }
+
     fn is_char_valid_in_identifier(c: char) -> bool {
         c.is_alphabetic() || c.is_numeric() || c == '_'
     }
@@ -501,7 +568,12 @@ impl Lexer {
                 '\'' => {
                     let start = self.position;
                     self.position.advance();
-                    let value = self.char();
+
+                    let mut value = self.char();
+                    if value == '\\' {
+                        value = self.handle_escape_sequence();
+                    }
+
                     self.position.advance();
 
                     if self.char() != '\'' {
@@ -525,47 +597,7 @@ impl Lexer {
                     continue;
                 }
                 '"' => {
-                    self.position.advance();
-                    let mut c = self.char();
-                    let mut had_error = false;
-                    let start = self.position;
-
-                    loop {
-                        match c {
-                            '\0' => {
-                                self.tokens.push(Token {
-                                    kind: TokenKind::Error,
-                                    start,
-                                    end: self.position,
-                                });
-                                self.error("reached end of file during string literal");
-                                self.position.advance();
-
-                                had_error = true;
-                                break;
-                            }
-                            '\"' => break,
-                            '\n' => self.position.newline(),
-                            _ => self.position.advance(),
-                        }
-
-                        c = self.char();
-                    }
-
-                    if had_error {
-                        continue;
-                    }
-
-                    let end = self.position;
-                    self.tokens.push(Token {
-                        kind: TokenKind::StringLiteral {
-                            text: self.collect_chars(start, end),
-                        },
-                        start,
-                        end,
-                    });
-                    self.position.advance();
-
+                    self.handle_string_literal();
                     continue;
                 }
                 _ => {

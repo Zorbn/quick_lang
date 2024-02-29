@@ -202,7 +202,7 @@ pub enum NodeKind {
         text: Arc<str>,
     },
     StringLiteral {
-        text: Arc<str>,
+        text: Arc<String>,
     },
     BoolLiteral {
         value: bool,

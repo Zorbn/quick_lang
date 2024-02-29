@@ -70,7 +70,14 @@
 		},
 		"char": {
 			"name": "string.quoted.single.quick",
-			"match": "'.'"
+			"begin": "'",
+			"end": "'",
+			"patterns": [
+				{
+					"name": "constant.character.escape.quick",
+					"match": "\\\\."
+				}
+			]
 		},
 		"single-line-comment": {
 			"name": "comment.line.double-slash.quick",

@@ -1455,15 +1455,26 @@ impl CodeGenerator {
         }
     }
 
-    fn char_literal(&mut self, value: char, _node_type: Option<Type>, _namespace_id: Option<usize>, kind: EmitterKind) {
-        let mut char_buffer = [0u8];
+    fn emit_char_with_escaping(&mut self, c: char, kind: EmitterKind) {
+        match c {
+            '\'' => self.emitter(kind).emit("\\\'"),
+            '\"' => self.emitter(kind).emit("\\\""),
+            '\\' => self.emitter(kind).emit("\\\\"),
+            '\0' => self.emitter(kind).emit("\\0"),
+            '\n' => self.emitter(kind).emit("\\n"),
+            '\r' => self.emitter(kind).emit("\\r"),
+            '\t' => self.emitter(kind).emit("\\t"),
+            _ => self.emitter(kind).emit_char(c),
+        }
+    }
 
+    fn char_literal(&mut self, value: char, _node_type: Option<Type>, _namespace_id: Option<usize>, kind: EmitterKind) {
         self.emitter(kind).emit("'");
-        self.emitter(kind).emit(value.encode_utf8(&mut char_buffer));
+        self.emit_char_with_escaping(value, kind);
         self.emitter(kind).emit("'");
     }
 
-    fn string_literal(&mut self, text: Arc<str>, _node_type: Option<Type>, _namespace_id: Option<usize>, kind: EmitterKind) {
+    fn string_literal(&mut self, text: Arc<String>, _node_type: Option<Type>, _namespace_id: Option<usize>, kind: EmitterKind) {
         self.emitter(kind).emit("(struct ");
         self.emit_struct_name(self.string_view_type_kind_id, kind);
         self.emitter(kind).emitln(") {");
@@ -1474,12 +1485,8 @@ impl CodeGenerator {
         self.emitter(kind).emit(".data = ");
 
         self.emitter(kind).emit("\"");
-        for (i, line) in text.lines().enumerate() {
-            if i > 0 {
-                self.emitter(kind).emit("\\n");
-            }
-
-            self.emitter(kind).emit(line);
+        for c in text.chars() {
+            self.emit_char_with_escaping(c, kind);
         }
         self.emitter(kind).emitln("\",");
 

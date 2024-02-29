@@ -2413,7 +2413,7 @@ impl Typer {
         })
     }
 
-    fn string_literal(&mut self, text: Arc<str>) -> NodeIndex {
+    fn string_literal(&mut self, text: Arc<String>) -> NodeIndex {
         self.add_node(TypedNode {
             node_kind: NodeKind::StringLiteral { text },
             node_type: Some(Type {
@@ -2424,7 +2424,7 @@ impl Typer {
         })
     }
 
-    fn const_string_literal(&mut self, text: Arc<str>, index: NodeIndex) -> NodeIndex {
+    fn const_string_literal(&mut self, text: Arc<String>, index: NodeIndex) -> NodeIndex {
         let typed_const = self.check_node(index);
         let const_type = assert_typed!(self, typed_const);
 

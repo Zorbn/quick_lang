@@ -22,7 +22,6 @@
 - Variadic arguments.
 - `for elem in array {}`
 - Possibly generic type inference, so specifiers aren't required?
-- Proper escape sequences (right now they are cheated in by using C's behavior).
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.

@@ -51,6 +51,9 @@ const hi = "hi";
 
 func Main(argc Int, argv *val *val Char) Int
 {
+    val stringWithEscape = "hello\n";
+    val charWithEscape = '\n';
+
     {
         var pointA = Point { x = 0, y = 0 };
         pointA.DoThingWithPoint();

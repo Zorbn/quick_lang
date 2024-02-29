@@ -8,7 +8,7 @@ pub enum ConstValue {
     Int { value: i64 },
     UInt { value: u64 },
     Float { value: f64 },
-    String { value: Arc<str> },
+    String { value: Arc<String> },
     Char { value: char },
     Bool { value: bool },
 }
