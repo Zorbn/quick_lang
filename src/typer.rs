@@ -256,7 +256,7 @@ impl Typer {
 
         typer.define_global_primitives();
 
-        typer.string_view_type_kind_id = if let Some((_, string_view_type)) = typer.lookup_identifier("StringView".into(), file_index, None, None, LookupKind::Types) {
+        typer.string_view_type_kind_id = if let Some((_, string_view_type)) = typer.lookup_identifier(None, "StringView".into(), file_index, None, None, LookupKind::Types) {
             string_view_type.type_kind_id
         } else {
             panic!("StringView type not found");
@@ -355,6 +355,7 @@ impl Typer {
 
     fn lookup_identifier_in_namespace(
         &mut self,
+        usage_index: Option<NodeIndex>,
         identifier: &GenericIdentifier,
         namespace_id: usize,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
@@ -448,6 +449,7 @@ impl Typer {
 
         let typed_definition = self.check_node_with_generic_args(
             definition_index,
+            usage_index,
             generic_arg_type_kind_ids,
             namespace_id,
         );
@@ -471,6 +473,7 @@ impl Typer {
 
     fn lookup_identifier(
         &mut self,
+        usage_index: Option<NodeIndex>,
         name_text: Arc<str>,
         file_index: usize,
         namespace_id: Option<usize>,
@@ -501,6 +504,7 @@ impl Typer {
             for i in 0..self.file_used_namespace_ids_lists[file_index].len() {
                 let used_namespace_id = self.file_used_namespace_ids_lists[file_index][i];
                 let result = self.lookup_identifier_in_namespace(
+                    usage_index,
                     &identifier,
                     used_namespace_id,
                     generic_arg_type_kind_ids.clone(),
@@ -516,6 +520,7 @@ impl Typer {
         };
 
         self.lookup_identifier_in_namespace(
+            usage_index,
             &identifier,
             namespace_id,
             generic_arg_type_kind_ids,
@@ -535,7 +540,7 @@ impl Typer {
             return None;
         };
 
-        let Some((namespace_id, name_type)) = self.lookup_identifier(name_text, name.file_index, namespace_id, generic_arg_type_kind_ids, kind) else {
+        let Some((namespace_id, name_type)) = self.lookup_identifier(Some(name), name_text, name.file_index, namespace_id, generic_arg_type_kind_ids, kind) else {
             if kind == LookupKind::Types {
                 self.error_at_parser_node("undefined type", name);
             } else {
@@ -701,6 +706,7 @@ impl Typer {
                 definition_indices,
                 is_union,
                 None,
+                None,
                 file_index,
             ),
             NodeKind::EnumDefinition {
@@ -725,7 +731,7 @@ impl Typer {
             NodeKind::Function {
                 declaration,
                 scoped_statement,
-            } => self.function(declaration, scoped_statement, None, file_namespace_id, file_index),
+            } => self.function(declaration, scoped_statement, None, None, file_namespace_id, file_index),
             NodeKind::GenericSpecifier {
                 left,
                 generic_arg_type_names,
@@ -759,6 +765,7 @@ impl Typer {
     fn check_node_with_generic_args(
         &mut self,
         index: NodeIndex,
+        usage_index: Option<NodeIndex>,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
         namespace_id: usize,
     ) -> Option<NodeIndex> {
@@ -781,6 +788,7 @@ impl Typer {
                 definition_indices,
                 is_union,
                 generic_arg_type_kind_ids,
+                usage_index,
                 file_index,
             )),
             NodeKind::Function {
@@ -790,6 +798,7 @@ impl Typer {
                 declaration,
                 scoped_statement,
                 generic_arg_type_kind_ids,
+                usage_index,
                 namespace_id,
                 file_index,
             )),
@@ -850,7 +859,7 @@ impl Typer {
             NodeKind::Function {
                 declaration,
                 scoped_statement,
-            } => self.function(declaration, scoped_statement, None, namespace_id.unwrap(), file_index),
+            } => self.function(declaration, scoped_statement, None, None, namespace_id.unwrap(), file_index),
             NodeKind::VariableDeclaration {
                 declaration_kind,
                 name,
@@ -2751,10 +2760,11 @@ impl Typer {
         definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
         is_union: bool,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
+        usage_index: Option<NodeIndex>,
         file_index: usize,
     ) -> NodeIndex {
         if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
-            type_error!(self, "generic type requires generic arguments");
+            type_error_at_parser_node!(self, "generic type requires generic arguments", usage_index.unwrap());
         }
 
         let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
@@ -2777,7 +2787,7 @@ impl Typer {
 
         if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids.clone() {
             if generic_arg_type_kind_ids.len() != generic_params.len() {
-                type_error!(self, "incorrect number of generic arguments");
+                type_error_at_parser_node!(self, "incorrect number of generic arguments", usage_index.unwrap());
             }
 
             for i in 0..generic_arg_type_kind_ids.len() {
@@ -3064,6 +3074,7 @@ impl Typer {
         declaration: NodeIndex,
         scoped_statement: NodeIndex,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
+        usage_index: Option<NodeIndex>,
         namespace_id: usize,
         file_index: usize,
     ) -> NodeIndex {
@@ -3075,6 +3086,7 @@ impl Typer {
             declaration,
             scoped_statement,
             generic_arg_type_kind_ids,
+            usage_index,
             namespace_id,
             file_index,
         );
@@ -3098,6 +3110,7 @@ impl Typer {
         declaration: NodeIndex,
         scoped_statement: NodeIndex,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
+        usage_index: Option<NodeIndex>,
         namespace_id: usize,
         file_index: usize,
     ) -> NodeIndex {
@@ -3115,7 +3128,7 @@ impl Typer {
         };
 
         if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
-            type_error!(self, "generic function requires generic arguments");
+            type_error_at_parser_node!(self, "generic function requires generic arguments", usage_index.unwrap());
         }
 
         self.scope_type_kind_environment.push(false);
@@ -3133,7 +3146,7 @@ impl Typer {
 
         if let Some(generic_arg_type_kind_ids) = generic_arg_type_kind_ids.clone() {
             if generic_arg_type_kind_ids.len() != generic_params.len() {
-                type_error!(self, "incorrect number of generic arguments");
+                type_error_at_parser_node!(self, "incorrect number of generic arguments", usage_index.unwrap());
             }
 
             for i in 0..generic_arg_type_kind_ids.len() {

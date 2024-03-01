@@ -1,3 +1,5 @@
+extern func malloc(size UInt) *var Void;
+
 struct StringView
 {
     data *val Char;
