@@ -12,6 +12,9 @@
 			"include": "#enum-declaration"
 		},
 		{
+			"include": "#alias-declaration"
+		},
+		{
 			"include": "#keyword"
 		},
 		{
@@ -105,6 +108,17 @@
 				},
 				"2": {
 					"name": "meta.enum.definition.quick entity.name.type.enum.quick"
+				}
+			}
+		},
+		"alias-declaration": {
+			"match": "\\b(alias)\\b\\s*(\\w+)",
+			"captures": {
+				"1": {
+					"name": "keyword.quick"
+				},
+				"2": {
+					"name": "meta.alias.definition.quick entity.name.type.alias.quick"
 				}
 			}
 		},
