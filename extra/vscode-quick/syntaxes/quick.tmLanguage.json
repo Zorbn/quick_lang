@@ -205,11 +205,11 @@
 		},
 		"round-brackets": {
 			"name": "punctuation.brackets.round.quick",
-			"match": "[()]"
+			"match": "[\\(\\)]"
 		},
 		"punctuation": {
 			"name": "punctuation.quick",
-			"match": ";"
+			"match": "[;,]"
 		},
 		"angle-brackets": {
 			"name": "punctuation.brackets.angle.quick",
