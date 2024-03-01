@@ -1,6 +1,6 @@
 func Alloc<T>(value T) *var T
 {
-    val pointer = malloc(sizeof T) as *var T;
+    val pointer = Internal.malloc(sizeof T) as *var T;
     pointer.* = value;
 
     return pointer;

@@ -1080,6 +1080,7 @@ impl Typer {
 
         self.scope_environment.push(false);
 
+        let namespace_id = self.file_namespace_ids[file_index];
         let typed_declaration =
             self.function_declaration(name, params, generic_params, return_type_name, true, None, file_index);
 
@@ -1090,7 +1091,7 @@ impl Typer {
             name: name_text.clone(),
             generic_arg_type_kind_ids: None,
         };
-        self.namespaces[GLOBAL_NAMESPACE_ID]
+        self.namespaces[namespace_id]
             .function_definitions
             .insert(
                 identifier,
@@ -1110,7 +1111,7 @@ impl Typer {
                 declaration: typed_declaration,
             },
             node_type,
-            namespace_id: Some(GLOBAL_NAMESPACE_ID),
+            namespace_id: Some(namespace_id),
         });
 
         self.typed_definitions.push(TypedDefinition { index, is_shallow: false });

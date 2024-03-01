@@ -52,6 +52,7 @@ const hi = "hi";
 func Main(argc Int, argv *val *val Char) Int
 {
     val allocatedPoint = Alloc.<Point>(Point { x = 0, y = 0 });
+    val allocatedInt = Alloc.<Int>(777);
 
     val stringWithEscape = "hello\n";
     val charWithEscape = '\n';
