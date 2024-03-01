@@ -162,7 +162,7 @@
 			"match": "\\b\\d\\d*(\\.\\d*)?\\b"
 		},
 		"function-call": {
-			"match": "(\\w+)\\s*(\\.<[\\w,\\s]*>)?\\(",
+			"match": "(\\w+)\\s*(\\.<[\\w,\\s]*>)?(\\()",
 			"captures": {
 				"1": {
 					"name": "entity.name.function.quick"
@@ -171,6 +171,13 @@
 					"patterns": [
 						{
 							"include": "#type"
+						}
+					]
+				},
+				"3": {
+					"patterns": [
+						{
+							"include": "#round-brackets"
 						}
 					]
 				}
