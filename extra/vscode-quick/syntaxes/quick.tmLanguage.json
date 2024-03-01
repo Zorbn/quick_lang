@@ -6,6 +6,12 @@
 			"include": "#function-declaration"
 		},
 		{
+			"include": "#struct-declaration"
+		},
+		{
+			"include": "#enum-declaration"
+		},
+		{
 			"include": "#keyword"
 		},
 		{
@@ -31,17 +37,74 @@
 		},
 		{
 			"include": "#variable"
+		},
+		{
+			"include": "#operator"
+		},
+		{
+			"include": "#curly-brackets"
+		},
+		{
+			"include": "#square-brackets"
+		},
+		{
+			"include": "#round-brackets"
+		},
+		{
+			"include": "#punctuation"
 		}
 	],
 	"repository": {
 		"function-declaration": {
-			"match": "\\b(func)\\b\\s*(\\w+)",
+			"match": "\\b(func)\\b\\s*(\\w+)(<[\\w,\\s]*>)?",
 			"captures": {
 				"1": {
 					"name": "keyword.quick"
 				},
 				"2": {
-					"name": "entity.name.function.quick"
+					"name": "meta.function.definition.quick entity.name.function.quick"
+				},
+				"3": {
+					"patterns": [
+						{
+							"include": "#type"
+						},
+						{
+							"include": "#angle-brackets"
+						}
+					]
+				}
+			}
+		},
+		"struct-declaration": {
+			"match": "\\b(struct|union)\\b\\s*(\\w+)(<[\\w,\\s]*>)?",
+			"captures": {
+				"1": {
+					"name": "keyword.quick"
+				},
+				"2": {
+					"name": "meta.struct.definition.quick entity.name.type.struct.quick"
+				},
+				"3": {
+					"patterns": [
+						{
+							"include": "#type"
+						},
+						{
+							"include": "#angle-brackets"
+						}
+					]
+				}
+			}
+		},
+		"enum-declaration": {
+			"match": "\\b(enum)\\b\\s*(\\w+)",
+			"captures": {
+				"1": {
+					"name": "keyword.quick"
+				},
+				"2": {
+					"name": "meta.enum.definition.quick entity.name.type.enum.quick"
 				}
 			}
 		},
@@ -120,8 +183,31 @@
 		"variable": {
 			"name": "variable.other.quick",
 			"match": "\\b[a-z]\\w*\\b"
+		},
+		"operator": {
+			"name": "keyword.operator.quick",
+			"match": "(\\.|\\+|-|\\*|&|\\/|=|<|>|!|\\^|~|%|\\||\\?|!=|==|<=|>=|\\+=|-=|\\*=|\\/=|&&|\\|\\||\\.\\*|\\.<|<<|>>|<<=|>>=|%=|&=|\\^=|\\|=)"
+		},
+		"curly-brackets": {
+			"name": "punctuation.brackets.curly.quick",
+			"match": "[\\{\\}]"
+		},
+		"square-brackets": {
+			"name": "punctuation.brackets.square.quick",
+			"match": "[\\[\\]]"
+		},
+		"round-brackets": {
+			"name": "punctuation.brackets.round.quick",
+			"match": "[()]"
+		},
+		"punctuation": {
+			"name": "punctuation.quick",
+			"match": ";"
+		},
+		"angle-brackets": {
+			"name": "punctuation.brackets.angle.quick",
+			"match": "[<>]"
 		}
-
 	},
 	"scopeName": "source.quick"
 }
