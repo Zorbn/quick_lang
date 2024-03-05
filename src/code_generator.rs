@@ -1437,9 +1437,15 @@ impl CodeGenerator {
     }
 
     fn int_literal(&mut self, text: Arc<str>, node_type: Option<Type>, _namespace_id: Option<usize>, kind: EmitterKind) {
-        self.emitter(kind).emit(&text);
-
         let type_kind_id = node_type.unwrap().type_kind_id;
+
+        self.emitter(kind).emit("((");
+        self.emit_type_kind_left(type_kind_id, kind, false, false);
+        self.emit_type_kind_right(type_kind_id, kind, false);
+        self.emitter(kind).emit(")");
+        self.emitter(kind).emit(&text);
+        self.emitter(kind).emit(")");
+
         if self.type_kinds.get_by_id(type_kind_id).is_unsigned() {
             self.emitter(kind).emit("u");
         }
