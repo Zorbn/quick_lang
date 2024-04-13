@@ -5,7 +5,11 @@ struct StringView
 
     func Get(me *val StringView, index Int) Char
     {
-        // TODO: This doesn't do bounds checking right now!
+        if (index < 0 || index >= me.count)
+        {
+            crash;
+        }
+
         val dataStart = me.data as UInt;
         val dataIndex = dataStart + index as UInt * sizeof Char;
         val dataPointer = dataIndex as *val Char;

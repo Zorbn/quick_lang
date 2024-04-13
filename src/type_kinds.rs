@@ -108,11 +108,7 @@ impl TypeKind {
     }
 
     pub fn is_float(&self) -> bool {
-        matches!(
-            self,
-            TypeKind::Float32
-                | TypeKind::Float64
-        )
+        matches!(self, TypeKind::Float32 | TypeKind::Float64)
     }
 
     pub fn is_numeric(&self) -> bool {

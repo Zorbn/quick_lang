@@ -33,6 +33,16 @@ impl Position {
         self.column += count;
     }
 
+    pub fn error_string(&self, tag: &str, files: &[FileData]) -> String {
+        format!(
+            "{} error at {}:{}:{}",
+            tag,
+            files[self.file_index].path.to_str().unwrap_or("?"),
+            self.line,
+            self.column,
+        )
+    }
+
     pub fn error(&self, tag: &str, message: &str, files: &[FileData]) {
         println!(
             "{} error at {}:{}:{}: {}",

@@ -130,7 +130,7 @@
 				},
 				{
 					"name": "keyword.control.quick",
-					"match": "\\b(return|break|continue|if|else|switch|case|while|for|of|by|defer)\\b"
+					"match": "\\b(return|break|continue|if|else|switch|case|while|for|of|by|defer|crash)\\b"
 				}
 			]
 		},

@@ -68,7 +68,7 @@ pub fn compile(
 
     let output_paths = get_output_paths(&files);
 
-    gen(typers, &output_paths, is_debug_mode);
+    gen(typers, &files, &output_paths, is_debug_mode);
 
     println!(
         "Frontend finished in: {:.2?}ms",
@@ -174,7 +174,12 @@ fn check(
     }
 }
 
-fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
+fn gen(
+    typers: Vec<Typer>,
+    files: &Arc<Vec<FileData>>,
+    output_paths: &[PathBuf],
+    is_debug_mode: bool,
+) {
     for (typer, output_path) in typers.into_iter().zip(output_paths.iter()) {
         let mut code_generator = CodeGenerator::new(
             typer.typed_nodes,
@@ -183,6 +188,7 @@ fn gen(typers: Vec<Typer>, output_paths: &[PathBuf], is_debug_mode: bool) {
             typer.string_view_type_kind_id,
             typer.main_function_declaration,
             typer.typed_definitions,
+            files.clone(),
             is_debug_mode,
         );
         code_generator.gen();
@@ -256,10 +262,7 @@ fn collect_source_files(
             let chars = read_chars_at_path(&path);
             let path = path.strip_prefix(root_directory).unwrap().to_path_buf();
 
-            files.push(FileData {
-                path,
-                chars,
-            });
+            files.push(FileData { path, chars });
         }
     }
 

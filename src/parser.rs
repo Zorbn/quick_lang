@@ -132,6 +132,9 @@ pub enum NodeKind {
     DeferStatement {
         statement: NodeIndex,
     },
+    CrashStatement {
+        position: Position,
+    },
     IfStatement {
         expression: NodeIndex,
         scoped_statement: NodeIndex,
@@ -179,10 +182,12 @@ pub enum NodeKind {
     IndexAccess {
         left: NodeIndex,
         expression: NodeIndex,
+        position: Position,
     },
     FieldAccess {
         left: NodeIndex,
         name: NodeIndex,
+        position: Position,
     },
     Cast {
         left: NodeIndex,
@@ -468,7 +473,10 @@ impl Parser {
         })
     }
 
-    fn struct_definition(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
+    fn struct_definition(
+        &mut self,
+        definition_indices: &mut HashMap<Arc<str>, NodeIndex>,
+    ) -> NodeIndex {
         let start = self.token_start();
 
         let is_union = match *self.token_kind() {
@@ -544,7 +552,10 @@ impl Parser {
         index
     }
 
-    fn enum_definition(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
+    fn enum_definition(
+        &mut self,
+        definition_indices: &mut HashMap<Arc<str>, NodeIndex>,
+    ) -> NodeIndex {
         let start = self.token_start();
 
         assert_token!(self, TokenKind::Enum, start, self.token_end());
@@ -788,7 +799,10 @@ impl Parser {
         index
     }
 
-    fn extern_function(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
+    fn extern_function(
+        &mut self,
+        definition_indices: &mut HashMap<Arc<str>, NodeIndex>,
+    ) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::Extern, start, self.token_end());
         self.position += 1;
@@ -897,11 +911,14 @@ impl Parser {
 
         let inner = match self.token_kind() {
             TokenKind::Semicolon => None,
-            TokenKind::Var | TokenKind::Val | TokenKind::Const => Some(self.variable_declaration(None)),
+            TokenKind::Var | TokenKind::Val | TokenKind::Const => {
+                Some(self.variable_declaration(None))
+            }
             TokenKind::Return => Some(self.return_statement()),
             TokenKind::Break => Some(self.break_statement()),
             TokenKind::Continue => Some(self.continue_statement()),
             TokenKind::Defer => Some(self.defer_statement()),
+            TokenKind::Crash => Some(self.crash_statement()),
             TokenKind::If => Some(self.if_statement()),
             TokenKind::Switch => Some(self.switch_statement()),
             TokenKind::While => Some(self.while_loop()),
@@ -928,7 +945,10 @@ impl Parser {
         })
     }
 
-    fn variable_declaration(&mut self, definition_indices: Option<&mut HashMap<Arc<str>, NodeIndex>>) -> NodeIndex {
+    fn variable_declaration(
+        &mut self,
+        definition_indices: Option<&mut HashMap<Arc<str>, NodeIndex>>,
+    ) -> NodeIndex {
         let start = self.token_start();
         let declaration_kind = match self.token_kind() {
             TokenKind::Var => DeclarationKind::Var,
@@ -996,7 +1016,8 @@ impl Parser {
         });
 
         if let Some(definition_indices) = definition_indices {
-            let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
+            let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone()
+            else {
                 parse_error!(self, "invalid variable name", start, end);
             };
 
@@ -1062,6 +1083,19 @@ impl Parser {
 
         self.add_node(Node {
             kind: NodeKind::DeferStatement { statement },
+            start,
+            end,
+        })
+    }
+
+    fn crash_statement(&mut self) -> NodeIndex {
+        let start = self.token_start();
+        let end = self.token_end();
+        assert_token!(self, TokenKind::Crash, start, self.token_end());
+        self.position += 1;
+
+        self.add_node(Node {
+            kind: NodeKind::CrashStatement { position: start },
             start,
             end,
         })
@@ -1611,7 +1645,11 @@ impl Parser {
                     let end = self.node_end(name);
 
                     left = self.add_node(Node {
-                        kind: NodeKind::FieldAccess { left, name },
+                        kind: NodeKind::FieldAccess {
+                            left,
+                            name,
+                            position: start,
+                        },
                         start,
                         end,
                     });
@@ -1626,7 +1664,11 @@ impl Parser {
                     self.position += 1;
 
                     left = self.add_node(Node {
-                        kind: NodeKind::IndexAccess { left, expression },
+                        kind: NodeKind::IndexAccess {
+                            left,
+                            expression,
+                            position: start,
+                        },
                         start,
                         end,
                     });
@@ -1998,7 +2040,7 @@ impl Parser {
                 let name = self.name();
                 let mut end = self.token_end();
                 let mut left = self.add_node(Node {
-                    kind: NodeKind::TypeName { name  },
+                    kind: NodeKind::TypeName { name },
                     start,
                     end,
                 });
@@ -2011,14 +2053,10 @@ impl Parser {
                             end = self.node_end(name);
 
                             left = self.add_node(Node {
-                                kind: NodeKind::TypeNameFieldAccess {
-                                    left,
-                                    name,
-                                },
+                                kind: NodeKind::TypeNameFieldAccess { left, name },
                                 start,
                                 end,
                             });
-
                         }
                         TokenKind::GenericSpecifier => {
                             let mut generic_arg_type_names = Vec::new();
@@ -2040,7 +2078,7 @@ impl Parser {
                                 end,
                             });
                         }
-                        _ => break
+                        _ => break,
                     }
                 }
 
