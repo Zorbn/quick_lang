@@ -120,7 +120,7 @@ pub struct CodeGenerator {
     temp_variable_count: usize,
     loop_depth_stack: Vec<LoopDepth>,
     switch_depth_stack: Vec<usize>,
-    is_debug_mode: bool,
+    is_unsafe_mode: bool,
 }
 
 impl CodeGenerator {
@@ -133,7 +133,7 @@ impl CodeGenerator {
         main_function_declaration: Option<NodeIndex>,
         typed_definitions: Vec<TypedDefinition>,
         files: Arc<Vec<FileData>>,
-        is_debug_mode: bool,
+        is_unsafe_mode: bool,
     ) -> Self {
         let mut code_generator = Self {
             typed_nodes,
@@ -152,7 +152,7 @@ impl CodeGenerator {
             temp_variable_count: 0,
             loop_depth_stack: Vec::new(),
             switch_depth_stack: Vec::new(),
-            is_debug_mode,
+            is_unsafe_mode,
         };
 
         code_generator.header_emitter.emitln("#include <stdint.h>");
@@ -168,7 +168,7 @@ impl CodeGenerator {
         code_generator.header_emitter.newline();
         code_generator.body_emitters.push(1);
 
-        if is_debug_mode {
+        if !is_unsafe_mode {
             code_generator.emit_bounds_check();
         }
 
@@ -1533,7 +1533,9 @@ impl CodeGenerator {
         self.gen_node_with_emitter(left, kind);
         self.emitter(kind).emit("[");
 
-        if self.is_debug_mode {
+        if self.is_unsafe_mode {
+            self.gen_node_with_emitter(expression, kind);
+        } else {
             let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
             let TypeKind::Array { element_count, .. } =
                 &self.type_kinds.get_by_id(left_type.type_kind_id)
@@ -1554,11 +1556,7 @@ impl CodeGenerator {
             self.emitter(kind).emit("\"");
             let error_message = position.error_string("Out of bounds", &self.files);
             self.emitter(kind).emit(&error_message);
-            self.emitter(kind).emitln("\"");
-
-            self.emitter(kind).emit(")");
-        } else {
-            self.gen_node_with_emitter(expression, kind);
+            self.emitter(kind).emit("\")");
         }
 
         self.emitter(kind).emit("]");
@@ -2515,6 +2513,10 @@ impl CodeGenerator {
     }
 
     fn emit_union_check_tag(&mut self, type_kind_id: usize) {
+        if self.is_unsafe_mode {
+            return;
+        }
+
         self.function_prototype_emitter.emit("static inline ");
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
         self.function_prototype_emitter.emit("* ");
@@ -2566,6 +2568,20 @@ impl CodeGenerator {
         tag: usize,
         kind: EmitterKind,
     ) {
+        if self.is_unsafe_mode {
+            self.gen_node_with_emitter(left, kind);
+
+            if is_left_pointer {
+                self.emitter(kind).emit("->variant.");
+            } else {
+                self.emitter(kind).emit(".variant.");
+            }
+
+            self.gen_node_with_emitter(name, kind);
+
+            return;
+        }
+
         self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
         self.emitter(kind).emit("__CheckTag((");
         self.emit_type_kind_left(
@@ -2591,9 +2607,8 @@ impl CodeGenerator {
         self.emitter(kind).emit("\"");
         let error_message = position.error_string("Wrong variant", &self.files);
         self.emitter(kind).emit(&error_message);
-        self.emitter(kind).emitln("\"");
+        self.emitter(kind).emit("\")->variant.");
 
-        self.emitter(kind).emit(")->variant.");
         self.gen_node_with_emitter(name, kind);
     }
 
