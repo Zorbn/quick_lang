@@ -10,6 +10,9 @@
 
 ### TODOs
 
+#### Safety
+- Make bounds checking and other safety features opt-out? eg. `--unsafe` to disable them rather than only being included in `--debug`?
+
 #### Type Checking
 - Check for duplicate names of variables, functions, types, fields, etc.
 
