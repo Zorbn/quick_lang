@@ -10,12 +10,6 @@
 
 ### TODOs
 
-#### Strings/Printing
-- Builders in Core for strings and printing.
-- ToString functions for basic types, eg. Float.ToString(out, f);
-- Write CoreSystem library (eg. parts of Core requiring sprintf, etc) in C, and link with the lib statically by default (it will be stored in core path).
-- ^ This solves the problem of not wanting inline C, varargs, and other things like that in the language.
-
 #### Type Checking
 - Check for duplicate names of variables, functions, types, fields, etc.
 
