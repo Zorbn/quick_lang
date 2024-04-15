@@ -1,0 +1,88 @@
+struct String
+{
+    data *var Char;
+    count Int;
+    capacity Int;
+
+    func Create() String
+    {
+        val defaultCapacity = 16;
+
+        var string = String
+        {
+            data = Internal.malloc((defaultCapacity * sizeof Char) as UInt) as *var Char,
+            count = 0,
+            capacity = defaultCapacity,
+        };
+
+        return string;
+    }
+
+    func Destroy(me *var String) Void
+    {
+        me.count = 0;
+        me.capacity = 0;
+
+        Internal.free(me.data as *var Void);
+    }
+
+    func Reserve(me *var String, count Int) Void
+    {
+        val newTargetCapacity = me.count + count;
+
+        if (newTargetCapacity <= me.capacity)
+        {
+            return;
+        }
+
+        while (me.capacity < newTargetCapacity)
+        {
+            me.capacity *= 2;
+        }
+
+        me.data = Internal.realloc(me.data as *var Void, (me.capacity * sizeof Char) as UInt) as *var Char;
+    }
+
+    func PushChar(me *var String, value Char) Void
+    {
+        me.Reserve(1);
+
+        var stringChar = (me.data as UInt + me.count as UInt) as *var Char;
+        stringChar.* = value;
+        me.count += 1;
+    }
+
+    func PushFloat32(me *var String, value Float32) Void
+    {
+        var buffer [128]Char = ?;
+        Internal.CoreSystemFloat32ToString(buffer as *var Char, value);
+
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushView(me *var String, view StringView) Void
+    {
+        me.Reserve(view.count);
+
+        for (i of 0 < view.count)
+        {
+            var stringChar = (me.data as UInt + me.count as UInt) as *var Char;
+            var viewChar = (view.data as UInt + i as UInt) as *var Char;
+            stringChar.* = viewChar.*;
+            me.count += 1;
+        }
+    }
+
+    func PushCString(me *var String, c_string *val Char) Void
+    {
+        if (c_string == 0 as *val Char)
+        {
+            return;
+        }
+
+        while (c_string.* != 0 as Char)
+        {
+            me.PushChar(c_string.*);
+        }
+    }
+}

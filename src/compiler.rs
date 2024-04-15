@@ -25,6 +25,8 @@ pub fn compile(
     let core_path = Path::new(core_path);
     collect_source_files(core_path, core_path, &mut files).unwrap();
 
+    let core_system_path = core_path.join("./CoreSystem/build/CoreSystem.lib");
+
     let project_path = Path::new(project_path);
     if is_path_source_file(project_path) {
         let chars = read_chars_at_path(project_path);
@@ -78,8 +80,13 @@ pub fn compile(
 
     let backend_start = Instant::now();
 
-    let mut compiler_command =
-        create_compiler_command(is_debug_mode, use_msvc, c_flags, &output_paths);
+    let mut compiler_command = create_compiler_command(
+        is_debug_mode,
+        use_msvc,
+        c_flags,
+        &output_paths,
+        core_system_path,
+    );
 
     match compiler_command.output() {
         Err(_) => panic!("couldn't compile using the system compiler!"),
@@ -283,7 +290,10 @@ fn create_compiler_command(
     use_msvc: bool,
     c_flags: &[String],
     output_paths: &[PathBuf],
+    core_system_path: PathBuf,
 ) -> Command {
+    let core_system_path_str = core_system_path.to_str().unwrap();
+
     if use_msvc {
         let mut compiler_command = Command::new("cl");
 
@@ -292,7 +302,7 @@ fn create_compiler_command(
         }
 
         compiler_command
-            .args(["-Fe:", "build/Out.exe"])
+            .args(["-Fe:", "build/Out.exe", core_system_path_str])
             .args(output_paths)
             .args(c_flags);
 
@@ -305,7 +315,7 @@ fn create_compiler_command(
         }
 
         compiler_command
-            .args(["-o", "build/Out.exe"])
+            .args(["-o", "build/Out.exe", core_system_path_str])
             .args(output_paths)
             .args(c_flags);
 

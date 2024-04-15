@@ -1,2 +1,3 @@
 extern func malloc(size UInt) *var Void;
+extern func realloc(ptr *var Void, size UInt) *var Void;
 extern func free(ptr *var Void) Void;
