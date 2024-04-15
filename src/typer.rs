@@ -193,10 +193,8 @@ impl Typer {
             for j in 0..(file_paths_components[i].len() - 1) {
                 let component_str = file_paths_components[i][j].to_str().unwrap();
 
-                if typer.namespaces[current_namespace_id]
-                    .inner_ids
-                    .contains_key(component_str)
-                {
+                if let Some(existing_namespace_id) = typer.namespaces[current_namespace_id].inner_ids.get(component_str) {
+                    current_namespace_id = *existing_namespace_id;
                     continue;
                 }
 
