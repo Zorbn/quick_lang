@@ -5,3 +5,8 @@ func Alloc<T>(value T) *var T
 
     return pointer;
 }
+
+func Free<T>(value *var T) Void
+{
+    Internal.free(value as *var Void);
+}
