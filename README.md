@@ -20,7 +20,6 @@
 
 #### Features
 - Default parameters.
-- Variadic arguments.
 - `for elem in array {}`
 - Possibly generic type inference, so specifiers aren't required?
 - Maybe new/scope/delete keywords like in Beef?
