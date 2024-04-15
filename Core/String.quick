@@ -15,6 +15,8 @@ struct String
             capacity = defaultCapacity,
         };
 
+        string.NullTerminate();
+
         return string;
     }
 
@@ -24,6 +26,14 @@ struct String
         me.capacity = 0;
 
         Internal.free(me.data as *var Void);
+    }
+
+    func FromView(view StringView) String
+    {
+        var string = String.Create();
+        string.PushView(view);
+
+        return string;
     }
 
     func Reserve(me *var String, count Int) Void
@@ -50,13 +60,16 @@ struct String
         var stringChar = (me.data as UInt + me.count as UInt) as *var Char;
         stringChar.* = value;
         me.count += 1;
+
+        me.NullTerminate();
     }
 
     func PushFloat32(me *var String, value Float32) Void
     {
-        var buffer [128]Char = ?;
-        Internal.CoreSystemFloat32ToString(buffer as *var Char, value);
+        const bufferCount = 128;
+        var buffer [bufferCount]Char = ?;
 
+        Internal.CoreSystemFloat32ToString(buffer as *var Char, bufferCount, value);
         me.PushCString(buffer as *val Char);
     }
 
@@ -71,18 +84,30 @@ struct String
             stringChar.* = viewChar.*;
             me.count += 1;
         }
+
+        me.NullTerminate();
     }
 
-    func PushCString(me *var String, c_string *val Char) Void
+    func PushCString(me *var String, cString *val Char) Void
     {
-        if (c_string == 0 as *val Char)
+        if (cString == 0 as *val Char)
         {
             return;
         }
 
-        while (c_string.* != 0 as Char)
+        while (cString.* != '\0')
         {
-            me.PushChar(c_string.*);
+            me.PushChar(cString.*);
+            cString = (cString as UInt + 1) as *val Char;
         }
+
+        me.NullTerminate();
+    }
+
+    func NullTerminate(me *var String) Void
+    {
+        me.Reserve(1);
+        var stringChar = (me.data as UInt + me.count as UInt) as *var Char;
+        stringChar.* = '\0';
     }
 }

@@ -1,1 +1,1 @@
-extern func CoreSystemFloat32ToString(out *var Char, value Float32) Void;
+extern func CoreSystemFloat32ToString(out *var Char, outCount Int, value Float32) Void;

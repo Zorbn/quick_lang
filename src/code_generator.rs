@@ -1793,12 +1793,14 @@ impl CodeGenerator {
         self.emit_type_kind_left(type_kind_id, kind, false, false);
         self.emit_type_kind_right(type_kind_id, kind, false);
         self.emitter(kind).emit(")");
+
         self.emitter(kind).emit(&text);
-        self.emitter(kind).emit(")");
 
         if self.type_kinds.get_by_id(type_kind_id).is_unsigned() {
             self.emitter(kind).emit("u");
         }
+
+        self.emitter(kind).emit(")");
     }
 
     fn float_literal(
