@@ -359,7 +359,6 @@ impl Parser {
                 token_kind,
                 self.token_kind()
             ));
-            self.position += 1;
 
             return Some(self.add_node(Node {
                 kind: NodeKind::Error,

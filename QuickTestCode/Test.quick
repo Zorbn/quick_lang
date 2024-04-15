@@ -76,6 +76,7 @@ func Main(argc Int, argv *val *val Char) Int
     testString.PushChar('\n');
     testString.PushPointer.<Point>(allocatedPoint);
     puts(testString.data);
+    testString.Destroy();
 
     while (true)
     {
