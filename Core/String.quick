@@ -64,15 +64,6 @@ struct String
         me.NullTerminate();
     }
 
-    func PushFloat32(me *var String, value Float32) Void
-    {
-        const bufferCount = 128;
-        var buffer [bufferCount]Char = ?;
-
-        Internal.CoreSystemFloat32ToString(buffer as *var Char, bufferCount, value);
-        me.PushCString(buffer as *val Char);
-    }
-
     func PushView(me *var String, view StringView) Void
     {
         me.Reserve(view.count);
@@ -109,5 +100,131 @@ struct String
         me.Reserve(1);
         var stringChar = (me.data as UInt + me.count as UInt) as *var Char;
         stringChar.* = '\0';
+    }
+
+    func PushFloat32(me *var String, value Float32) Void
+    {
+        const bufferCount = 128;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemFloat32ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushFloat64(me *var String, value Float64) Void
+    {
+        const bufferCount = 128;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemFloat64ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushInt(me *var String, value Int) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemIntToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushUInt(me *var String, value UInt) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUIntToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushInt8(me *var String, value Int8) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemInt8ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushUInt8(me *var String, value UInt8) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUInt8ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushInt16(me *var String, value Int16) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemInt16ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushUInt16(me *var String, value UInt16) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUInt16ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushInt32(me *var String, value Int32) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemInt32ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushUInt32(me *var String, value UInt32) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUInt32ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushInt64(me *var String, value Int64) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemInt64ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushUInt64(me *var String, value UInt64) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUInt64ToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushBool(me *var String, value Bool) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemBoolToString(buffer as *var Char, bufferCount, value);
+        me.PushCString(buffer as *val Char);
+    }
+
+    func PushPointer<T>(me *var String, value *val T) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemPointerToString(buffer as *var Char, bufferCount, value as *val Void);
+        me.PushCString(buffer as *val Char);
     }
 }

@@ -62,11 +62,6 @@ void CoreSystemUInt64ToString(char *out, intptr_t outCount, uint64_t value)
     snprintf(out, outCount, "%"PRIu64, value);
 }
 
-void CoreSystemCharToString(char *out, intptr_t outCount, char value)
-{
-    snprintf(out, outCount, "%c", value);
-}
-
 void CoreSystemPointerToString(char *out, intptr_t outCount, void *value)
 {
     snprintf(out, outCount, "%p", value);

@@ -1,1 +1,16 @@
 extern func CoreSystemFloat32ToString(out *var Char, outCount Int, value Float32) Void;
+extern func CoreSystemFloat64ToString(out *var Char, outCount Int, value Float64) Void;
+
+extern func CoreSystemIntToString(out *var Char, outCount Int, value Int) Void;
+extern func CoreSystemUIntToString(out *var Char, outCount Int, value UInt) Void;
+extern func CoreSystemInt8ToString(out *var Char, outCount Int, value Int8) Void;
+extern func CoreSystemUInt8ToString(out *var Char, outCount Int, value UInt8) Void;
+extern func CoreSystemInt16ToString(out *var Char, outCount Int, value Int16) Void;
+extern func CoreSystemUInt16ToString(out *var Char, outCount Int, value UInt16) Void;
+extern func CoreSystemInt32ToString(out *var Char, outCount Int, value Int32) Void;
+extern func CoreSystemUInt32ToString(out *var Char, outCount Int, value UInt32) Void;
+extern func CoreSystemInt64ToString(out *var Char, outCount Int, value Int64) Void;
+extern func CoreSystemUInt64ToString(out *var Char, outCount Int, value UInt64) Void;
+
+extern func CoreSystemBoolToString(out *var Char, outCount Int, value Bool) Void;
+extern func CoreSystemPointerToString(out *var Char, outCount Int, value *val Void) Void;

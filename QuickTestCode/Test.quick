@@ -70,10 +70,12 @@ func Main(argc Int, argv *val *val Char) Int
 
     Puts(hi);
 
-    var floatString = String.Create();
-    floatString.PushCString(stringWithEscape.data);
-    floatString.PushFloat32(137.43);
-    puts(floatString.data);
+    var testString = String.Create();
+    testString.PushCString(stringWithEscape.data);
+    testString.PushFloat32(137.43);
+    testString.PushChar('\n');
+    testString.PushPointer.<Point>(allocatedPoint);
+    puts(testString.data);
 
     while (true)
     {
