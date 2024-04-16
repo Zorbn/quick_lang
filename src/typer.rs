@@ -510,7 +510,6 @@ impl Typer {
             return LookupResult::from_namespace_lookup_result(namespace_id, result);
         }
 
-        // TODO: If multiple results are found in used files, that should be an error.
         let mut found_in_namespace_id = GLOBAL_NAMESPACE_ID;
         let mut result = NamespaceLookupResult::None;
 
