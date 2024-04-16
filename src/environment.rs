@@ -1,10 +1,12 @@
 use std::{collections::HashMap, hash::Hash};
 
+#[derive(Clone)]
 pub struct SubEnvironment<K: Hash + PartialEq + Eq, V> {
     name_types: HashMap<K, V>,
     is_connected_to_previous: bool,
 }
 
+#[derive(Clone)]
 pub struct Environment<K: Hash + PartialEq + Eq, V: Clone> {
     stack: Vec<SubEnvironment<K, V>>,
 }

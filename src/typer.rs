@@ -81,6 +81,7 @@ pub enum LookupLocation {
 
 pub const GLOBAL_NAMESPACE_ID: usize = 0;
 
+#[derive(Clone)]
 pub struct Typer {
     all_nodes: Arc<Vec<Vec<Node>>>,
 
@@ -142,31 +143,8 @@ impl Typer {
 
     // Make a typer that inherits the data of an existing typer, but represents a specific file.
     pub fn new_for_file(base_typer: &Typer, file_index: usize) -> Self {
-        let mut typer = Typer {
-            all_nodes: base_typer.all_nodes.clone(),
-
-            typed_nodes: Vec::new(),
-            typed_definitions: Vec::new(),
-            type_kinds: base_typer.type_kinds.clone(),
-            main_function_declaration: None,
-            error_count: base_typer.error_count,
-
-            file_index: Some(file_index),
-            files: base_typer.files.clone(),
-
-            namespaces: base_typer.namespaces.clone(),
-            file_namespace_ids: base_typer.file_namespace_ids.clone(),
-            file_used_namespace_ids: base_typer.file_used_namespace_ids.clone(),
-            string_view_type_kind_id: base_typer.string_view_type_kind_id,
-
-            scope_type_kind_environment: Environment::new(),
-            scope_environment: Environment::new(),
-
-            was_block_already_opened: false,
-            node_index_stack: Vec::new(),
-            loop_stack: 0,
-        };
-
+        let mut typer = base_typer.clone();
+        typer.file_index = Some(file_index);
         typer.find_string_view();
 
         typer
