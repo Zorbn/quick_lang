@@ -98,7 +98,7 @@ impl Identifier {
     }
 }
 
-pub enum LookupResult {
+pub enum NamespaceLookupResult {
     DefinitionIndex(NodeIndex),
     Definition(Definition),
     None,
@@ -163,16 +163,16 @@ impl Namespace {
         self.definitions.insert(identifier, definition);
     }
 
-    pub fn lookup(&self, identifier: &Identifier) -> LookupResult {
+    pub fn lookup(&self, identifier: &Identifier) -> NamespaceLookupResult {
         if let Some(definition) = self.definitions.get(identifier) {
-            return LookupResult::Definition(definition.clone());
+            return NamespaceLookupResult::Definition(definition.clone());
         }
 
         if let Some(definition_index) = self.definition_indices.get(&identifier.name) {
-            return LookupResult::DefinitionIndex(definition_index);
+            return NamespaceLookupResult::DefinitionIndex(definition_index);
         }
 
-        LookupResult::None
+        NamespaceLookupResult::None
     }
 
     pub fn is_name_defined(&self, name: Arc<str>) -> bool {

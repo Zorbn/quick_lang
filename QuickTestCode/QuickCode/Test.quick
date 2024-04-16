@@ -1,3 +1,11 @@
+enum OtherName
+{
+    OtherAlbert;
+    OtherBenjamin;
+    OtherCarson;
+    OtherDerek;
+}
+
 func QuickCodeTest() Void
 {
 

@@ -4,3 +4,11 @@ func zero() Int
 {
     return 0;
 }
+
+enum OtherName
+{
+    OtherAlbert;
+    OtherBenjamin;
+    OtherCarson;
+    OtherDerek;
+}

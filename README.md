@@ -28,7 +28,6 @@
 - Allow `sizeof` on complex types at compile time.
 - Some form of debug info: https://learn.microsoft.com/en-us/cpp/preprocessor/hash-line-directive-c-cpp
 - Stack traces.
-- Catch ambiguous symbol lookups.
 
 #### Cleanup
 - Refer to TODOs in source files.

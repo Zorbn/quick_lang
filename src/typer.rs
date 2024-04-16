@@ -5,8 +5,8 @@ use crate::{
     environment::Environment,
     file_data::FileData,
     namespace::{
-        Definition, DefinitionIndexError, DefinitionIndices, Identifier, LookupResult, Namespace,
-        NamespaceGenericArg, DEFINITION_ERROR,
+        Definition, DefinitionIndexError, DefinitionIndices, Identifier, Namespace,
+        NamespaceGenericArg, NamespaceLookupResult, DEFINITION_ERROR,
     },
     parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
     position::Position,
@@ -61,6 +61,33 @@ macro_rules! assert_typed {
     }};
 }
 
+pub enum LookupResult {
+    DefinitionIndex(usize, NodeIndex),
+    Definition(usize, Definition),
+    Ambiguous,
+    None,
+}
+
+impl LookupResult {
+    fn from_namespace_lookup_result(namespace_id: usize, result: NamespaceLookupResult) -> Self {
+        match result {
+            NamespaceLookupResult::DefinitionIndex(definition_index) => {
+                LookupResult::DefinitionIndex(namespace_id, definition_index)
+            }
+            NamespaceLookupResult::Definition(definition) => {
+                LookupResult::Definition(namespace_id, definition)
+            }
+            NamespaceLookupResult::None => LookupResult::None,
+        }
+    }
+}
+
+pub enum IdentifierLookupResult {
+    Some(usize, Type),
+    Ambiguous,
+    None,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LookupKind {
     All,
@@ -68,15 +95,15 @@ enum LookupKind {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct TypedDefinition {
-    pub index: NodeIndex,
-    pub is_shallow: bool,
-}
-
-#[derive(Clone, Copy, Debug)]
 pub enum LookupLocation {
     Namespace(usize),
     File(usize),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TypedDefinition {
+    pub index: NodeIndex,
+    pub is_shallow: bool,
 }
 
 pub const GLOBAL_NAMESPACE_ID: usize = 0;
@@ -109,10 +136,7 @@ pub struct Typer {
 
 impl Typer {
     // Create a blank typer representing no file in particular.
-    pub fn new(
-        all_nodes: Arc<Vec<Vec<Node>>>,
-        files: Arc<Vec<FileData>>,
-    ) -> Self {
+    pub fn new(all_nodes: Arc<Vec<Vec<Node>>>, files: Arc<Vec<FileData>>) -> Self {
         let file_count = files.len();
 
         Self {
@@ -156,8 +180,7 @@ impl Typer {
     ) {
         let mut file_used_namespace_ids = Vec::new();
 
-        self
-            .namespaces
+        self.namespaces
             .push(Namespace::new("".into(), None, Vec::new(), None));
 
         self.define_global_primitives();
@@ -204,7 +227,7 @@ impl Typer {
                     )
                     .is_err()
                 {
-                    self.error_at_parser_node(DEFINITION_ERROR, *start_index);
+                    self.error(DEFINITION_ERROR, *start_index);
                 }
 
                 current_namespace_id = new_namespace_id;
@@ -224,7 +247,7 @@ impl Typer {
                 .extend_definition_indices(&definition_indices, &mut definition_errors);
 
             for DefinitionIndexError(index) in &definition_errors {
-                self.error_at_parser_node(DEFINITION_ERROR, *index);
+                self.error(DEFINITION_ERROR, *index);
             }
 
             self.file_used_namespace_ids.push(Vec::new());
@@ -233,8 +256,7 @@ impl Typer {
         }
 
         for (i, start_index) in all_start_indices.iter().enumerate() {
-            let NodeKind::TopLevel { usings, .. } =
-                self.get_parser_node(*start_index).kind.clone()
+            let NodeKind::TopLevel { usings, .. } = self.get_parser_node(*start_index).kind.clone()
             else {
                 panic!("expected top level at start index");
             };
@@ -247,10 +269,20 @@ impl Typer {
         }
     }
 
-    fn check_using(&mut self, using: NodeIndex, file_used_namespace_ids: &mut [HashSet<usize>]) -> NodeIndex {
+    fn check_using(
+        &mut self,
+        using: NodeIndex,
+        file_used_namespace_ids: &mut [HashSet<usize>],
+    ) -> NodeIndex {
         self.node_index_stack.push(using);
 
-        let Node { kind: NodeKind::Using { namespace_type_name }, .. } = self.get_parser_node(using).clone() else {
+        let Node {
+            kind: NodeKind::Using {
+                namespace_type_name,
+            },
+            ..
+        } = self.get_parser_node(using).clone()
+        else {
             panic!("invalid using node");
         };
 
@@ -263,7 +295,8 @@ impl Typer {
         {
             namespace_id
         } else {
-            return self.type_error_at_parser_node("expected namespace after using", namespace_type_name);
+            return self
+                .type_error_at_parser_node("expected namespace after using", namespace_type_name);
         };
 
         file_used_namespace_ids[using.file_index].insert(namespace_id);
@@ -399,8 +432,8 @@ impl Typer {
     }
 
     fn find_string_view(&mut self) {
-        self.string_view_type_kind_id = if let Some((_, string_view_type)) = self
-            .lookup_identifier(
+        self.string_view_type_kind_id = if let IdentifierLookupResult::Some(_, string_view_type) =
+            self.lookup_identifier(
                 Identifier::new("StringView"),
                 LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
                 LookupKind::Types,
@@ -435,26 +468,25 @@ impl Typer {
         &mut self,
         identifier: Identifier,
         location: LookupLocation,
-    ) -> (usize, LookupResult) {
+    ) -> LookupResult {
         if let LookupLocation::Namespace(namespace_id) = location {
-            return (
-                namespace_id,
-                self.namespaces[namespace_id].lookup(&identifier),
-            );
+            let result = self.namespaces[namespace_id].lookup(&identifier);
+
+            return LookupResult::from_namespace_lookup_result(namespace_id, result);
         }
 
         // The scope is not part of a namespace.
         if let Some(variable_type) = self.scope_environment.get(&identifier.name) {
-            return (
+            return LookupResult::Definition(
                 GLOBAL_NAMESPACE_ID,
-                LookupResult::Definition(Definition::Variable { variable_type }),
+                Definition::Variable { variable_type },
             );
         };
 
         if let Some(type_kind_id) = self.scope_type_kind_environment.get(&identifier) {
-            return (
+            return LookupResult::Definition(
                 GLOBAL_NAMESPACE_ID,
-                LookupResult::Definition(Definition::TypeKind { type_kind_id }),
+                Definition::TypeKind { type_kind_id },
             );
         };
 
@@ -466,7 +498,7 @@ impl Typer {
         loop {
             let result = self.namespaces[namespace_id].lookup(&identifier);
 
-            if let LookupResult::None = result {
+            if let NamespaceLookupResult::None = result {
                 if let Some(parent_namespace_id) = self.namespaces[namespace_id].parent_id {
                     namespace_id = parent_namespace_id;
                     continue;
@@ -475,21 +507,35 @@ impl Typer {
                 }
             }
 
-            return (namespace_id, result);
+            return LookupResult::from_namespace_lookup_result(namespace_id, result);
         }
 
         // TODO: If multiple results are found in used files, that should be an error.
-        for used_namespace_id in &self.file_used_namespace_ids[file_index] {
-            let result = self.namespaces[*used_namespace_id].lookup(&identifier);
+        let mut found_in_namespace_id = GLOBAL_NAMESPACE_ID;
+        let mut result = NamespaceLookupResult::None;
 
-            if let LookupResult::None = result {
+        // Look in all namespaces this file is using to find the identifier.
+        // If this symbol is in multiple of the used namespaces it is considered ambiguous.
+        // We have no logical way to prioritize one used namespace over another, unlike with
+        // the file's namespace and it's parent namespaces.
+        for used_namespace_id in &self.file_used_namespace_ids[file_index] {
+            let used_namespace_result = self.namespaces[*used_namespace_id].lookup(&identifier);
+
+            if let NamespaceLookupResult::None = used_namespace_result {
                 continue;
             }
 
-            return (*used_namespace_id, result);
+            if let NamespaceLookupResult::None = result {
+                found_in_namespace_id = *used_namespace_id;
+                result = used_namespace_result;
+
+                continue;
+            }
+
+            return LookupResult::Ambiguous;
         }
 
-        (GLOBAL_NAMESPACE_ID, LookupResult::None)
+        LookupResult::from_namespace_lookup_result(found_in_namespace_id, result)
     }
 
     fn lookup_identifier(
@@ -498,11 +544,10 @@ impl Typer {
         location: LookupLocation,
         kind: LookupKind,
         usage_index: Option<NodeIndex>,
-    ) -> Option<(usize, Type)> {
-        let (mut namespace_id, mut result) =
-            self.lookup_identifier_definition_or_index(identifier.clone(), location);
+    ) -> IdentifierLookupResult {
+        let mut result = self.lookup_identifier_definition_or_index(identifier.clone(), location);
 
-        if let LookupResult::DefinitionIndex(definition_index) = result {
+        if let LookupResult::DefinitionIndex(namespace_id, definition_index) = result {
             self.check_node_with_generic_args(
                 definition_index,
                 usage_index,
@@ -510,12 +555,15 @@ impl Typer {
                 namespace_id,
             );
 
-            (namespace_id, result) =
-                self.lookup_identifier_definition_or_index(identifier.clone(), location);
+            result = self.lookup_identifier_definition_or_index(identifier.clone(), location);
         }
 
-        let LookupResult::Definition(definition) = result else {
-            return None;
+        let LookupResult::Definition(namespace_id, definition) = result else {
+            if let LookupResult::Ambiguous = result {
+                return IdentifierLookupResult::Ambiguous;
+            }
+
+            return IdentifierLookupResult::None;
         };
 
         match definition {
@@ -529,29 +577,29 @@ impl Typer {
                     namespace_id
                 };
 
-                Some((
+                IdentifierLookupResult::Some(
                     function_namespace_id,
                     Type {
                         type_kind_id,
                         instance_kind: InstanceKind::Val,
                     },
-                ))
+                )
             }
             Definition::Variable { variable_type } if kind == LookupKind::All => {
                 if identifier.generic_arg_type_kind_ids.is_some() {
-                    return None;
+                    return IdentifierLookupResult::None;
                 }
 
-                Some((namespace_id, variable_type))
+                IdentifierLookupResult::Some(namespace_id, variable_type)
             }
-            Definition::TypeKind { type_kind_id } => Some((
+            Definition::TypeKind { type_kind_id } => IdentifierLookupResult::Some(
                 namespace_id,
                 Type {
                     type_kind_id,
                     instance_kind: InstanceKind::Name,
                 },
-            )),
-            _ => None,
+            ),
+            _ => IdentifierLookupResult::None,
         }
     }
 
@@ -563,8 +611,7 @@ impl Typer {
         kind: LookupKind,
     ) -> Option<(NodeIndex, Type)> {
         let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            self.error("invalid identifier name");
-            return None;
+            panic!("invalid identifier name");
         };
 
         let identifier = Identifier {
@@ -578,13 +625,18 @@ impl Typer {
             LookupLocation::File(name.file_index)
         };
 
-        let Some((namespace_id, name_type)) =
-            self.lookup_identifier(identifier, location, kind, Some(name))
-        else {
-            if kind == LookupKind::Types {
-                self.error_at_parser_node("undefined type", name);
+        let result = self.lookup_identifier(identifier, location, kind, Some(name));
+
+        let IdentifierLookupResult::Some(namespace_id, name_type) = result else {
+            if let IdentifierLookupResult::Ambiguous = result {
+                self.error(
+                    "abmiguous identifier, multiple definitions are in scope",
+                    name,
+                );
+            } else if kind == LookupKind::Types {
+                self.error("undefined type", name);
             } else {
-                self.error_at_parser_node("undefined identifier", name);
+                self.error("undefined identifier", name);
             }
 
             return None;
@@ -599,11 +651,7 @@ impl Typer {
         &mut self.namespaces[self.file_namespace_ids[file_index]]
     }
 
-    fn error(&mut self, message: &str) {
-        self.error_at_parser_node(message, self.node_index_stack.last().copied().unwrap());
-    }
-
-    fn error_at_parser_node(&mut self, message: &str, node_index: NodeIndex) {
+    fn error(&mut self, message: &str, node_index: NodeIndex) {
         self.error_count += 1;
         self.get_parser_node(node_index)
             .start
@@ -615,7 +663,7 @@ impl Typer {
     }
 
     fn type_error_at_parser_node(&mut self, message: &str, node: NodeIndex) -> NodeIndex {
-        self.error_at_parser_node(message, node);
+        self.error(message, node);
 
         self.add_node(TypedNode {
             node_kind: NodeKind::Error,
@@ -816,9 +864,7 @@ impl Typer {
                 left,
                 generic_arg_type_names,
             } => self.type_name_generic_specifier(left, generic_arg_type_names),
-            NodeKind::Using {
-                ..
-            } => type_error!(self, "cannot generate using node"),
+            NodeKind::Using { .. } => type_error!(self, "cannot generate using node"),
             NodeKind::Error => type_error!(self, "cannot generate error node"),
         };
 
