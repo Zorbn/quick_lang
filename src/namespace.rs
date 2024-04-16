@@ -5,6 +5,15 @@ use crate::{parser::NodeIndex, typer::Type};
 pub const DEFINITION_ERROR: &str = "a definition with this name already exists in this namespace";
 
 #[derive(Debug)]
+pub struct DefinitionIndexError(pub NodeIndex);
+
+impl Display for DefinitionIndexError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", DEFINITION_ERROR)
+    }
+}
+
+#[derive(Debug)]
 pub struct DefinitionError;
 
 impl Display for DefinitionError {
@@ -25,9 +34,9 @@ impl DefinitionIndices {
         }
     }
 
-    pub fn insert(&mut self, name: Arc<str>, index: NodeIndex) -> Result<(), DefinitionError> {
+    pub fn insert(&mut self, name: Arc<str>, index: NodeIndex) -> Result<(), DefinitionIndexError> {
         if self.indices.insert(name, index).is_some() {
-            return Err(DefinitionError);
+            return Err(DefinitionIndexError(index));
         }
 
         Ok(())
@@ -40,12 +49,19 @@ impl DefinitionIndices {
     pub fn extend(
         &mut self,
         definition_indices: &DefinitionIndices,
-    ) -> Result<(), DefinitionError> {
+        errors: &mut Vec<DefinitionIndexError>,
+    ) {
         for (name, index) in &definition_indices.indices {
-            self.insert(name.clone(), *index)?;
+            if let Err(error) = self.insert(name.clone(), *index) {
+                errors.push(error);
+            }
         }
+    }
 
-        Ok(())
+    pub fn extend_unchecked(&mut self, definition_indices: &DefinitionIndices) {
+        for (name, index) in &definition_indices.indices {
+            let _ = self.insert(name.clone(), *index);
+        }
     }
 
     fn has_name(&self, name: &str) -> bool {
@@ -124,8 +140,11 @@ impl Namespace {
     }
 
     // Add a new name to the namespace, and ensure it isn't a duplicate.
-    // TODO: Error if this name already exists in the namespace.
-    pub fn insert(&mut self, name: Arc<str>, definition: Definition) -> Result<(), DefinitionError> {
+    pub fn insert(
+        &mut self,
+        name: Arc<str>,
+        definition: Definition,
+    ) -> Result<(), DefinitionError> {
         if self.has_name(name.clone()) {
             return Err(DefinitionError);
         }
@@ -161,8 +180,13 @@ impl Namespace {
     pub fn extend_definition_indices(
         &mut self,
         definition_indices: &DefinitionIndices,
-    ) -> Result<(), DefinitionError> {
-        self.definition_indices.extend(definition_indices)
+        errors: &mut Vec<DefinitionIndexError>,
+    ) {
+        self.definition_indices.extend(definition_indices, errors);
+    }
+
+    pub fn extend_definition_indices_unchecked(&mut self, definition_indices: &DefinitionIndices) {
+        self.definition_indices.extend_unchecked(definition_indices);
     }
 
     fn has_name(&self, name: Arc<str>) -> bool {

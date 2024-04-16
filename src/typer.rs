@@ -5,7 +5,8 @@ use crate::{
     environment::Environment,
     file_data::FileData,
     namespace::{
-        Definition, DefinitionIndices, Identifier, LookupResult, Namespace, NamespaceGenericArg,
+        Definition, DefinitionIndexError, DefinitionIndices, Identifier, LookupResult, Namespace,
+        NamespaceGenericArg, DEFINITION_ERROR,
     },
     parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
     position::Position,
@@ -146,6 +147,8 @@ impl Typer {
 
         typer.define_global_primitives();
 
+        let mut definition_errors = Vec::new();
+
         for (i, start_index) in all_start_indices.iter().enumerate() {
             let mut current_namespace_id = GLOBAL_NAMESPACE_ID;
 
@@ -177,12 +180,17 @@ impl Typer {
                     namespace_id: new_namespace_id,
                 });
 
-                typer.namespaces[current_namespace_id].insert(
-                    new_namespace_name,
-                    Definition::TypeKind {
-                        type_kind_id: namespace_type_kind_id,
-                    },
-                );
+                if typer.namespaces[current_namespace_id]
+                    .insert(
+                        new_namespace_name,
+                        Definition::TypeKind {
+                            type_kind_id: namespace_type_kind_id,
+                        },
+                    )
+                    .is_err()
+                {
+                    typer.error_at_parser_node(DEFINITION_ERROR, *start_index);
+                }
 
                 current_namespace_id = new_namespace_id;
             }
@@ -196,13 +204,21 @@ impl Typer {
                 panic!("expected top level at start index");
             };
 
-            typer.namespaces[current_namespace_id].extend_definition_indices(&definition_indices);
+            // TODO: This namespace setup is done for every file by every typer creating many duplicate errors & effort.
+            // TODO: Can this namespace setup code happen only once and get reused by each typer?
+            definition_errors.clear();
+            typer.namespaces[current_namespace_id]
+                .extend_definition_indices(&definition_indices, &mut definition_errors);
+
+            if file_index == 0 { // < TODO: Hack, refer to above TODOs.
+                for DefinitionIndexError(index) in &definition_errors {
+                    typer.error_at_parser_node(DEFINITION_ERROR, *index);
+                }
+            }
 
             typer.file_used_namespace_ids.push(HashSet::new());
-            typer.file_used_namespace_ids[i].insert(current_namespace_id);
             typer.file_used_namespace_ids[i].insert(GLOBAL_NAMESPACE_ID);
             typer.file_used_namespace_ids_lists.push(Vec::new());
-            typer.file_used_namespace_ids_lists[i].push(current_namespace_id);
             typer.file_used_namespace_ids_lists[i].push(GLOBAL_NAMESPACE_ID);
         }
 
@@ -545,9 +561,9 @@ impl Typer {
         self.error_at_parser_node(message, self.node_index_stack.last().copied().unwrap());
     }
 
-    fn error_at_parser_node(&mut self, message: &str, node: NodeIndex) {
+    fn error_at_parser_node(&mut self, message: &str, node_index: NodeIndex) {
         self.error_count += 1;
-        self.get_parser_node(node)
+        self.get_parser_node(node_index)
             .start
             .error("Type", message, &self.files);
     }
@@ -997,7 +1013,10 @@ impl Typer {
                 type_error!(self, "invalid struct name");
             };
 
-            if self.get_file_namespace(file_index).is_name_defined(name_text) {
+            if self
+                .get_file_namespace(file_index)
+                .is_name_defined(name_text)
+            {
                 continue;
             }
 
@@ -1017,7 +1036,10 @@ impl Typer {
                 type_error!(self, "invalid enum name");
             };
 
-            if self.get_file_namespace(file_index).is_name_defined(name_text) {
+            if self
+                .get_file_namespace(file_index)
+                .is_name_defined(name_text)
+            {
                 continue;
             }
 
@@ -1044,7 +1066,10 @@ impl Typer {
                 type_error!(self, "invalid variable name");
             };
 
-            if self.get_file_namespace(file_index).is_name_defined(name_text) {
+            if self
+                .get_file_namespace(file_index)
+                .is_name_defined(name_text)
+            {
                 continue;
             }
 
@@ -2892,7 +2917,7 @@ impl Typer {
             generic_args,
             Some(self.file_namespace_ids[file_index]),
         );
-        let _ = namespace.extend_definition_indices(&definition_indices);
+        namespace.extend_definition_indices_unchecked(&definition_indices);
         self.namespaces.push(namespace);
 
         self.type_kinds.replace_placeholder(
