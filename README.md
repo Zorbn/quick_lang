@@ -11,7 +11,8 @@
 ### TODOs
 
 #### Type Checking
-- Check for duplicate names of fields and environment variables.
+- Check for incorrect field names in struct/union literals, not just types.
+- Check for duplicate names of fields (including field literals) and environment variables.
 
 #### Project Structure
 - Some form of incremental compilation.

@@ -2745,7 +2745,7 @@ impl Typer {
 
                 if !self.is_assignment_valid(field_literal_type.type_kind_id, expected_type_kind_id)
                 {
-                    type_error!(self, "incorrect field type");
+                    type_error_at_parser_node!(self, "incorrect field type", field_literals[0]);
                 }
             }
         } else {
@@ -2763,7 +2763,7 @@ impl Typer {
                     field_literal_type.type_kind_id,
                     expected_field.type_kind_id,
                 ) {
-                    type_error!(self, "incorrect field type");
+                    type_error_at_parser_node!(self, "incorrect field type", *field);
                 }
             }
         }
