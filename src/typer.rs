@@ -96,7 +96,7 @@ pub struct Typer {
     pub namespaces: Vec<Namespace>,
     file_namespace_ids: Vec<usize>,
     // TODO: Rename this to file_used_namespace_ids, and the temporary sets to something else.
-    file_used_namespace_ids_lists: Vec<Vec<usize>>,
+    file_used_namespace_ids: Vec<Vec<usize>>,
     pub string_view_type_kind_id: usize,
 
     scope_type_kind_environment: Environment<Identifier, usize>,
@@ -129,7 +129,7 @@ impl Typer {
             file_index: None,
             files,
             file_namespace_ids: Vec::with_capacity(file_count),
-            file_used_namespace_ids_lists: Vec::new(),
+            file_used_namespace_ids: Vec::new(),
 
             scope_type_kind_environment: Environment::new(),
             scope_environment: Environment::new(),
@@ -149,14 +149,14 @@ impl Typer {
             typed_definitions: Vec::new(),
             type_kinds: base_typer.type_kinds.clone(),
             main_function_declaration: None,
-            error_count: 0,
+            error_count: base_typer.error_count,
 
             file_index: Some(file_index),
             files: base_typer.files.clone(),
 
             namespaces: base_typer.namespaces.clone(),
             file_namespace_ids: base_typer.file_namespace_ids.clone(),
-            file_used_namespace_ids_lists: base_typer.file_used_namespace_ids_lists.clone(),
+            file_used_namespace_ids: base_typer.file_used_namespace_ids.clone(),
             string_view_type_kind_id: base_typer.string_view_type_kind_id,
 
             scope_type_kind_environment: Environment::new(),
@@ -175,7 +175,7 @@ impl Typer {
     pub fn check_namespaces(
         &mut self,
         all_start_indices: &[NodeIndex],
-        file_paths_components: &[Vec<OsString>],
+        file_path_components: &[Vec<OsString>],
     ) {
         let mut file_used_namespace_ids = Vec::new();
 
@@ -190,8 +190,8 @@ impl Typer {
         for (i, start_index) in all_start_indices.iter().enumerate() {
             let mut current_namespace_id = GLOBAL_NAMESPACE_ID;
 
-            for j in 0..(file_paths_components[i].len() - 1) {
-                let component_str = file_paths_components[i][j].to_str().unwrap();
+            for j in 0..(file_path_components[i].len() - 1) {
+                let component_str = file_path_components[i][j].to_str().unwrap();
 
                 if let Some(existing_namespace_id) = self.namespaces[current_namespace_id]
                     .child_ids
@@ -252,8 +252,8 @@ impl Typer {
 
             file_used_namespace_ids.push(HashSet::new());
             file_used_namespace_ids[i].insert(GLOBAL_NAMESPACE_ID);
-            self.file_used_namespace_ids_lists.push(Vec::new());
-            self.file_used_namespace_ids_lists[i].push(GLOBAL_NAMESPACE_ID);
+            self.file_used_namespace_ids.push(Vec::new());
+            self.file_used_namespace_ids[i].push(GLOBAL_NAMESPACE_ID);
         }
 
         for (i, start_index) in all_start_indices.iter().enumerate() {
@@ -268,8 +268,8 @@ impl Typer {
             }
 
             // TODO: Having to maintain this extra list is hacky!
-            self.file_used_namespace_ids_lists[i].clear();
-            self.file_used_namespace_ids_lists[i].extend(file_used_namespace_ids[i].iter());
+            self.file_used_namespace_ids[i].clear();
+            self.file_used_namespace_ids[i].extend(file_used_namespace_ids[i].iter());
         }
     }
 
@@ -284,11 +284,6 @@ impl Typer {
         let namespace_type_name_type = assert_typed!(self, typed_namespace_type_name);
 
         let namespace_id = if let TypeKind::Namespace { namespace_id } = self
-            .type_kinds
-            .get_by_id(namespace_type_name_type.type_kind_id)
-        {
-            namespace_id
-        } else if let TypeKind::Struct { namespace_id, .. } = self
             .type_kinds
             .get_by_id(namespace_type_name_type.type_kind_id)
         {
@@ -510,7 +505,7 @@ impl Typer {
         }
 
         // TODO: If multiple results are found in used files, that should be an error.
-        for used_namespace_id in &self.file_used_namespace_ids_lists[file_index] {
+        for used_namespace_id in &self.file_used_namespace_ids[file_index] {
             let result = self.namespaces[*used_namespace_id].lookup(&identifier);
 
             if let LookupResult::None = result {

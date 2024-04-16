@@ -61,9 +61,9 @@ pub fn compile(
         return ExitCode::FAILURE;
     };
 
-    let paths_components = get_paths_components(&files);
+    let path_components = get_path_components(&files);
 
-    let typers = if let Some(typers) = check(parsers, &files, &paths_components) {
+    let typers = if let Some(typers) = check(parsers, &files, &path_components) {
         typers
     } else {
         return ExitCode::FAILURE;
@@ -147,7 +147,7 @@ fn parse(lexers: Vec<Lexer>, files: &Arc<Vec<FileData>>) -> Option<Vec<Parser>> 
 fn check(
     parsers: Vec<Parser>,
     files: &Arc<Vec<FileData>>,
-    file_paths_components: &[Vec<OsString>],
+    file_path_components: &[Vec<OsString>],
 ) -> Option<Vec<Typer>> {
     let mut typers = Vec::with_capacity(parsers.len());
     let mut had_typing_error = false;
@@ -163,7 +163,7 @@ fn check(
     let all_nodes = Arc::new(all_nodes);
 
     let mut base_typer = Typer::new(all_nodes.clone(), files.clone());
-    base_typer.check_namespaces(&all_start_indices, file_paths_components);
+    base_typer.check_namespaces(&all_start_indices, file_path_components);
 
     for (i, start_index) in all_start_indices.iter().enumerate() {
         let mut typer = Typer::new_for_file(&base_typer, i);
@@ -230,8 +230,8 @@ fn get_output_paths(files: &Arc<Vec<FileData>>) -> Vec<PathBuf> {
     output_paths
 }
 
-fn get_paths_components(files: &Arc<Vec<FileData>>) -> Vec<Vec<OsString>> {
-    let mut paths_components = Vec::new();
+fn get_path_components(files: &Arc<Vec<FileData>>) -> Vec<Vec<OsString>> {
+    let mut path_components = Vec::new();
 
     for file in files.iter() {
         let mut components = Vec::new();
@@ -242,10 +242,10 @@ fn get_paths_components(files: &Arc<Vec<FileData>>) -> Vec<Vec<OsString>> {
             components.push(component);
         }
 
-        paths_components.push(components)
+        path_components.push(components)
     }
 
-    paths_components
+    path_components
 }
 
 fn collect_source_files(
