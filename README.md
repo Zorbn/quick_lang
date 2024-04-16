@@ -11,7 +11,7 @@
 ### TODOs
 
 #### Type Checking
-- Check for duplicate names of variables, functions, types, fields, etc.
+- Check for duplicate names of fields and environment variables.
 
 #### Project Structure
 - Some form of incremental compilation.
