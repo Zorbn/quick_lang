@@ -8,6 +8,7 @@ mod emitter_stack;
 mod environment;
 mod file_data;
 mod lexer;
+mod namespace;
 mod parser;
 mod position;
 mod type_kinds;
@@ -79,7 +80,14 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    compiler::compile(&args[1], core_path, is_debug_mode, is_unsafe_mode, use_msvc, c_flags)
+    compiler::compile(
+        &args[1],
+        core_path,
+        is_debug_mode,
+        is_unsafe_mode,
+        use_msvc,
+        c_flags,
+    )
 }
 
 fn get_core_path() -> Option<PathBuf> {

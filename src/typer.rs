@@ -1,15 +1,12 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ffi::OsString,
-    hash::Hash,
-    mem,
-    sync::Arc,
-};
+use std::{collections::HashSet, ffi::OsString, mem, sync::Arc};
 
 use crate::{
     const_value::ConstValue,
     environment::Environment,
     file_data::FileData,
+    namespace::{
+        Definition, DefinitionIndices, Identifier, LookupResult, Namespace, NamespaceGenericArg,
+    },
     parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
     position::Position,
     type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds},
@@ -63,48 +60,10 @@ macro_rules! assert_typed {
     }};
 }
 
-#[derive(Clone, Hash, Debug, PartialEq, Eq)]
-pub struct GenericIdentifier {
-    pub name: Arc<str>,
-    pub generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
-}
-
-impl GenericIdentifier {
-    pub fn new(name: Arc<str>) -> Self {
-        Self {
-            name,
-            generic_arg_type_kind_ids: None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct FunctionDefinition {
-    type_kind_id: usize,
-    is_extern: bool,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LookupKind {
     All,
     Types,
-}
-
-pub struct Namespace {
-    pub name: Arc<str>,
-    pub associated_type_kind_id: Option<usize>,
-    definition_indices: Vec<Arc<HashMap<Arc<str>, NodeIndex>>>,
-    function_definitions: HashMap<GenericIdentifier, FunctionDefinition>,
-    type_kinds: HashMap<GenericIdentifier, usize>,
-    variable_types: HashMap<Arc<str>, Type>,
-    pub generic_args: Vec<NamespaceGenericArg>,
-    inner_ids: HashMap<Arc<str>, usize>,
-    pub parent_id: Option<usize>,
-}
-
-pub struct NamespaceGenericArg {
-    param_name: Arc<str>,
-    type_kind_id: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -113,7 +72,13 @@ pub struct TypedDefinition {
     pub is_shallow: bool,
 }
 
-const GLOBAL_NAMESPACE_ID: usize = 0;
+#[derive(Clone, Copy, Debug)]
+pub enum LookupLocation {
+    Namespace(usize),
+    File(usize),
+}
+
+pub const GLOBAL_NAMESPACE_ID: usize = 0;
 
 pub struct Typer {
     all_nodes: Arc<Vec<Vec<Node>>>,
@@ -132,7 +97,7 @@ pub struct Typer {
     file_used_namespace_ids: Vec<HashSet<usize>>,
     file_used_namespace_ids_lists: Vec<Vec<usize>>,
 
-    scope_type_kind_environment: Environment<GenericIdentifier, usize>,
+    scope_type_kind_environment: Environment<Identifier, usize>,
     scope_environment: Environment<Arc<str>, Type>,
 
     was_block_already_opened: bool,
@@ -175,17 +140,11 @@ impl Typer {
             loop_stack: 0,
         };
 
-        typer.namespaces.push(Namespace {
-            name: "".into(),
-            associated_type_kind_id: None,
-            definition_indices: Vec::new(),
-            type_kinds: HashMap::new(),
-            function_definitions: HashMap::new(),
-            variable_types: HashMap::new(),
-            generic_args: Vec::new(),
-            inner_ids: HashMap::new(),
-            parent_id: None,
-        });
+        typer
+            .namespaces
+            .push(Namespace::new("".into(), None, Vec::new(), None));
+
+        typer.define_global_primitives();
 
         for (i, start_index) in all_start_indices.iter().enumerate() {
             let mut current_namespace_id = GLOBAL_NAMESPACE_ID;
@@ -193,27 +152,37 @@ impl Typer {
             for j in 0..(file_paths_components[i].len() - 1) {
                 let component_str = file_paths_components[i][j].to_str().unwrap();
 
-                if let Some(existing_namespace_id) = typer.namespaces[current_namespace_id].inner_ids.get(component_str) {
+                if let Some(existing_namespace_id) = typer.namespaces[current_namespace_id]
+                    .child_ids
+                    .get(component_str)
+                {
                     current_namespace_id = *existing_namespace_id;
                     continue;
                 }
 
                 let new_namespace_id = typer.namespaces.len();
                 let new_namespace_name: Arc<str> = Arc::from(component_str);
-                typer.namespaces.push(Namespace {
-                    name: new_namespace_name.clone(),
-                    associated_type_kind_id: None,
-                    definition_indices: Vec::new(),
-                    type_kinds: HashMap::new(),
-                    function_definitions: HashMap::new(),
-                    variable_types: HashMap::new(),
-                    generic_args: Vec::new(),
-                    inner_ids: HashMap::new(),
-                    parent_id: Some(current_namespace_id),
-                });
+
+                typer.namespaces.push(Namespace::new(
+                    new_namespace_name.clone(),
+                    None,
+                    Vec::new(),
+                    Some(current_namespace_id),
+                ));
                 typer.namespaces[current_namespace_id]
-                    .inner_ids
-                    .insert(new_namespace_name, new_namespace_id);
+                    .child_ids
+                    .insert(new_namespace_name.clone(), new_namespace_id);
+
+                let namespace_type_kind_id = typer.type_kinds.add_or_get(TypeKind::Namespace {
+                    namespace_id: new_namespace_id,
+                });
+
+                typer.namespaces[current_namespace_id].insert(
+                    new_namespace_name,
+                    Definition::TypeKind {
+                        type_kind_id: namespace_type_kind_id,
+                    },
+                );
 
                 current_namespace_id = new_namespace_id;
             }
@@ -227,9 +196,7 @@ impl Typer {
                 panic!("expected top level at start index");
             };
 
-            typer.namespaces[current_namespace_id]
-                .definition_indices
-                .push(definition_indices);
+            typer.namespaces[current_namespace_id].extend_definition_indices(&definition_indices);
 
             typer.file_used_namespace_ids.push(HashSet::new());
             typer.file_used_namespace_ids[i].insert(current_namespace_id);
@@ -255,16 +222,12 @@ impl Typer {
             typer.file_used_namespace_ids_lists[i].extend(typer.file_used_namespace_ids[i].iter());
         }
 
-        typer.define_global_primitives();
-
         typer.string_view_type_kind_id = if let Some((_, string_view_type)) = typer
             .lookup_identifier(
-                None,
-                "StringView".into(),
-                file_index,
-                None,
-                None,
+                Identifier::new("StringView"),
+                LookupLocation::File(file_index),
                 LookupKind::Types,
+                None,
             ) {
             string_view_type.type_kind_id
         } else {
@@ -278,69 +241,117 @@ impl Typer {
         let global_namespace = &mut self.namespaces[GLOBAL_NAMESPACE_ID];
 
         let int_id = self.type_kinds.add_or_get(TypeKind::Int);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Int".into()), int_id);
+        global_namespace.define(
+            Identifier::new("Int"),
+            Definition::TypeKind {
+                type_kind_id: int_id,
+            },
+        );
         let bool_id = self.type_kinds.add_or_get(TypeKind::Bool);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Bool".into()), bool_id);
+        global_namespace.define(
+            Identifier::new("Bool"),
+            Definition::TypeKind {
+                type_kind_id: bool_id,
+            },
+        );
         let char_id = self.type_kinds.add_or_get(TypeKind::Char);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Char".into()), char_id);
+        global_namespace.define(
+            Identifier::new("Char"),
+            Definition::TypeKind {
+                type_kind_id: char_id,
+            },
+        );
         let void_id = self.type_kinds.add_or_get(TypeKind::Void);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Void".into()), void_id);
+        global_namespace.define(
+            Identifier::new("Void"),
+            Definition::TypeKind {
+                type_kind_id: void_id,
+            },
+        );
         let uint_id = self.type_kinds.add_or_get(TypeKind::UInt);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("UInt".into()), uint_id);
+        global_namespace.define(
+            Identifier::new("UInt"),
+            Definition::TypeKind {
+                type_kind_id: uint_id,
+            },
+        );
         let int8_id = self.type_kinds.add_or_get(TypeKind::Int8);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Int8".into()), int8_id);
+        global_namespace.define(
+            Identifier::new("Int8"),
+            Definition::TypeKind {
+                type_kind_id: int8_id,
+            },
+        );
         let uint8_id = self.type_kinds.add_or_get(TypeKind::UInt8);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("UInt8".into()), uint8_id);
+        global_namespace.define(
+            Identifier::new("UInt8"),
+            Definition::TypeKind {
+                type_kind_id: uint8_id,
+            },
+        );
         let int16_id = self.type_kinds.add_or_get(TypeKind::Int16);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Int16".into()), int16_id);
+        global_namespace.define(
+            Identifier::new("Int16"),
+            Definition::TypeKind {
+                type_kind_id: int16_id,
+            },
+        );
         let uint16_id = self.type_kinds.add_or_get(TypeKind::UInt16);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("UInt16".into()), uint16_id);
+        global_namespace.define(
+            Identifier::new("UInt16"),
+            Definition::TypeKind {
+                type_kind_id: uint16_id,
+            },
+        );
         let int32_id = self.type_kinds.add_or_get(TypeKind::Int32);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Int32".into()), int32_id);
+        global_namespace.define(
+            Identifier::new("Int32"),
+            Definition::TypeKind {
+                type_kind_id: int32_id,
+            },
+        );
         let uint32_id = self.type_kinds.add_or_get(TypeKind::UInt32);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("UInt32".into()), uint32_id);
+        global_namespace.define(
+            Identifier::new("UInt32"),
+            Definition::TypeKind {
+                type_kind_id: uint32_id,
+            },
+        );
         let int64_id = self.type_kinds.add_or_get(TypeKind::Int64);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Int64".into()), int64_id);
+        global_namespace.define(
+            Identifier::new("Int64"),
+            Definition::TypeKind {
+                type_kind_id: int64_id,
+            },
+        );
         let uint64_id = self.type_kinds.add_or_get(TypeKind::UInt64);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("UInt64".into()), uint64_id);
+        global_namespace.define(
+            Identifier::new("UInt64"),
+            Definition::TypeKind {
+                type_kind_id: uint64_id,
+            },
+        );
         let float32_id = self.type_kinds.add_or_get(TypeKind::Float32);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Float32".into()), float32_id);
+        global_namespace.define(
+            Identifier::new("Float32"),
+            Definition::TypeKind {
+                type_kind_id: float32_id,
+            },
+        );
         let float64_id = self.type_kinds.add_or_get(TypeKind::Float64);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Float64".into()), float64_id);
+        global_namespace.define(
+            Identifier::new("Float64"),
+            Definition::TypeKind {
+                type_kind_id: float64_id,
+            },
+        );
         let tag_id = self.type_kinds.add_or_get(TypeKind::Tag);
-        global_namespace
-            .type_kinds
-            .insert(GenericIdentifier::new("Tag".into()), tag_id);
+        global_namespace.define(
+            Identifier::new("Tag"),
+            Definition::TypeKind {
+                type_kind_id: tag_id,
+            },
+        );
     }
 
     fn add_node(&mut self, typed_node: TypedNode) -> NodeIndex {
@@ -362,187 +373,135 @@ impl Typer {
         &self.typed_nodes[index.node_index]
     }
 
-    fn lookup_identifier_in_namespace(
+    fn lookup_identifier_definition_or_index(
         &mut self,
-        usage_index: Option<NodeIndex>,
-        identifier: &GenericIdentifier,
-        namespace_id: usize,
-        generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
-        kind: LookupKind,
-    ) -> Option<(Option<usize>, Type)> {
-        if let Some(inner_namespace_id) = self.namespaces[namespace_id]
-            .inner_ids
-            .get(&identifier.name)
-        {
-            let type_kind_id = self.type_kinds.add_or_get(TypeKind::Namespace {
-                namespace_id: *inner_namespace_id,
-            });
-
-            return Some((
-                Some(namespace_id),
-                Type {
-                    type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                },
-            ));
+        identifier: Identifier,
+        location: LookupLocation,
+    ) -> (usize, LookupResult) {
+        if let LookupLocation::Namespace(namespace_id) = location {
+            return (
+                namespace_id,
+                self.namespaces[namespace_id].lookup(&identifier),
+            );
         }
 
-        if kind != LookupKind::Types {
-            if let Some(function_definition) = self.namespaces[namespace_id]
-                .function_definitions
-                .get(identifier)
-                .copied()
-            {
-                let function_namespace_id = if function_definition.is_extern {
-                    None
+        // The scope is not part of a namespace.
+        if let Some(variable_type) = self.scope_environment.get(&identifier.name) {
+            return (
+                GLOBAL_NAMESPACE_ID,
+                LookupResult::Definition(Definition::Variable { variable_type }),
+            );
+        };
+
+        if let Some(type_kind_id) = self.scope_type_kind_environment.get(&identifier) {
+            return (
+                GLOBAL_NAMESPACE_ID,
+                LookupResult::Definition(Definition::TypeKind { type_kind_id }),
+            );
+        };
+
+        let LookupLocation::File(file_index) = location else {
+            unreachable!()
+        };
+
+        let mut namespace_id = self.file_namespace_ids[file_index];
+        loop {
+            let result = self.namespaces[namespace_id].lookup(&identifier);
+
+            if let LookupResult::None = result {
+                if let Some(parent_namespace_id) = self.namespaces[namespace_id].parent_id {
+                    namespace_id = parent_namespace_id;
+                    continue;
                 } else {
-                    Some(namespace_id)
-                };
-
-                return Some((
-                    function_namespace_id,
-                    Type {
-                        type_kind_id: function_definition.type_kind_id,
-                        instance_kind: InstanceKind::Val,
-                    },
-                ));
-            }
-
-            if let Some(variable_type) = self.namespaces[namespace_id]
-                .variable_types
-                .get(&identifier.name)
-                .cloned()
-            {
-                if generic_arg_type_kind_ids.is_some() {
-                    return None;
+                    break;
                 }
-
-                return Some((Some(namespace_id), variable_type));
             }
+
+            return (namespace_id, result);
         }
 
-        if let Some(type_kind_id) = self.namespaces[namespace_id]
-            .type_kinds
-            .get(identifier)
-            .copied()
-        {
-            return Some((
-                Some(namespace_id),
-                Type {
-                    type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                },
-            ));
-        }
+        // TODO: If multiple results are found in used files, that should be an error.
+        for used_namespace_id in &self.file_used_namespace_ids_lists[file_index] {
+            let result = self.namespaces[*used_namespace_id].lookup(&identifier);
 
-        let mut definition_index = None;
-        for definition_index_list in &self.namespaces[namespace_id].definition_indices {
-            definition_index = definition_index_list.get(&identifier.name).copied();
-
-            if definition_index.is_some() {
-                break;
+            if let LookupResult::None = result {
+                continue;
             }
+
+            return (*used_namespace_id, result);
         }
 
-        let Some(definition_index) = definition_index else {
-            return None;
-        };
-
-        let is_function = matches!(
-            self.get_parser_node(definition_index).kind,
-            NodeKind::Function { .. }
-        );
-
-        if kind == LookupKind::Types && is_function {
-            return None;
-        }
-
-        let typed_definition = self.check_node_with_generic_args(
-            definition_index,
-            usage_index,
-            generic_arg_type_kind_ids,
-            namespace_id,
-        );
-
-        let Some(typed_definition) = typed_definition else {
-            return None;
-        };
-
-        let definition_type = self.get_typer_node(typed_definition).node_type.clone()?;
-
-        let definition_namespace_id = if let NodeKind::ExternFunction { .. } =
-            self.get_typer_node(typed_definition).node_kind
-        {
-            None
-        } else {
-            Some(namespace_id)
-        };
-
-        Some((definition_namespace_id, definition_type))
+        (GLOBAL_NAMESPACE_ID, LookupResult::None)
     }
 
     fn lookup_identifier(
         &mut self,
-        usage_index: Option<NodeIndex>,
-        name_text: Arc<str>,
-        file_index: usize,
-        namespace_id: Option<usize>,
-        generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
+        identifier: Identifier,
+        location: LookupLocation,
         kind: LookupKind,
-    ) -> Option<(Option<usize>, Type)> {
-        let identifier = GenericIdentifier {
-            name: name_text.clone(),
-            generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
-        };
+        usage_index: Option<NodeIndex>,
+    ) -> Option<(usize, Type)> {
+        let (mut namespace_id, mut result) =
+            self.lookup_identifier_definition_or_index(identifier.clone(), location);
 
-        let Some(namespace_id) = namespace_id else {
-            // The scope is not part of a namespace.
-            if let Some(identifier_type) = self.scope_environment.get(&name_text) {
-                return Some((namespace_id, identifier_type));
-            };
+        if let LookupResult::DefinitionIndex(definition_index) = result {
+            self.check_node_with_generic_args(
+                definition_index,
+                usage_index,
+                identifier.generic_arg_type_kind_ids.clone(),
+                namespace_id,
+            );
 
-            if let Some(type_kind_id) = self.scope_type_kind_environment.get(&identifier) {
-                return Some((
-                    namespace_id,
-                    Type {
-                        type_kind_id,
-                        instance_kind: InstanceKind::Name,
-                    },
-                ));
-            };
+            (namespace_id, result) =
+                self.lookup_identifier_definition_or_index(identifier.clone(), location);
+        }
 
-            for i in 0..self.file_used_namespace_ids_lists[file_index].len() {
-                let used_namespace_id = self.file_used_namespace_ids_lists[file_index][i];
-                let result = self.lookup_identifier_in_namespace(
-                    usage_index,
-                    &identifier,
-                    used_namespace_id,
-                    generic_arg_type_kind_ids.clone(),
-                    kind,
-                );
-
-                if result.is_some() {
-                    return result;
-                }
-            }
-
+        let LookupResult::Definition(definition) = result else {
             return None;
         };
 
-        self.lookup_identifier_in_namespace(
-            usage_index,
-            &identifier,
-            namespace_id,
-            generic_arg_type_kind_ids,
-            kind,
-        )
+        match definition {
+            Definition::Function {
+                type_kind_id,
+                is_extern,
+            } if kind == LookupKind::All => {
+                let function_namespace_id = if is_extern {
+                    GLOBAL_NAMESPACE_ID
+                } else {
+                    namespace_id
+                };
+
+                Some((
+                    function_namespace_id,
+                    Type {
+                        type_kind_id,
+                        instance_kind: InstanceKind::Val,
+                    },
+                ))
+            }
+            Definition::Variable { variable_type } if kind == LookupKind::All => {
+                if identifier.generic_arg_type_kind_ids.is_some() {
+                    return None;
+                }
+
+                Some((namespace_id, variable_type))
+            }
+            Definition::TypeKind { type_kind_id } => Some((
+                namespace_id,
+                Type {
+                    type_kind_id,
+                    instance_kind: InstanceKind::Name,
+                },
+            )),
+            _ => None,
+        }
     }
 
     fn lookup_identifier_name(
         &mut self,
         name: NodeIndex,
-        namespace_id: Option<usize>,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
+        namespace_id: Option<usize>,
         kind: LookupKind,
     ) -> Option<(NodeIndex, Type)> {
         let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
@@ -550,14 +509,20 @@ impl Typer {
             return None;
         };
 
-        let Some((namespace_id, name_type)) = self.lookup_identifier(
-            Some(name),
-            name_text,
-            name.file_index,
-            namespace_id,
+        let identifier = Identifier {
+            name: name_text,
             generic_arg_type_kind_ids,
-            kind,
-        ) else {
+        };
+
+        let location = if let Some(namespace_id) = namespace_id {
+            LookupLocation::Namespace(namespace_id)
+        } else {
+            LookupLocation::File(name.file_index)
+        };
+
+        let Some((namespace_id, name_type)) =
+            self.lookup_identifier(identifier, location, kind, Some(name))
+        else {
             if kind == LookupKind::Types {
                 self.error_at_parser_node("undefined type", name);
             } else {
@@ -760,7 +725,7 @@ impl Typer {
                 generic_params,
                 return_type_name,
                 false,
-                Some(file_namespace_id),
+                file_namespace_id,
                 file_index,
             ),
             NodeKind::Function {
@@ -845,7 +810,7 @@ impl Typer {
                 file_index,
             )),
             _ if generic_arg_type_kind_ids.is_none() => {
-                Some(self.check_node_with_namespace(index, Some(namespace_id)))
+                Some(self.check_node_with_namespace(index, namespace_id))
             }
             _ => None,
         };
@@ -876,16 +841,12 @@ impl Typer {
         typed_index
     }
 
-    fn check_node_with_namespace(
-        &mut self,
-        index: NodeIndex,
-        namespace_id: Option<usize>,
-    ) -> NodeIndex {
+    fn check_node_with_namespace(&mut self, index: NodeIndex, namespace_id: usize) -> NodeIndex {
         self.node_index_stack.push(index);
         let file_index = index.file_index;
 
         let typed_index = match self.get_parser_node(index).kind.clone() {
-            NodeKind::Name { text } => self.name(text, namespace_id),
+            NodeKind::Name { text } => self.name(text, Some(namespace_id)),
             NodeKind::FunctionDeclaration {
                 name,
                 params,
@@ -908,7 +869,7 @@ impl Typer {
                 scoped_statement,
                 None,
                 None,
-                namespace_id.unwrap(),
+                namespace_id,
                 file_index,
             ),
             NodeKind::VariableDeclaration {
@@ -921,7 +882,7 @@ impl Typer {
                 name,
                 type_name,
                 expression,
-                namespace_id,
+                Some(namespace_id),
                 file_index,
             ),
             _ => self.check_node(index),
@@ -991,19 +952,11 @@ impl Typer {
                 panic!("invalid function name");
             };
 
-            let identifier = GenericIdentifier {
-                name: name_text,
-                generic_arg_type_kind_ids: None,
-            };
-
-            if self.namespaces[namespace_id]
-                .function_definitions
-                .contains_key(&identifier)
-            {
+            if self.namespaces[namespace_id].has_name(name_text) {
                 continue;
             }
 
-            typed_functions.push(self.check_node_with_namespace(*function, Some(namespace_id)));
+            typed_functions.push(self.check_node_with_namespace(*function, namespace_id));
         }
     }
 
@@ -1015,7 +968,7 @@ impl Typer {
         enums: Arc<Vec<NodeIndex>>,
         aliases: Arc<Vec<NodeIndex>>,
         variable_declarations: Arc<Vec<NodeIndex>>,
-        definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
+        definition_indices: Arc<DefinitionIndices>,
         file_index: usize,
     ) -> NodeIndex {
         let mut typed_aliases = Vec::new();
@@ -1044,16 +997,7 @@ impl Typer {
                 type_error!(self, "invalid struct name");
             };
 
-            let identifier = GenericIdentifier {
-                name: name_text,
-                generic_arg_type_kind_ids: None,
-            };
-
-            if self
-                .get_file_namespace(file_index)
-                .type_kinds
-                .contains_key(&identifier)
-            {
+            if self.get_file_namespace(file_index).has_name(name_text) {
                 continue;
             }
 
@@ -1073,16 +1017,7 @@ impl Typer {
                 type_error!(self, "invalid enum name");
             };
 
-            let identifier = GenericIdentifier {
-                name: name_text,
-                generic_arg_type_kind_ids: None,
-            };
-
-            if self
-                .get_file_namespace(file_index)
-                .type_kinds
-                .contains_key(&identifier)
-            {
+            if self.get_file_namespace(file_index).has_name(name_text) {
                 continue;
             }
 
@@ -1109,17 +1044,13 @@ impl Typer {
                 type_error!(self, "invalid variable name");
             };
 
-            if self
-                .get_file_namespace(file_index)
-                .variable_types
-                .contains_key(&name_text)
-            {
+            if self.get_file_namespace(file_index).has_name(name_text) {
                 continue;
             }
 
             let namespace_id = self.file_namespace_ids[file_index];
             typed_variable_declarations
-                .push(self.check_node_with_namespace(*variable_declaration, Some(namespace_id)));
+                .push(self.check_node_with_namespace(*variable_declaration, namespace_id));
         }
 
         self.add_node(TypedNode {
@@ -1166,20 +1097,18 @@ impl Typer {
             generic_params,
             return_type_name,
             true,
-            None,
+            GLOBAL_NAMESPACE_ID,
             file_index,
         );
 
         self.scope_environment.pop();
 
         let type_kind_id = assert_typed!(self, typed_declaration).type_kind_id;
-        let identifier = GenericIdentifier {
-            name: name_text.clone(),
-            generic_arg_type_kind_ids: None,
-        };
-        self.namespaces[namespace_id].function_definitions.insert(
+        let identifier = Identifier::new(name_text.clone());
+
+        self.namespaces[namespace_id].define(
             identifier,
-            FunctionDefinition {
+            Definition::Function {
                 type_kind_id,
                 is_extern: true,
             },
@@ -1252,14 +1181,14 @@ impl Typer {
             type_error!(self, "invalid enum name");
         };
 
-        let identifier = GenericIdentifier {
-            name: alias_name_text,
-            generic_arg_type_kind_ids: None,
-        };
+        let identifier = Identifier::new(alias_name_text);
 
-        self.get_file_namespace(file_index)
-            .type_kinds
-            .insert(identifier, aliased_type_name_type.type_kind_id);
+        self.get_file_namespace(file_index).define(
+            identifier,
+            Definition::TypeKind {
+                type_kind_id: aliased_type_name_type.type_kind_id,
+            },
+        );
 
         self.add_node(TypedNode {
             node_kind: NodeKind::Alias {
@@ -1421,9 +1350,10 @@ impl Typer {
         });
 
         if let Some(namespace_id) = namespace_id {
+            let identifier = Identifier::new(name_text);
+
             self.namespaces[namespace_id]
-                .variable_types
-                .insert(name_text, variable_type);
+                .define(identifier, Definition::Variable { variable_type });
             self.typed_definitions.push(TypedDefinition {
                 index,
                 is_shallow: file_index != self.file_index,
@@ -2239,7 +2169,7 @@ impl Typer {
             }
             TypeKind::Namespace { namespace_id } => {
                 let Some((typed_name, name_type)) =
-                    self.lookup_identifier_name(name, Some(*namespace_id), None, LookupKind::All)
+                    self.lookup_identifier_name(name, None, Some(*namespace_id), LookupKind::All)
                 else {
                     return self.add_node(TypedNode {
                         node_kind: NodeKind::Error,
@@ -2314,7 +2244,7 @@ impl Typer {
         }
 
         let Some((typed_name, name_type)) =
-            self.lookup_identifier_name(name, Some(*namespace_id), None, LookupKind::All)
+            self.lookup_identifier_name(name, None, Some(*namespace_id), LookupKind::All)
         else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
@@ -2870,7 +2800,7 @@ impl Typer {
         fields: Arc<Vec<NodeIndex>>,
         functions: Arc<Vec<NodeIndex>>,
         generic_params: Arc<Vec<NodeIndex>>,
-        definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
+        definition_indices: Arc<DefinitionIndices>,
         is_union: bool,
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
         usage_index: Option<NodeIndex>,
@@ -2889,15 +2819,14 @@ impl Typer {
         };
 
         let typed_name = self.check_node(name);
-        let identifier = GenericIdentifier {
+        let identifier = Identifier {
             name: name_text.clone(),
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
         };
 
         let type_kind_id = self.type_kinds.add_placeholder();
         self.get_file_namespace(file_index)
-            .type_kinds
-            .insert(identifier, type_kind_id);
+            .define(identifier, Definition::TypeKind { type_kind_id });
 
         self.scope_type_kind_environment.push(false);
         let mut generic_args = Vec::new();
@@ -2919,10 +2848,7 @@ impl Typer {
                 };
 
                 self.scope_type_kind_environment.insert(
-                    GenericIdentifier {
-                        name: param_text.clone(),
-                        generic_arg_type_kind_ids: None,
-                    },
+                    Identifier::new(param_text.clone()),
                     generic_arg_type_kind_ids[i],
                 );
 
@@ -2960,17 +2886,14 @@ impl Typer {
         self.scope_type_kind_environment.pop();
 
         let namespace_id = self.namespaces.len();
-        self.namespaces.push(Namespace {
-            name: name_text.clone(),
-            associated_type_kind_id: Some(type_kind_id),
-            definition_indices: vec![definition_indices.clone()],
-            function_definitions: HashMap::new(),
-            type_kinds: HashMap::new(),
-            variable_types: HashMap::new(),
+        let mut namespace = Namespace::new(
+            name_text.clone(),
+            Some(type_kind_id),
             generic_args,
-            inner_ids: HashMap::new(),
-            parent_id: Some(self.file_namespace_ids[file_index]),
-        });
+            Some(self.file_namespace_ids[file_index]),
+        );
+        namespace.extend_definition_indices(&definition_indices);
+        self.namespaces.push(namespace);
 
         self.type_kinds.replace_placeholder(
             type_kind_id,
@@ -3032,13 +2955,9 @@ impl Typer {
             variant_names: typed_variant_names.clone(),
         });
 
-        let identifier = GenericIdentifier {
-            name: name_text,
-            generic_arg_type_kind_ids: None,
-        };
+        let identifier = Identifier::new(name_text);
         self.get_file_namespace(file_index)
-            .type_kinds
-            .insert(identifier, type_kind_id);
+            .define(identifier, Definition::TypeKind { type_kind_id });
 
         let index = self.add_node(TypedNode {
             node_kind: NodeKind::EnumDefinition {
@@ -3091,7 +3010,7 @@ impl Typer {
         generic_params: Arc<Vec<NodeIndex>>,
         return_type_name: NodeIndex,
         is_extern: bool,
-        namespace_id: Option<usize>,
+        namespace_id: usize,
         file_index: usize,
     ) -> NodeIndex {
         let typed_name = self.check_node_with_namespace(name, namespace_id);
@@ -3137,7 +3056,7 @@ impl Typer {
                 type_kind_id,
                 instance_kind: InstanceKind::Name,
             }),
-            namespace_id,
+            namespace_id: Some(namespace_id),
         });
 
         let NodeKind::Name { text: name_text } = &self.get_typer_node(typed_name).node_kind else {
@@ -3276,10 +3195,7 @@ impl Typer {
 
         for generic_arg in &self.namespaces[namespace_id].generic_args {
             self.scope_type_kind_environment.insert(
-                GenericIdentifier {
-                    name: generic_arg.param_name.clone(),
-                    generic_arg_type_kind_ids: None,
-                },
+                Identifier::new(generic_arg.param_name.clone()),
                 generic_arg.type_kind_id,
             );
         }
@@ -3300,25 +3216,20 @@ impl Typer {
                     type_error!(self, "invalid parameter name");
                 };
 
-                self.scope_type_kind_environment.insert(
-                    GenericIdentifier {
-                        name: param_text,
-                        generic_arg_type_kind_ids: None,
-                    },
-                    generic_arg_type_kind_ids[i],
-                );
+                self.scope_type_kind_environment
+                    .insert(Identifier::new(param_text), generic_arg_type_kind_ids[i]);
             }
         }
 
-        let typed_declaration = self.check_node_with_namespace(declaration, Some(namespace_id));
+        let typed_declaration = self.check_node_with_namespace(declaration, namespace_id);
         let declaration_type = assert_typed!(self, typed_declaration);
-        let identifier = GenericIdentifier {
+        let identifier = Identifier {
             name: name_text.clone(),
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
         };
-        self.namespaces[namespace_id].function_definitions.insert(
+        self.namespaces[namespace_id].define(
             identifier,
-            FunctionDefinition {
+            Definition::Function {
                 type_kind_id: declaration_type.type_kind_id,
                 is_extern: false,
             },
@@ -3424,8 +3335,8 @@ impl Typer {
 
             let Some((typed_name, name_type)) = self.lookup_identifier_name(
                 name,
-                Some(namespace_id),
                 Some(generic_arg_type_kind_ids),
+                Some(namespace_id),
                 LookupKind::All,
             ) else {
                 return self.add_node(TypedNode {
@@ -3454,8 +3365,8 @@ impl Typer {
 
             let Some((typed_name, name_type)) = self.lookup_identifier_name(
                 *name,
-                None,
                 Some(generic_arg_type_kind_ids),
+                None,
                 LookupKind::All,
             ) else {
                 return self.add_node(TypedNode {
@@ -3623,7 +3534,7 @@ impl Typer {
         };
 
         let Some((typed_name, name_type)) =
-            self.lookup_identifier_name(name, Some(*namespace_id), None, LookupKind::Types)
+            self.lookup_identifier_name(name, None, Some(*namespace_id), LookupKind::Types)
         else {
             return self.add_node(TypedNode {
                 node_kind: NodeKind::Error,
@@ -3681,8 +3592,8 @@ impl Typer {
 
         let Some((typed_name, name_type)) = self.lookup_identifier_name(
             name,
-            namespace_id,
             Some(generic_arg_type_kind_ids),
+            namespace_id,
             LookupKind::Types,
         ) else {
             return self.add_node(TypedNode {

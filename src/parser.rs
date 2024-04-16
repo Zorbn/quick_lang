@@ -1,8 +1,9 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     file_data::FileData,
     lexer::{Token, TokenKind},
+    namespace::DefinitionIndices,
     position::Position,
 };
 
@@ -70,14 +71,14 @@ pub enum NodeKind {
         aliases: Arc<Vec<NodeIndex>>,
         variable_declarations: Arc<Vec<NodeIndex>>,
         usings: Arc<Vec<NodeIndex>>,
-        definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
+        definition_indices: Arc<DefinitionIndices>,
     },
     StructDefinition {
         name: NodeIndex,
         fields: Arc<Vec<NodeIndex>>,
         functions: Arc<Vec<NodeIndex>>,
         generic_params: Arc<Vec<NodeIndex>>,
-        definition_indices: Arc<HashMap<Arc<str>, NodeIndex>>,
+        definition_indices: Arc<DefinitionIndices>,
         is_union: bool,
     },
     EnumDefinition {
@@ -410,7 +411,7 @@ impl Parser {
         let mut variable_declarations = Vec::new();
         let mut usings = Vec::new();
 
-        let mut definition_indices = HashMap::new();
+        let mut definition_indices = DefinitionIndices::new();
 
         let start = self.token_start();
         let mut end = self.token_end();
@@ -472,10 +473,7 @@ impl Parser {
         })
     }
 
-    fn struct_definition(
-        &mut self,
-        definition_indices: &mut HashMap<Arc<str>, NodeIndex>,
-    ) -> NodeIndex {
+    fn struct_definition(&mut self, definition_indices: &mut DefinitionIndices) -> NodeIndex {
         let start = self.token_start();
 
         let is_union = match *self.token_kind() {
@@ -509,7 +507,7 @@ impl Parser {
 
         let mut fields = Vec::new();
         let mut functions = Vec::new();
-        let mut inner_definition_indices = HashMap::new();
+        let mut inner_definition_indices = DefinitionIndices::new();
 
         while *self.token_kind() != TokenKind::RBrace {
             if *self.token_kind() == TokenKind::Func {
@@ -551,10 +549,7 @@ impl Parser {
         index
     }
 
-    fn enum_definition(
-        &mut self,
-        definition_indices: &mut HashMap<Arc<str>, NodeIndex>,
-    ) -> NodeIndex {
+    fn enum_definition(&mut self, definition_indices: &mut DefinitionIndices) -> NodeIndex {
         let start = self.token_start();
 
         assert_token!(self, TokenKind::Enum, start, self.token_end());
@@ -619,7 +614,7 @@ impl Parser {
         })
     }
 
-    fn alias(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
+    fn alias(&mut self, definition_indices: &mut DefinitionIndices) -> NodeIndex {
         let start = self.token_start();
 
         assert_token!(self, TokenKind::Alias, start, self.token_end());
@@ -769,7 +764,7 @@ impl Parser {
         })
     }
 
-    fn function(&mut self, definition_indices: &mut HashMap<Arc<str>, NodeIndex>) -> NodeIndex {
+    fn function(&mut self, definition_indices: &mut DefinitionIndices) -> NodeIndex {
         let start = self.token_start();
         let declaration = self.function_declaration();
         let scoped_statement = self.scoped_statement();
@@ -798,10 +793,7 @@ impl Parser {
         index
     }
 
-    fn extern_function(
-        &mut self,
-        definition_indices: &mut HashMap<Arc<str>, NodeIndex>,
-    ) -> NodeIndex {
+    fn extern_function(&mut self, definition_indices: &mut DefinitionIndices) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::Extern, start, self.token_end());
         self.position += 1;
@@ -946,7 +938,7 @@ impl Parser {
 
     fn variable_declaration(
         &mut self,
-        definition_indices: Option<&mut HashMap<Arc<str>, NodeIndex>>,
+        definition_indices: Option<&mut DefinitionIndices>,
     ) -> NodeIndex {
         let start = self.token_start();
         let declaration_kind = match self.token_kind() {

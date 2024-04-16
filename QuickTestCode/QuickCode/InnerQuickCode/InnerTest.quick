@@ -1,0 +1,4 @@
+func InnerQuickCodeTest() Void
+{
+    QuickCodeTest();
+}

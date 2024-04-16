@@ -8,10 +8,11 @@ use crate::{
     emitter::Emitter,
     emitter_stack::EmitterStack,
     file_data::FileData,
+    namespace::Namespace,
     parser::{DeclarationKind, MethodKind, NodeIndex, NodeKind, Op},
     position::Position,
     type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
-    typer::{InstanceKind, Namespace, Type, TypedDefinition, TypedNode},
+    typer::{InstanceKind, Type, TypedDefinition, TypedNode, GLOBAL_NAMESPACE_ID},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -157,7 +158,9 @@ impl CodeGenerator {
 
         code_generator.header_emitter.emitln("#include <stdint.h>");
         code_generator.header_emitter.emitln("#include <stdbool.h>");
-        code_generator.header_emitter.emitln("uintptr_t puts(char const *str);");
+        code_generator
+            .header_emitter
+            .emitln("uintptr_t puts(char const *str);");
         code_generator.header_emitter.emitln("void abort(void);");
         code_generator
             .header_emitter
@@ -2330,6 +2333,10 @@ impl CodeGenerator {
     }
 
     fn emit_namespace(&mut self, namespace_id: usize, kind: EmitterKind) {
+        if namespace_id == GLOBAL_NAMESPACE_ID {
+            return;
+        }
+
         if let Some(parent_id) = self.namespaces[namespace_id].parent_id {
             self.emit_namespace(parent_id, kind);
         }
@@ -2527,7 +2534,8 @@ impl CodeGenerator {
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
         self.function_prototype_emitter.emit(" *self");
         self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, false);
-        self.function_prototype_emitter.emitln(", intptr_t tag, char *message);");
+        self.function_prototype_emitter
+            .emitln(", intptr_t tag, char *message);");
         self.function_prototype_emitter.newline();
 
         self.body_emitters.top().body.emit("static inline ");
@@ -2538,7 +2546,10 @@ impl CodeGenerator {
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
         self.body_emitters.top().body.emit(" *self");
         self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
-        self.body_emitters.top().body.emitln(", intptr_t tag, char *message) {");
+        self.body_emitters
+            .top()
+            .body
+            .emitln(", intptr_t tag, char *message) {");
         self.body_emitters.top().body.indent();
 
         self.body_emitters
