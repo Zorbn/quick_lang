@@ -96,7 +96,6 @@ pub struct Typer {
 
     pub namespaces: Vec<Namespace>,
     file_namespace_ids: Vec<usize>,
-    // TODO: Rename this to file_used_namespace_ids, and the temporary sets to something else.
     file_used_namespace_ids: Vec<Vec<usize>>,
     pub string_view_type_kind_id: usize,
 
@@ -228,10 +227,9 @@ impl Typer {
                 self.error_at_parser_node(DEFINITION_ERROR, *index);
             }
 
+            self.file_used_namespace_ids.push(Vec::new());
             file_used_namespace_ids.push(HashSet::new());
             file_used_namespace_ids[i].insert(GLOBAL_NAMESPACE_ID);
-            self.file_used_namespace_ids.push(Vec::new());
-            self.file_used_namespace_ids[i].push(GLOBAL_NAMESPACE_ID);
         }
 
         for (i, start_index) in all_start_indices.iter().enumerate() {
@@ -245,8 +243,6 @@ impl Typer {
                 self.check_using(*using, &mut file_used_namespace_ids);
             }
 
-            // TODO: Having to maintain this extra list is hacky!
-            self.file_used_namespace_ids[i].clear();
             self.file_used_namespace_ids[i].extend(file_used_namespace_ids[i].iter());
         }
     }
