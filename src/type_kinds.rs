@@ -116,6 +116,7 @@ impl TypeKind {
     }
 }
 
+#[derive(Clone)]
 pub struct TypeKinds {
     type_kinds: Vec<TypeKind>,
 }

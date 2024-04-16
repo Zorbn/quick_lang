@@ -87,16 +87,17 @@ pub struct Typer {
     pub typed_nodes: Vec<TypedNode>,
     pub typed_definitions: Vec<TypedDefinition>,
     pub type_kinds: TypeKinds,
-    pub namespaces: Vec<Namespace>,
-    pub string_view_type_kind_id: usize,
     pub main_function_declaration: Option<NodeIndex>,
     pub error_count: usize,
 
-    file_index: usize,
+    file_index: Option<usize>,
     files: Arc<Vec<FileData>>,
+
+    pub namespaces: Vec<Namespace>,
     file_namespace_ids: Vec<usize>,
-    file_used_namespace_ids: Vec<HashSet<usize>>,
+    // TODO: Rename this to file_used_namespace_ids, and the temporary sets to something else.
     file_used_namespace_ids_lists: Vec<Vec<usize>>,
+    pub string_view_type_kind_id: usize,
 
     scope_type_kind_environment: Environment<Identifier, usize>,
     scope_environment: Environment<Arc<str>, Type>,
@@ -107,16 +108,14 @@ pub struct Typer {
 }
 
 impl Typer {
+    // Create a blank typer representing no file in particular.
     pub fn new(
         all_nodes: Arc<Vec<Vec<Node>>>,
-        all_start_indices: &[NodeIndex],
         files: Arc<Vec<FileData>>,
-        file_paths_components: Arc<Vec<Vec<OsString>>>,
-        file_index: usize,
     ) -> Self {
         let file_count = files.len();
 
-        let mut typer = Self {
+        Self {
             all_nodes,
 
             typed_nodes: Vec::new(),
@@ -127,11 +126,38 @@ impl Typer {
             main_function_declaration: None,
             error_count: 0,
 
-            file_index,
+            file_index: None,
             files,
             file_namespace_ids: Vec::with_capacity(file_count),
-            file_used_namespace_ids: Vec::new(),
             file_used_namespace_ids_lists: Vec::new(),
+
+            scope_type_kind_environment: Environment::new(),
+            scope_environment: Environment::new(),
+
+            was_block_already_opened: false,
+            node_index_stack: Vec::new(),
+            loop_stack: 0,
+        }
+    }
+
+    // Make a typer that inherits the data of an existing typer, but represents a specific file.
+    pub fn new_for_file(base_typer: &Typer, file_index: usize) -> Self {
+        let mut typer = Typer {
+            all_nodes: base_typer.all_nodes.clone(),
+
+            typed_nodes: Vec::new(),
+            typed_definitions: Vec::new(),
+            type_kinds: base_typer.type_kinds.clone(),
+            main_function_declaration: None,
+            error_count: 0,
+
+            file_index: Some(file_index),
+            files: base_typer.files.clone(),
+
+            namespaces: base_typer.namespaces.clone(),
+            file_namespace_ids: base_typer.file_namespace_ids.clone(),
+            file_used_namespace_ids_lists: base_typer.file_used_namespace_ids_lists.clone(),
+            string_view_type_kind_id: base_typer.string_view_type_kind_id,
 
             scope_type_kind_environment: Environment::new(),
             scope_environment: Environment::new(),
@@ -141,11 +167,23 @@ impl Typer {
             loop_stack: 0,
         };
 
+        typer.find_string_view();
+
         typer
+    }
+
+    pub fn check_namespaces(
+        &mut self,
+        all_start_indices: &[NodeIndex],
+        file_paths_components: &[Vec<OsString>],
+    ) {
+        let mut file_used_namespace_ids = Vec::new();
+
+        self
             .namespaces
             .push(Namespace::new("".into(), None, Vec::new(), None));
 
-        typer.define_global_primitives();
+        self.define_global_primitives();
 
         let mut definition_errors = Vec::new();
 
@@ -155,7 +193,7 @@ impl Typer {
             for j in 0..(file_paths_components[i].len() - 1) {
                 let component_str = file_paths_components[i][j].to_str().unwrap();
 
-                if let Some(existing_namespace_id) = typer.namespaces[current_namespace_id]
+                if let Some(existing_namespace_id) = self.namespaces[current_namespace_id]
                     .child_ids
                     .get(component_str)
                 {
@@ -163,24 +201,24 @@ impl Typer {
                     continue;
                 }
 
-                let new_namespace_id = typer.namespaces.len();
+                let new_namespace_id = self.namespaces.len();
                 let new_namespace_name: Arc<str> = Arc::from(component_str);
 
-                typer.namespaces.push(Namespace::new(
+                self.namespaces.push(Namespace::new(
                     new_namespace_name.clone(),
                     None,
                     Vec::new(),
                     Some(current_namespace_id),
                 ));
-                typer.namespaces[current_namespace_id]
+                self.namespaces[current_namespace_id]
                     .child_ids
                     .insert(new_namespace_name.clone(), new_namespace_id);
 
-                let namespace_type_kind_id = typer.type_kinds.add_or_get(TypeKind::Namespace {
+                let namespace_type_kind_id = self.type_kinds.add_or_get(TypeKind::Namespace {
                     namespace_id: new_namespace_id,
                 });
 
-                if typer.namespaces[current_namespace_id]
+                if self.namespaces[current_namespace_id]
                     .insert(
                         new_namespace_name,
                         Definition::TypeKind {
@@ -189,68 +227,89 @@ impl Typer {
                     )
                     .is_err()
                 {
-                    typer.error_at_parser_node(DEFINITION_ERROR, *start_index);
+                    self.error_at_parser_node(DEFINITION_ERROR, *start_index);
                 }
 
                 current_namespace_id = new_namespace_id;
             }
 
-            typer.file_namespace_ids.push(current_namespace_id);
+            self.file_namespace_ids.push(current_namespace_id);
 
             let NodeKind::TopLevel {
                 definition_indices, ..
-            } = typer.get_parser_node(*start_index).kind.clone()
+            } = self.get_parser_node(*start_index).kind.clone()
             else {
                 panic!("expected top level at start index");
             };
 
-            // TODO: This namespace setup is done for every file by every typer creating many duplicate errors & effort.
-            // TODO: Can this namespace setup code happen only once and get reused by each typer?
             definition_errors.clear();
-            typer.namespaces[current_namespace_id]
+            self.namespaces[current_namespace_id]
                 .extend_definition_indices(&definition_indices, &mut definition_errors);
 
-            if file_index == 0 { // < TODO: Hack, refer to above TODOs.
-                for DefinitionIndexError(index) in &definition_errors {
-                    typer.error_at_parser_node(DEFINITION_ERROR, *index);
-                }
+            for DefinitionIndexError(index) in &definition_errors {
+                self.error_at_parser_node(DEFINITION_ERROR, *index);
             }
 
-            typer.file_used_namespace_ids.push(HashSet::new());
-            typer.file_used_namespace_ids[i].insert(GLOBAL_NAMESPACE_ID);
-            typer.file_used_namespace_ids_lists.push(Vec::new());
-            typer.file_used_namespace_ids_lists[i].push(GLOBAL_NAMESPACE_ID);
+            file_used_namespace_ids.push(HashSet::new());
+            file_used_namespace_ids[i].insert(GLOBAL_NAMESPACE_ID);
+            self.file_used_namespace_ids_lists.push(Vec::new());
+            self.file_used_namespace_ids_lists[i].push(GLOBAL_NAMESPACE_ID);
         }
 
         for (i, start_index) in all_start_indices.iter().enumerate() {
             let NodeKind::TopLevel { usings, .. } =
-                typer.get_parser_node(*start_index).kind.clone()
+                self.get_parser_node(*start_index).kind.clone()
             else {
                 panic!("expected top level at start index");
             };
 
             for using in usings.iter() {
-                typer.check_node(*using);
+                self.check_using(*using, &mut file_used_namespace_ids);
             }
 
             // TODO: Having to maintain this extra list is hacky!
-            typer.file_used_namespace_ids_lists[i].clear();
-            typer.file_used_namespace_ids_lists[i].extend(typer.file_used_namespace_ids[i].iter());
+            self.file_used_namespace_ids_lists[i].clear();
+            self.file_used_namespace_ids_lists[i].extend(file_used_namespace_ids[i].iter());
         }
+    }
 
-        typer.string_view_type_kind_id = if let Some((_, string_view_type)) = typer
-            .lookup_identifier(
-                Identifier::new("StringView"),
-                LookupLocation::File(file_index),
-                LookupKind::Types,
-                None,
-            ) {
-            string_view_type.type_kind_id
-        } else {
-            panic!("StringView type not found");
+    fn check_using(&mut self, using: NodeIndex, file_used_namespace_ids: &mut [HashSet<usize>]) -> NodeIndex {
+        self.node_index_stack.push(using);
+
+        let Node { kind: NodeKind::Using { namespace_type_name }, .. } = self.get_parser_node(using).clone() else {
+            panic!("invalid using node");
         };
 
-        typer
+        let typed_namespace_type_name = self.check_node(namespace_type_name);
+        let namespace_type_name_type = assert_typed!(self, typed_namespace_type_name);
+
+        let namespace_id = if let TypeKind::Namespace { namespace_id } = self
+            .type_kinds
+            .get_by_id(namespace_type_name_type.type_kind_id)
+        {
+            namespace_id
+        } else if let TypeKind::Struct { namespace_id, .. } = self
+            .type_kinds
+            .get_by_id(namespace_type_name_type.type_kind_id)
+        {
+            namespace_id
+        } else {
+            return self.type_error_at_parser_node("expected namespace after using", namespace_type_name);
+        };
+
+        file_used_namespace_ids[using.file_index].insert(namespace_id);
+
+        let typed_using = self.add_node(TypedNode {
+            node_kind: NodeKind::Using {
+                namespace_type_name: typed_namespace_type_name,
+            },
+            node_type: None,
+            namespace_id: None,
+        });
+
+        self.node_index_stack.pop();
+
+        typed_using
     }
 
     fn define_global_primitives(&mut self) {
@@ -368,6 +427,20 @@ impl Typer {
                 type_kind_id: tag_id,
             },
         );
+    }
+
+    fn find_string_view(&mut self) {
+        self.string_view_type_kind_id = if let Some((_, string_view_type)) = self
+            .lookup_identifier(
+                Identifier::new("StringView"),
+                LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
+                LookupKind::Types,
+                None,
+            ) {
+            string_view_type.type_kind_id
+        } else {
+            panic!("StringView type not found");
+        };
     }
 
     fn add_node(&mut self, typed_node: TypedNode) -> NodeIndex {
@@ -620,9 +693,6 @@ impl Typer {
             NodeKind::ExternFunction { declaration } => {
                 self.extern_function(declaration, file_index)
             }
-            NodeKind::Using {
-                namespace_type_name,
-            } => self.using(namespace_type_name, file_index),
             NodeKind::Alias {
                 aliased_type_name,
                 alias_name,
@@ -777,6 +847,9 @@ impl Typer {
                 left,
                 generic_arg_type_names,
             } => self.type_name_generic_specifier(left, generic_arg_type_names),
+            NodeKind::Using {
+                ..
+            } => type_error!(self, "cannot generate using node"),
             NodeKind::Error => type_error!(self, "cannot generate error node"),
         };
 
@@ -1160,35 +1233,6 @@ impl Typer {
         index
     }
 
-    fn using(&mut self, namespace_type_name: NodeIndex, file_index: usize) -> NodeIndex {
-        let typed_namespace_type_name = self.check_node(namespace_type_name);
-        let namespace_type_name_type = assert_typed!(self, typed_namespace_type_name);
-
-        let namespace_id = if let TypeKind::Namespace { namespace_id } = self
-            .type_kinds
-            .get_by_id(namespace_type_name_type.type_kind_id)
-        {
-            namespace_id
-        } else if let TypeKind::Struct { namespace_id, .. } = self
-            .type_kinds
-            .get_by_id(namespace_type_name_type.type_kind_id)
-        {
-            namespace_id
-        } else {
-            type_error!(self, "expected namespace after using");
-        };
-
-        self.file_used_namespace_ids[file_index].insert(namespace_id);
-
-        self.add_node(TypedNode {
-            node_kind: NodeKind::Using {
-                namespace_type_name: typed_namespace_type_name,
-            },
-            node_type: None,
-            namespace_id: None,
-        })
-    }
-
     fn alias(
         &mut self,
         aliased_type_name: NodeIndex,
@@ -1381,7 +1425,7 @@ impl Typer {
                 .define(identifier, Definition::Variable { variable_type });
             self.typed_definitions.push(TypedDefinition {
                 index,
-                is_shallow: file_index != self.file_index,
+                is_shallow: Some(file_index) != self.file_index,
             });
         } else {
             self.scope_environment.insert(name_text, variable_type);
@@ -2951,7 +2995,7 @@ impl Typer {
 
         self.typed_definitions.push(TypedDefinition {
             index,
-            is_shallow: file_index != self.file_index,
+            is_shallow: Some(file_index) != self.file_index,
         });
 
         index
@@ -3097,7 +3141,7 @@ impl Typer {
                 type_error!(self, "Main function cannot be generic");
             }
 
-            if file_index == self.file_index {
+            if Some(file_index) == self.file_index {
                 self.main_function_declaration = Some(index);
             }
 
@@ -3260,7 +3304,7 @@ impl Typer {
             },
         );
 
-        let is_deep_check = file_index == self.file_index
+        let is_deep_check = Some(file_index) == self.file_index
             || generic_arg_type_kind_ids.is_some()
             || !self.namespaces[namespace_id].generic_args.is_empty();
 

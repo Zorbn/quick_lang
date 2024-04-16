@@ -61,9 +61,9 @@ pub fn compile(
         return ExitCode::FAILURE;
     };
 
-    let paths_components = Arc::new(get_paths_components(&files));
+    let paths_components = get_paths_components(&files);
 
-    let typers = if let Some(typers) = check(parsers, &files, paths_components) {
+    let typers = if let Some(typers) = check(parsers, &files, &paths_components) {
         typers
     } else {
         return ExitCode::FAILURE;
@@ -147,7 +147,7 @@ fn parse(lexers: Vec<Lexer>, files: &Arc<Vec<FileData>>) -> Option<Vec<Parser>> 
 fn check(
     parsers: Vec<Parser>,
     files: &Arc<Vec<FileData>>,
-    paths_components: Arc<Vec<Vec<OsString>>>,
+    file_paths_components: &[Vec<OsString>],
 ) -> Option<Vec<Typer>> {
     let mut typers = Vec::with_capacity(parsers.len());
     let mut had_typing_error = false;
@@ -162,14 +162,11 @@ fn check(
 
     let all_nodes = Arc::new(all_nodes);
 
+    let mut base_typer = Typer::new(all_nodes.clone(), files.clone());
+    base_typer.check_namespaces(&all_start_indices, file_paths_components);
+
     for (i, start_index) in all_start_indices.iter().enumerate() {
-        let mut typer = Typer::new(
-            all_nodes.clone(),
-            &all_start_indices,
-            files.clone(),
-            paths_components.clone(),
-            i,
-        );
+        let mut typer = Typer::new_for_file(&base_typer, i);
         typer.check(*start_index);
         had_typing_error = had_typing_error || typer.error_count > 0;
         typers.push(typer);

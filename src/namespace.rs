@@ -22,7 +22,7 @@ impl Display for DefinitionError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DefinitionIndices {
     indices: HashMap<Arc<str>, NodeIndex>,
 }
@@ -104,11 +104,13 @@ pub enum LookupResult {
     None,
 }
 
+#[derive(Clone)]
 pub struct NamespaceGenericArg {
     pub param_name: Arc<str>,
     pub type_kind_id: usize,
 }
 
+#[derive(Clone)]
 pub struct Namespace {
     pub name: Arc<str>,
     pub associated_type_kind_id: Option<usize>,
