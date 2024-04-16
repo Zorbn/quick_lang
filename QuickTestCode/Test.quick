@@ -47,6 +47,11 @@ struct ContainsFuncPtr
     funcPtr *val func() Void;
 }
 
+struct ContainsFuncPtr
+{
+
+}
+
 const hi = "hi";
 
 func Main(argc Int, argv *val *val Char) Int

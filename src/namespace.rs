@@ -1,6 +1,17 @@
-use std::{collections::HashMap, hash::Hash, sync::Arc};
+use std::{collections::HashMap, fmt::Display, hash::Hash, sync::Arc};
 
 use crate::{parser::NodeIndex, typer::Type};
+
+pub const DEFINITION_ERROR: &str = "a definition with this name already exists in this namespace";
+
+#[derive(Debug)]
+pub struct DefinitionError;
+
+impl Display for DefinitionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", DEFINITION_ERROR)
+    }
+}
 
 #[derive(Debug)]
 pub struct DefinitionIndices {
@@ -14,20 +25,31 @@ impl DefinitionIndices {
         }
     }
 
-    // TODO: Error if entry already exists for name.
-    pub fn insert(&mut self, name: Arc<str>, index: NodeIndex) {
-        self.indices.insert(name, index);
+    pub fn insert(&mut self, name: Arc<str>, index: NodeIndex) -> Result<(), DefinitionError> {
+        if self.indices.insert(name, index).is_some() {
+            return Err(DefinitionError);
+        }
+
+        Ok(())
     }
 
     pub fn get(&self, name: &str) -> Option<NodeIndex> {
         self.indices.get(name).copied()
     }
 
-    // TODO: Error if entry already exists for any names.
-    pub fn extend(&mut self, definition_indices: &DefinitionIndices) {
+    pub fn extend(
+        &mut self,
+        definition_indices: &DefinitionIndices,
+    ) -> Result<(), DefinitionError> {
         for (name, index) in &definition_indices.indices {
-            self.insert(name.clone(), *index);
+            self.insert(name.clone(), *index)?;
         }
+
+        Ok(())
+    }
+
+    fn has_name(&self, name: &str) -> bool {
+        self.indices.contains_key(name)
     }
 }
 
@@ -103,8 +125,14 @@ impl Namespace {
 
     // Add a new name to the namespace, and ensure it isn't a duplicate.
     // TODO: Error if this name already exists in the namespace.
-    pub fn insert(&mut self, name: Arc<str>, definition: Definition) {
+    pub fn insert(&mut self, name: Arc<str>, definition: Definition) -> Result<(), DefinitionError> {
+        if self.has_name(name.clone()) {
+            return Err(DefinitionError);
+        }
+
         self.definitions.insert(Identifier::new(name), definition);
+
+        Ok(())
     }
 
     // Not adding a new name to the namespace, just adding a definition for an existing one.
@@ -126,12 +154,19 @@ impl Namespace {
         LookupResult::None
     }
 
-    pub fn has_name(&mut self, name: Arc<str>) -> bool {
+    pub fn is_name_defined(&self, name: Arc<str>) -> bool {
         self.definitions.contains_key(&Identifier::new(name))
     }
 
-    // TODO: Error if entry already exists for any names.
-    pub fn extend_definition_indices(&mut self, definition_indices: &DefinitionIndices) {
-        self.definition_indices.extend(definition_indices);
+    pub fn extend_definition_indices(
+        &mut self,
+        definition_indices: &DefinitionIndices,
+    ) -> Result<(), DefinitionError> {
+        self.definition_indices.extend(definition_indices)
+    }
+
+    fn has_name(&self, name: Arc<str>) -> bool {
+        self.definition_indices.has_name(&name)
+            || self.definitions.contains_key(&Identifier::new(name))
     }
 }

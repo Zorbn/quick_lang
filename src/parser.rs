@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     file_data::FileData,
     lexer::{Token, TokenKind},
-    namespace::DefinitionIndices,
+    namespace::{DefinitionIndices, DEFINITION_ERROR},
     position::Position,
 };
 
@@ -355,11 +355,14 @@ impl Parser {
         end: Position,
     ) -> Option<NodeIndex> {
         if *self.token_kind() != token_kind {
-            self.error(&format!(
-                "expected \"{}\" but got \"{}\"",
-                token_kind,
-                self.token_kind()
-            ));
+            self.error(
+                &format!(
+                    "expected \"{}\" but got \"{}\"",
+                    token_kind,
+                    self.token_kind()
+                ),
+                self.token_start(),
+            );
 
             return Some(self.add_node(Node {
                 kind: NodeKind::Error,
@@ -372,7 +375,7 @@ impl Parser {
     }
 
     fn parse_error(&mut self, message: &str, start: Position, end: Position) -> NodeIndex {
-        self.error(message);
+        self.error(message, start);
 
         self.add_node(Node {
             kind: NodeKind::Error,
@@ -391,9 +394,9 @@ impl Parser {
         }
     }
 
-    fn error(&mut self, message: &str) {
+    fn error(&mut self, message: &str, position: Position) {
         self.error_count += 1;
-        self.token_start().error("Syntax", message, &self.files);
+        position.error("Syntax", message, &self.files);
     }
 
     pub fn parse(&mut self, tokens: Vec<Token>) {
@@ -544,7 +547,9 @@ impl Parser {
             end,
         });
 
-        definition_indices.insert(name_text, index);
+        if definition_indices.insert(name_text, index).is_err() {
+            parse_error!(self, DEFINITION_ERROR, start, end);
+        }
 
         index
     }
@@ -588,7 +593,9 @@ impl Parser {
             end,
         });
 
-        definition_indices.insert(name_text, index);
+        if definition_indices.insert(name_text, index).is_err() {
+            parse_error!(self, DEFINITION_ERROR, start, end);
+        }
 
         index
     }
@@ -645,7 +652,9 @@ impl Parser {
             panic!("invalid alias name");
         };
 
-        definition_indices.insert(name_text, index);
+        if definition_indices.insert(name_text, index).is_err() {
+            parse_error!(self, DEFINITION_ERROR, start, end);
+        }
 
         index
     }
@@ -788,7 +797,9 @@ impl Parser {
             end,
         });
 
-        definition_indices.insert(name_text, index);
+        if definition_indices.insert(name_text, index).is_err() {
+            parse_error!(self, DEFINITION_ERROR, start, end);
+        }
 
         index
     }
@@ -819,7 +830,9 @@ impl Parser {
             end,
         });
 
-        definition_indices.insert(name_text, index);
+        if definition_indices.insert(name_text, index).is_err() {
+            parse_error!(self, DEFINITION_ERROR, start, end);
+        }
 
         index
     }
@@ -1012,7 +1025,9 @@ impl Parser {
                 parse_error!(self, "invalid variable name", start, end);
             };
 
-            definition_indices.insert(name_text, index);
+            if definition_indices.insert(name_text, index).is_err() {
+                parse_error!(self, DEFINITION_ERROR, start, end);
+            }
         }
 
         index

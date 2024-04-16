@@ -952,7 +952,7 @@ impl Typer {
                 panic!("invalid function name");
             };
 
-            if self.namespaces[namespace_id].has_name(name_text) {
+            if self.namespaces[namespace_id].is_name_defined(name_text) {
                 continue;
             }
 
@@ -997,7 +997,7 @@ impl Typer {
                 type_error!(self, "invalid struct name");
             };
 
-            if self.get_file_namespace(file_index).has_name(name_text) {
+            if self.get_file_namespace(file_index).is_name_defined(name_text) {
                 continue;
             }
 
@@ -1017,7 +1017,7 @@ impl Typer {
                 type_error!(self, "invalid enum name");
             };
 
-            if self.get_file_namespace(file_index).has_name(name_text) {
+            if self.get_file_namespace(file_index).is_name_defined(name_text) {
                 continue;
             }
 
@@ -1044,7 +1044,7 @@ impl Typer {
                 type_error!(self, "invalid variable name");
             };
 
-            if self.get_file_namespace(file_index).has_name(name_text) {
+            if self.get_file_namespace(file_index).is_name_defined(name_text) {
                 continue;
             }
 
@@ -2892,7 +2892,7 @@ impl Typer {
             generic_args,
             Some(self.file_namespace_ids[file_index]),
         );
-        namespace.extend_definition_indices(&definition_indices);
+        let _ = namespace.extend_definition_indices(&definition_indices);
         self.namespaces.push(namespace);
 
         self.type_kinds.replace_placeholder(
