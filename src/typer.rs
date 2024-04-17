@@ -1,16 +1,10 @@
 use std::{collections::HashSet, ffi::OsString, mem, sync::Arc};
 
 use crate::{
-    const_value::ConstValue,
-    environment::Environment,
-    file_data::FileData,
-    namespace::{
+    assert_matches, const_value::ConstValue, environment::Environment, file_data::FileData, namespace::{
         Definition, DefinitionIndexError, DefinitionIndices, Identifier, Namespace,
         NamespaceGenericArg, NamespaceLookupResult, DEFINITION_ERROR,
-    },
-    parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
-    position::Position,
-    type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds},
+    }, parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op}, position::Position, type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds}
 };
 
 #[derive(Clone, Debug)]
@@ -59,14 +53,6 @@ macro_rules! assert_typed {
 
         node_type
     }};
-}
-
-macro_rules! assert_matches {
-    ($pattern:pat, $value:expr) => {
-        let $pattern = $value else {
-            panic!("assert_matches failed!");
-        };
-    };
 }
 
 pub enum LookupResult {
@@ -243,12 +229,13 @@ impl Typer {
 
             self.file_namespace_ids.push(current_namespace_id);
 
-            let NodeKind::TopLevel {
-                definition_indices, ..
-            } = self.get_parser_node(*start_index).kind.clone()
-            else {
-                panic!("expected top level at start index");
-            };
+            assert_matches!(
+                NodeKind::TopLevel {
+                    definition_indices,
+                    ..
+                },
+                self.get_parser_node(*start_index).kind.clone()
+            );
 
             definition_errors.clear();
             self.namespaces[current_namespace_id]
@@ -264,10 +251,10 @@ impl Typer {
         }
 
         for (i, start_index) in all_start_indices.iter().enumerate() {
-            let NodeKind::TopLevel { usings, .. } = self.get_parser_node(*start_index).kind.clone()
-            else {
-                panic!("expected top level at start index");
-            };
+            assert_matches!(
+                NodeKind::TopLevel { usings, .. },
+                self.get_parser_node(*start_index).kind.clone()
+            );
 
             for using in usings.iter() {
                 self.check_using(*using, &mut file_used_namespace_ids);
@@ -617,9 +604,10 @@ impl Typer {
         namespace_id: Option<usize>,
         kind: LookupKind,
     ) -> Option<(NodeIndex, Type)> {
-        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            panic!("invalid identifier name");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.get_parser_node(name).kind.clone()
+        );
 
         let identifier = Identifier {
             name: name_text,
@@ -1045,23 +1033,23 @@ impl Typer {
                 panic!("invalid function");
             };
 
-            let NodeKind::FunctionDeclaration {
-                name,
-                generic_params,
-                ..
-            } = &self.get_parser_node(*declaration).kind
-            else {
-                panic!("invalid function declaration");
-            };
+            assert_matches!(
+                NodeKind::FunctionDeclaration {
+                    name,
+                    generic_params,
+                    ..
+                },
+                &self.get_parser_node(*declaration).kind
+            );
 
             if !generic_params.is_empty() {
                 continue;
             }
 
-            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
-            else {
-                panic!("invalid function name");
-            };
+            assert_matches!(
+                NodeKind::Name { text: name_text },
+                self.get_parser_node(*name).kind.clone()
+            );
 
             if self.namespaces[namespace_id].is_name_defined(name_text) {
                 continue;
@@ -1090,23 +1078,23 @@ impl Typer {
 
         let mut typed_structs = Vec::new();
         for struct_definition in structs.iter() {
-            let NodeKind::StructDefinition {
-                name,
-                generic_params,
-                ..
-            } = &self.get_parser_node(*struct_definition).kind
-            else {
-                type_error!(self, "invalid struct definition");
-            };
+            assert_matches!(
+                NodeKind::StructDefinition {
+                    name,
+                    generic_params,
+                    ..
+                },
+                &self.get_parser_node(*struct_definition).kind
+            );
 
             if !generic_params.is_empty() {
                 continue;
             }
 
-            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
-            else {
-                type_error!(self, "invalid struct name");
-            };
+            assert_matches!(
+                NodeKind::Name { text: name_text },
+                self.get_parser_node(*name).kind.clone()
+            );
 
             if self
                 .get_file_namespace(file_index)
@@ -1120,16 +1108,14 @@ impl Typer {
 
         let mut typed_enums = Vec::new();
         for enum_definition in enums.iter() {
-            let NodeKind::EnumDefinition { name, .. } =
+            assert_matches!(
+                NodeKind::EnumDefinition { name, .. },
                 &self.get_parser_node(*enum_definition).kind
-            else {
-                type_error!(self, "invalid enum definition");
-            };
-
-            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
-            else {
-                type_error!(self, "invalid enum name");
-            };
+            );
+            assert_matches!(
+                NodeKind::Name { text: name_text },
+                self.get_parser_node(*name).kind.clone()
+            );
 
             if self
                 .get_file_namespace(file_index)
@@ -1150,16 +1136,14 @@ impl Typer {
 
         let mut typed_variable_declarations = Vec::new();
         for variable_declaration in variable_declarations.iter() {
-            let NodeKind::VariableDeclaration { name, .. } =
+            assert_matches!(
+                NodeKind::VariableDeclaration { name, .. },
                 &self.get_parser_node(*variable_declaration).kind
-            else {
-                type_error!(self, "invalid variable declaration");
-            };
-
-            let NodeKind::Name { text: name_text } = self.get_parser_node(*name).kind.clone()
-            else {
-                type_error!(self, "invalid variable name");
-            };
+            );
+            assert_matches!(
+                NodeKind::Name { text: name_text },
+                self.get_parser_node(*name).kind.clone()
+            );
 
             if self
                 .get_file_namespace(file_index)
@@ -1189,20 +1173,21 @@ impl Typer {
     }
 
     fn extern_function(&mut self, declaration: NodeIndex, file_index: usize) -> NodeIndex {
-        let NodeKind::FunctionDeclaration {
-            name,
-            params,
-            generic_params,
-            return_type_name,
-            ..
-        } = self.get_parser_node(declaration).kind.clone()
-        else {
-            type_error!(self, "invalid function declaration");
-        };
+        assert_matches!(
+            NodeKind::FunctionDeclaration {
+                name,
+                params,
+                generic_params,
+                return_type_name,
+                ..
+            },
+            self.get_parser_node(declaration).kind.clone()
+        );
 
-        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            type_error!(self, "invalid function name");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.get_parser_node(name).kind.clone()
+        );
 
         if !generic_params.is_empty() {
             type_error!(self, "extern function cannot be generic");
@@ -1265,12 +1250,12 @@ impl Typer {
         let aliased_type_name_type = assert_typed!(self, typed_aliased_type_name);
         let typed_alias_name = self.check_node(alias_name);
 
-        let NodeKind::Name {
-            text: alias_name_text,
-        } = self.get_typer_node(typed_alias_name).node_kind.clone()
-        else {
-            type_error!(self, "invalid enum name");
-        };
+        assert_matches!(
+            NodeKind::Name {
+                text: alias_name_text,
+            },
+            self.get_typer_node(typed_alias_name).node_kind.clone()
+        );
 
         let identifier = Identifier::new(alias_name_text);
 
@@ -1304,9 +1289,10 @@ impl Typer {
             type_error!(self, "field cannot be of type func");
         }
 
-        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            type_error!(self, "invalid parameter name");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.get_parser_node(name).kind.clone()
+        );
 
         let node_type = Type {
             type_kind_id: type_name_type.type_kind_id,
@@ -1419,9 +1405,10 @@ impl Typer {
             _ => {}
         }
 
-        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            type_error!(self, "invalid variable name");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.get_parser_node(name).kind.clone()
+        );
 
         variable_type.instance_kind = match declaration_kind {
             DeclarationKind::Var => InstanceKind::Var,
@@ -1666,12 +1653,12 @@ impl Typer {
         self.scope_environment.push(true);
         self.was_block_already_opened = true;
 
-        let NodeKind::Name {
-            text: iterator_text,
-        } = self.get_typer_node(typed_iterator).node_kind.clone()
-        else {
-            type_error!(self, "invalid iterator name");
-        };
+        assert_matches!(
+            NodeKind::Name {
+                text: iterator_text,
+            },
+            self.get_typer_node(typed_iterator).node_kind.clone()
+        );
 
         let node_type = Type {
             type_kind_id: from_type.type_kind_id,
@@ -2072,10 +2059,12 @@ impl Typer {
         let mut method_kind = MethodKind::None;
 
         let mut typed_caller = typed_left;
+
         if let NodeKind::GenericSpecifier { left, .. } = self.get_typer_node(typed_caller).node_kind
         {
             typed_caller = left;
         }
+
         if let NodeKind::FieldAccess { left, .. } = self.get_typer_node(typed_caller).node_kind {
             let left_type = assert_typed!(self, left);
             if left_type.instance_kind != InstanceKind::Name {
@@ -2189,9 +2178,10 @@ impl Typer {
         let left_type = assert_typed!(self, typed_left);
         let typed_name = self.check_node(name);
 
-        let NodeKind::Name { text: name_text } = &self.get_parser_node(name).kind else {
-            type_error!(self, "invalid field name");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            &self.get_parser_node(name).kind
+        );
 
         let node_kind = NodeKind::FieldAccess {
             left: typed_left,
@@ -2222,12 +2212,12 @@ impl Typer {
             }
             TypeKind::Enum { variant_names, .. } => {
                 for variant_name in variant_names.iter() {
-                    let NodeKind::Name {
-                        text: variant_name_text,
-                    } = &self.get_typer_node(*variant_name).node_kind
-                    else {
-                        type_error!(self, "invalid enum variant name");
-                    };
+                    assert_matches!(
+                        NodeKind::Name {
+                            text: variant_name_text,
+                        },
+                        &self.get_typer_node(*variant_name).node_kind
+                    );
 
                     if *variant_name_text == *name_text {
                         return self.add_node(TypedNode {
@@ -2300,12 +2290,12 @@ impl Typer {
                 type_kind_id: field_kind_id,
             } in fields.iter()
             {
-                let NodeKind::Name {
-                    text: field_name_text,
-                } = &self.get_typer_node(*field_name).node_kind
-                else {
-                    type_error!(self, "invalid field name on struct");
-                };
+                assert_matches!(
+                    NodeKind::Name {
+                        text: field_name_text,
+                    },
+                    &self.get_typer_node(*field_name).node_kind
+                );
 
                 if *field_name_text != *name_text {
                     continue;
@@ -2723,24 +2713,29 @@ impl Typer {
             }
 
             if field_literals.len() > 0 {
-                let NodeKind::FieldLiteral {
-                    name: field_name, ..
-                } = &self.get_parser_node(field_literals[0]).kind
-                else {
-                    type_error!(self, "invalid field literal");
-                };
+                assert_matches!(
+                    NodeKind::FieldLiteral {
+                        name: field_name,
+                        ..
+                    },
+                    &self.get_parser_node(field_literals[0]).kind
+                );
 
-                let NodeKind::Name {
-                    text: field_name_text,
-                } = &self.get_parser_node(*field_name).kind
-                else {
-                    type_error!(self, "invalid field name");
-                };
+                assert_matches!(
+                    NodeKind::Name {
+                        text: field_name_text,
+                    },
+                    &self.get_parser_node(*field_name).kind
+                );
 
                 let Some(expected_field_index) =
                     get_field_index_by_name(&self.typed_nodes, field_name_text, &expected_fields)
                 else {
-                    type_error_at_parser_node!(self, "union doesn't contain a field with this name", field_literals[0]);
+                    type_error_at_parser_node!(
+                        self,
+                        "union doesn't contain a field with this name",
+                        field_literals[0]
+                    );
                 };
 
                 let expected_type_kind_id = expected_fields[expected_field_index].type_kind_id;
@@ -2767,9 +2762,25 @@ impl Typer {
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                assert_matches!(NodeKind::FieldLiteral { name: field_name, .. }, &self.get_typer_node(typed_field_literal).node_kind);
-                assert_matches!(NodeKind::Name { text: field_name_text }, &self.get_typer_node(*field_name).node_kind);
-                assert_matches!(NodeKind::Name { text: expected_field_name_text }, &self.get_typer_node(expected_field.name).node_kind);
+                assert_matches!(
+                    NodeKind::FieldLiteral {
+                        name: field_name,
+                        ..
+                    },
+                    &self.get_typer_node(typed_field_literal).node_kind
+                );
+                assert_matches!(
+                    NodeKind::Name {
+                        text: field_name_text
+                    },
+                    &self.get_typer_node(*field_name).node_kind
+                );
+                assert_matches!(
+                    NodeKind::Name {
+                        text: expected_field_name_text
+                    },
+                    &self.get_typer_node(expected_field.name).node_kind
+                );
 
                 if field_name_text != expected_field_name_text {
                     type_error_at_parser_node!(self, "incorrect field name", *field);
@@ -2913,9 +2924,10 @@ impl Typer {
             );
         }
 
-        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            type_error!(self, "invalid name");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.get_parser_node(name).kind.clone()
+        );
 
         let typed_name = self.check_node(name);
         let identifier = Identifier {
@@ -2940,11 +2952,10 @@ impl Typer {
             }
 
             for i in 0..generic_arg_type_kind_ids.len() {
-                let NodeKind::Name { text: param_text } =
+                assert_matches!(
+                    NodeKind::Name { text: param_text },
                     self.get_parser_node(generic_params[i]).kind.clone()
-                else {
-                    type_error!(self, "invalid parameter name");
-                };
+                );
 
                 self.scope_type_kind_environment.insert(
                     Identifier::new(param_text.clone()),
@@ -2967,12 +2978,13 @@ impl Typer {
 
             let field_type_kind_id = assert_typed!(self, typed_field).type_kind_id;
 
-            let NodeKind::Field {
-                name: field_name, ..
-            } = self.get_parser_node(*field).kind
-            else {
-                type_error!(self, "invalid field");
-            };
+            assert_matches!(
+                NodeKind::Field {
+                    name: field_name,
+                    ..
+                },
+                self.get_parser_node(*field).kind
+            );
 
             let typed_field_name = self.check_node(field_name);
 
@@ -3037,9 +3049,10 @@ impl Typer {
         variant_names: Arc<Vec<NodeIndex>>,
         file_index: usize,
     ) -> NodeIndex {
-        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            type_error!(self, "invalid enum name");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.get_parser_node(name).kind.clone()
+        );
 
         let typed_name = self.check_node(name);
 
@@ -3158,9 +3171,10 @@ impl Typer {
             namespace_id: Some(namespace_id),
         });
 
-        let NodeKind::Name { text: name_text } = &self.get_typer_node(typed_name).node_kind else {
-            type_error!(self, "invalid name in function declaration");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            &self.get_typer_node(typed_name).node_kind
+        );
 
         if name_text.as_ref() == "Main" {
             if is_extern {
@@ -3268,18 +3282,19 @@ impl Typer {
         namespace_id: usize,
         file_index: usize,
     ) -> NodeIndex {
-        let NodeKind::FunctionDeclaration {
-            name,
-            generic_params,
-            ..
-        } = self.get_parser_node(declaration).kind.clone()
-        else {
-            type_error!(self, "invalid function declaration");
-        };
+        assert_matches!(
+            NodeKind::FunctionDeclaration {
+                name,
+                generic_params,
+                ..
+            },
+            self.get_parser_node(declaration).kind.clone()
+        );
 
-        let NodeKind::Name { text: name_text } = self.get_parser_node(name).kind.clone() else {
-            type_error!(self, "invalid function name");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.get_parser_node(name).kind.clone()
+        );
 
         if !generic_params.is_empty() && generic_arg_type_kind_ids.is_none() {
             type_error_at_parser_node!(
@@ -3309,11 +3324,10 @@ impl Typer {
             }
 
             for i in 0..generic_arg_type_kind_ids.len() {
-                let NodeKind::Name { text: param_text } =
+                assert_matches!(
+                    NodeKind::Name { text: param_text },
                     self.get_parser_node(generic_params[i]).kind.clone()
-                else {
-                    type_error!(self, "invalid parameter name");
-                };
+                );
 
                 self.scope_type_kind_environment
                     .insert(Identifier::new(param_text), generic_arg_type_kind_ids[i]);

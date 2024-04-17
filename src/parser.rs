@@ -275,6 +275,15 @@ macro_rules! assert_token {
     };
 }
 
+#[macro_export]
+macro_rules! assert_matches {
+    ($pattern:pat, $value:expr) => {
+        let $pattern = $value else {
+            panic!("assert_matches failed!");
+        };
+    };
+}
+
 macro_rules! parse_error {
     ($self:ident, $message:expr, $start:expr, $end:expr) => {{
         return $self.parse_error($message, $start, $end);
@@ -493,9 +502,10 @@ impl Parser {
 
         let name = self.name();
 
-        let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
-            parse_error!(self, "invalid struct name", start, self.node_end(name));
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.nodes[name.node_index].kind.clone()
+        );
 
         let mut generic_params = Vec::new();
 
@@ -562,9 +572,10 @@ impl Parser {
 
         let name = self.name();
 
-        let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
-            parse_error!(self, "invalid struct name", start, self.node_end(name));
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.nodes[name.node_index].kind.clone()
+        );
 
         assert_token!(self, TokenKind::LBrace, start, self.token_end());
         self.position += 1;
@@ -647,10 +658,10 @@ impl Parser {
             end,
         });
 
-        let NodeKind::Name { text: name_text } = self.nodes[alias_name.node_index].kind.clone()
-        else {
-            panic!("invalid alias name");
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.nodes[alias_name.node_index].kind.clone()
+        );
 
         if definition_indices.insert(name_text, index).is_err() {
             parse_error!(self, DEFINITION_ERROR, start, end);
@@ -779,14 +790,15 @@ impl Parser {
         let scoped_statement = self.scoped_statement();
         let end = self.node_end(scoped_statement);
 
-        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind
-        else {
-            parse_error!(self, "invalid function declaration", start, end);
-        };
+        assert_matches!(
+            NodeKind::FunctionDeclaration { name, .. },
+            self.nodes[declaration.node_index].kind
+        );
 
-        let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
-            parse_error!(self, "invalid function name", start, self.node_end(name));
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.nodes[name.node_index].kind.clone()
+        );
 
         let index = self.add_node(Node {
             kind: NodeKind::Function {
@@ -815,14 +827,15 @@ impl Parser {
         assert_token!(self, TokenKind::Semicolon, start, end);
         self.position += 1;
 
-        let NodeKind::FunctionDeclaration { name, .. } = self.nodes[declaration.node_index].kind
-        else {
-            parse_error!(self, "invalid function declaration", start, end);
-        };
+        assert_matches!(
+            NodeKind::FunctionDeclaration { name, .. },
+            self.nodes[declaration.node_index].kind
+        );
 
-        let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone() else {
-            parse_error!(self, "invalid function name", start, self.node_end(name));
-        };
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.nodes[name.node_index].kind.clone()
+        );
 
         let index = self.add_node(Node {
             kind: NodeKind::ExternFunction { declaration },
@@ -880,9 +893,7 @@ impl Parser {
         let statement = self.statement();
         let end = self.node_end(statement);
 
-        let NodeKind::Statement { inner } = &self.nodes[statement.node_index].kind else {
-            parse_error!(self, "invalid statement", start, end);
-        };
+        assert_matches!(NodeKind::Statement { inner }, &self.nodes[statement.node_index].kind);
 
         if let Some(inner) = inner {
             if matches!(self.nodes[inner.node_index].kind, NodeKind::Block { .. }) {
@@ -1020,10 +1031,7 @@ impl Parser {
         });
 
         if let Some(definition_indices) = definition_indices {
-            let NodeKind::Name { text: name_text } = self.nodes[name.node_index].kind.clone()
-            else {
-                parse_error!(self, "invalid variable name", start, end);
-            };
+            assert_matches!(NodeKind::Name { text: name_text }, self.nodes[name.node_index].kind.clone());
 
             if definition_indices.insert(name_text, index).is_err() {
                 parse_error!(self, DEFINITION_ERROR, start, end);

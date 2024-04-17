@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    assert_matches,
     const_value::ConstValue,
     emitter::Emitter,
     emitter_stack::EmitterStack,
@@ -684,15 +685,15 @@ impl CodeGenerator {
         _namespace_id: Option<usize>,
     ) {
         if is_shallow {
-            let NodeKind::FunctionDeclaration {
-                name,
-                params,
-                generic_params,
-                ..
-            } = self.get_typer_node(declaration).node_kind.clone()
-            else {
-                panic!("invalid function declaration");
-            };
+            assert_matches!(
+                NodeKind::FunctionDeclaration {
+                    name,
+                    params,
+                    generic_params,
+                    ..
+                },
+                self.get_typer_node(declaration).node_kind.clone()
+            );
 
             let type_kind_id = node_type.unwrap().type_kind_id;
             let has_generic_params = !generic_params.is_empty();
@@ -756,11 +757,10 @@ impl CodeGenerator {
     ) {
         self.function_prototype_emitter.emit("extern ");
 
-        let NodeKind::FunctionDeclaration { name, params, .. } =
+        assert_matches!(
+            NodeKind::FunctionDeclaration { name, params, .. },
             self.get_typer_node(declaration).node_kind.clone()
-        else {
-            panic!("invalid function declaration");
-        };
+        );
 
         let type_kind_id = node_type.unwrap().type_kind_id;
 
@@ -787,21 +787,20 @@ impl CodeGenerator {
     }
 
     fn copy_array_params(&mut self, function_declaration: NodeIndex) {
-        let NodeKind::FunctionDeclaration { params, .. } =
+        assert_matches!(
+            NodeKind::FunctionDeclaration { params, .. },
             self.get_typer_node(function_declaration).node_kind.clone()
-        else {
-            panic!("invalid function declaration needing init");
-        };
+        );
 
         for param in params.iter() {
-            let TypedNode {
-                node_kind: NodeKind::Param { name, .. },
-                node_type,
-                ..
-            } = self.get_typer_node(*param).clone()
-            else {
-                panic!("invalid param in function declaration needing init");
-            };
+            assert_matches!(
+                TypedNode {
+                    node_kind: NodeKind::Param { name, .. },
+                    node_type,
+                    ..
+                },
+                self.get_typer_node(*param).clone()
+            );
 
             let type_kind_id = node_type.unwrap().type_kind_id;
 
@@ -812,10 +811,11 @@ impl CodeGenerator {
                 continue;
             }
 
-            let NodeKind::Name { text: name_text } = self.get_typer_node(name).node_kind.clone()
-            else {
-                panic!("invalid parameter name");
-            };
+            assert_matches!(
+                NodeKind::Name { text: name_text },
+                self.get_typer_node(name).node_kind.clone()
+            );
+
             let copy_name = format!("__{}", &name_text);
 
             self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, true);
@@ -854,13 +854,13 @@ impl CodeGenerator {
 
         let mut was_last_statement_early_exit = false;
         for statement in statements.iter().rev() {
-            let TypedNode {
-                node_kind: NodeKind::Statement { inner },
-                ..
-            } = self.get_typer_node(*statement)
-            else {
-                panic!("last statement is not a statement");
-            };
+            assert_matches!(
+                TypedNode {
+                    node_kind: NodeKind::Statement { inner },
+                    ..
+                },
+                self.get_typer_node(*statement)
+            );
 
             let Some(inner) = inner else {
                 continue;
@@ -950,10 +950,11 @@ impl CodeGenerator {
         if is_array && !self.is_typed_expression_array_literal(expression) {
             self.emitter(kind).emitln(";");
 
-            let NodeKind::Name { text: name_text } = self.get_typer_node(name).node_kind.clone()
-            else {
-                panic!("invalid variable name");
-            };
+            assert_matches!(
+                NodeKind::Name { text: name_text },
+                self.get_typer_node(name).node_kind.clone()
+            );
+
             self.emit_memmove_expression_to_name(&name_text, expression, type_kind_id, kind);
         } else {
             self.emitter(kind).emit(" = ");
@@ -1291,13 +1292,13 @@ impl CodeGenerator {
         _namespace_id: Option<usize>,
         kind: EmitterKind,
     ) {
-        let Some(Type {
-            instance_kind: InstanceKind::Const(const_value),
-            ..
-        }) = node_type
-        else {
-            panic!("invalid node type of const expression");
-        };
+        assert_matches!(
+            Some(Type {
+                instance_kind: InstanceKind::Const(const_value),
+                ..
+            }),
+            node_type
+        );
 
         match const_value {
             ConstValue::Int { value } => self.emitter(kind).emit(&value.to_string()),
@@ -1365,17 +1366,13 @@ impl CodeGenerator {
                 } = &self.type_kinds.get_by_id(dereferenced_left_type_kind_id)
                 {
                     if *is_union {
-                        let NodeKind::Name { text: name_text } =
+                        assert_matches!(
+                            NodeKind::Name { text: name_text },
                             self.get_typer_node(name).node_kind.clone()
-                        else {
-                            panic!("invalid field name in field access");
-                        };
+                        );
 
-                        let Some(tag) =
-                            get_field_index_by_name(&self.typed_nodes, &name_text, fields)
-                        else {
-                            panic!("tag not found in union assignment");
-                        };
+                        let tag =
+                            get_field_index_by_name(&self.typed_nodes, &name_text, fields).unwrap();
 
                         self.emit_union_with_tag_usage(
                             dereferenced_left_type_kind_id,
@@ -1480,9 +1477,10 @@ impl CodeGenerator {
                 caller = left;
             }
 
-            let NodeKind::FieldAccess { left, .. } = self.get_typer_node(caller).node_kind else {
-                panic!("expected field access before method call");
-            };
+            assert_matches!(
+                NodeKind::FieldAccess { left, .. },
+                self.get_typer_node(caller).node_kind
+            );
 
             if method_kind == MethodKind::ByReference {
                 self.emitter(kind).emit("&");
@@ -1540,11 +1538,12 @@ impl CodeGenerator {
             self.gen_node_with_emitter(expression, kind);
         } else {
             let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
-            let TypeKind::Array { element_count, .. } =
+
+            assert_matches!(
+                TypeKind::Array { element_count, .. },
                 &self.type_kinds.get_by_id(left_type.type_kind_id)
-            else {
-                panic!("tried to perform an index access on a non-array type");
-            };
+            );
+
             let element_count = *element_count;
 
             self.emitter(kind).emit("__BoundsCheck(");
@@ -1580,24 +1579,23 @@ impl CodeGenerator {
         let mut is_method_access = false;
         match self.type_kinds.get_by_id(field_type_kind_id) {
             TypeKind::Tag => {
-                let TypeKind::Struct {
-                    fields, is_union, ..
-                } = &self.type_kinds.get_by_id(left_type.type_kind_id)
-                else {
-                    panic!("expected tag field to be part of a struct");
-                };
+                assert_matches!(
+                    TypeKind::Struct {
+                        fields,
+                        is_union,
+                        ..
+                    },
+                    &self.type_kinds.get_by_id(left_type.type_kind_id)
+                );
 
                 if left_type.instance_kind == InstanceKind::Name && *is_union {
-                    let NodeKind::Name { text: name_text } =
+                    assert_matches!(
+                        NodeKind::Name { text: name_text },
                         self.get_typer_node(name).node_kind.clone()
-                    else {
-                        panic!("invalid tag name in tag access");
-                    };
+                    );
 
-                    let Some(tag) = get_field_index_by_name(&self.typed_nodes, &name_text, fields)
-                    else {
-                        panic!("tag not found in field access");
-                    };
+                    let tag =
+                        get_field_index_by_name(&self.typed_nodes, &name_text, fields).unwrap();
 
                     self.emitter(kind).emit(&tag.to_string());
 
@@ -1625,16 +1623,12 @@ impl CodeGenerator {
         } = &self.type_kinds.get_by_id(dereferenced_left_type_kind_id)
         {
             if *is_union {
-                let NodeKind::Name { text: name_text } =
+                assert_matches!(
+                    NodeKind::Name { text: name_text },
                     self.get_typer_node(name).node_kind.clone()
-                else {
-                    panic!("invalid field name in field access");
-                };
+                );
 
-                let Some(tag) = get_field_index_by_name(&self.typed_nodes, &name_text, fields)
-                else {
-                    panic!("tag not found in field access");
-                };
+                let tag = get_field_index_by_name(&self.typed_nodes, &name_text, fields).unwrap();
 
                 self.emit_union_check_tag_usage(
                     dereferenced_left_type_kind_id,
@@ -1701,10 +1695,10 @@ impl CodeGenerator {
                 .unwrap()
                 .type_kind_id;
 
-            let TypeKind::Struct { is_union, .. } = &self.type_kinds.get_by_id(left_type_kind_id)
-            else {
-                panic!("casting to a tag is not allowed for this value");
-            };
+            assert_matches!(
+                TypeKind::Struct { is_union, .. },
+                &self.type_kinds.get_by_id(left_type_kind_id)
+            );
 
             if !is_union {
                 panic!("casting to a tag is not allowed for this value");
@@ -1894,11 +1888,10 @@ impl CodeGenerator {
         _namespace_id: Option<usize>,
         kind: EmitterKind,
     ) {
-        let TypeKind::Array { element_count, .. } =
+        assert_matches!(
+            TypeKind::Array { element_count, .. },
             self.type_kinds.get_by_id(node_type.unwrap().type_kind_id)
-        else {
-            panic!("invalid type for array literal");
-        };
+        );
 
         let repeat_count = element_count / elements.len();
 
@@ -1933,14 +1926,15 @@ impl CodeGenerator {
         self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
         self.emitter(kind).emit(") ");
 
-        let TypeKind::Struct {
-            fields: type_kind_fields,
-            is_union,
-            ..
-        } = &self.type_kinds.get_by_id(type_kind_id)
-        else {
-            panic!("struct literal does not have a struct type");
-        };
+        assert_matches!(
+            TypeKind::Struct {
+                fields: type_kind_fields,
+                is_union,
+                ..
+            },
+            &self.type_kinds.get_by_id(type_kind_id)
+        );
+
         let is_union = *is_union;
 
         if is_union {
@@ -1951,20 +1945,18 @@ impl CodeGenerator {
                 panic!("expected union literal to contain a single field");
             }
 
-            let NodeKind::FieldLiteral { name, .. } =
+            assert_matches!(
+                NodeKind::FieldLiteral { name, .. },
                 &self.get_typer_node(field_literals[0]).node_kind
-            else {
-                panic!("invalid field in union literal");
-            };
+            );
 
-            let NodeKind::Name { text: name_text } = &self.get_typer_node(*name).node_kind else {
-                panic!("invalid field name text in union literal");
-            };
+            assert_matches!(
+                NodeKind::Name { text: name_text },
+                &self.get_typer_node(*name).node_kind
+            );
 
-            let Some(tag) = get_field_index_by_name(&self.typed_nodes, name_text, type_kind_fields)
-            else {
-                panic!("tag not found in union literal");
-            };
+            let tag =
+                get_field_index_by_name(&self.typed_nodes, name_text, type_kind_fields).unwrap();
 
             self.emitter(kind).emit(".tag = ");
             self.emitter(kind).emit(&tag.to_string());
@@ -2259,13 +2251,13 @@ impl CodeGenerator {
         has_generic_params: bool,
         type_kind_id: usize,
     ) {
-        let TypeKind::Function {
-            return_type_kind_id,
-            ..
-        } = self.type_kinds.get_by_id(type_kind_id)
-        else {
-            panic!("tried to emit function declaration for non-function type");
-        };
+        assert_matches!(
+            TypeKind::Function {
+                return_type_kind_id,
+                ..
+            },
+            self.type_kinds.get_by_id(type_kind_id)
+        );
 
         self.emit_type_kind_left(return_type_kind_id, kind, true, true);
 
@@ -2313,9 +2305,11 @@ impl CodeGenerator {
             .as_ref()
             .unwrap()
             .type_kind_id;
-        let NodeKind::Param { name, .. } = self.get_typer_node(param).node_kind else {
-            panic!("invalid param");
-        };
+
+        assert_matches!(
+            NodeKind::Param { name, .. },
+            self.get_typer_node(param).node_kind
+        );
 
         self.emit_param(name, type_kind_id, kind);
     }
@@ -2395,9 +2389,10 @@ impl CodeGenerator {
     }
 
     fn emit_struct_name(&mut self, type_kind_id: usize, kind: EmitterKind) {
-        let TypeKind::Struct { name, .. } = self.type_kinds.get_by_id(type_kind_id) else {
-            panic!("invalid struct");
-        };
+        assert_matches!(
+            TypeKind::Struct { name, .. },
+            self.type_kinds.get_by_id(type_kind_id)
+        );
 
         self.gen_node_with_emitter(name, kind);
         self.emitter(kind).emit("__");
@@ -2456,22 +2451,22 @@ impl CodeGenerator {
             return;
         };
 
-        let TypedNode {
-            node_kind: NodeKind::FunctionDeclaration { name, .. },
-            node_type: Some(function_type),
-            ..
-        } = self.get_typer_node(main_function_declaration).clone()
-        else {
-            panic!("invalid main function declaration");
-        };
+        assert_matches!(
+            TypedNode {
+                node_kind: NodeKind::FunctionDeclaration { name, .. },
+                node_type: Some(function_type),
+                ..
+            },
+            self.get_typer_node(main_function_declaration).clone()
+        );
 
-        let TypeKind::Function {
-            param_type_kind_ids,
-            ..
-        } = &self.type_kinds.get_by_id(function_type.type_kind_id)
-        else {
-            panic!("invalid main function");
-        };
+        assert_matches!(
+            TypeKind::Function {
+                param_type_kind_ids,
+                ..
+            },
+            &self.type_kinds.get_by_id(function_type.type_kind_id)
+        );
 
         if param_type_kind_ids.len() > 0 {
             self.body_emitters
@@ -2776,12 +2771,14 @@ impl CodeGenerator {
         self.body_emitters.top().body.emitln(" *right) {");
         self.body_emitters.top().body.indent();
 
-        let TypeKind::Struct {
-            fields, is_union, ..
-        } = self.type_kinds.get_by_id(type_kind_id)
-        else {
-            panic!("cannot emit struct comparison for non-struct type");
-        };
+        assert_matches!(
+            TypeKind::Struct {
+                fields,
+                is_union,
+                ..
+            },
+            self.type_kinds.get_by_id(type_kind_id)
+        );
 
         if is_union {
             self.body_emitters

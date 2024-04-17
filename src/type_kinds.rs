@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    assert_matches,
     parser::{NodeIndex, NodeKind},
     typer::TypedNode,
 };
@@ -18,12 +19,12 @@ pub fn get_field_index_by_name(
 ) -> Option<usize> {
     let mut tag = None;
     for (i, field) in fields.iter().enumerate() {
-        let NodeKind::Name {
-            text: field_name_text,
-        } = &typed_nodes[field.name.node_index].node_kind
-        else {
-            panic!("invalid field name on accessed struct");
-        };
+        assert_matches!(
+            NodeKind::Name {
+                text: field_name_text,
+            },
+            &typed_nodes[field.name.node_index].node_kind
+        );
 
         if *field_name_text == *name_text {
             tag = Some(i);
