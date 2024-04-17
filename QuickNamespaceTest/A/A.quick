@@ -1,9 +1,16 @@
 using Folder;
 
+alias FolderD = Folder.D;
+
 func Main() Int
 {
     B.BFunc();
     D.DFunc(Folder.D.DStruct
+    {
+
+    });
+
+    D.DFunc(FolderD.DStruct
     {
 
     });

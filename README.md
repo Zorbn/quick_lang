@@ -16,7 +16,6 @@
 #### Project Structure
 - Some form of incremental compilation.
 - Maybe parallel compilation too?
-- Allow aliasing namespaces, eg. `using MyAlias = The.Real.Namespace`, and possibly combine `using` and `alias` keywords?
 
 #### Features
 - Default parameters.

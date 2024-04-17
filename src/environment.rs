@@ -40,7 +40,7 @@ impl<K: Clone + Hash + PartialEq + Eq, V: Clone> Environment<K, V> {
                 return Some(value.clone());
             }
 
-            // If this sub environment doesn't connect to the previous one then the only other place to check if the global level.
+            // If this sub environment doesn't connect to the previous one then the only other place to check is the global level.
             if !sub_env.is_connected_to_previous && i > 0 {
                 if let Some(value) = self.stack.first().unwrap().name_types.get(key) {
                     return Some(value.clone());

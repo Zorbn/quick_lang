@@ -8,7 +8,7 @@ func BFunc() Void
     zombie.DoNothing();
     Zombie.<Bool>.Static();
 
-    val person = Person { data = 1 };
+    var person = Person { data = 1 };
     person.Eat(4);
 }
 
