@@ -61,6 +61,14 @@ macro_rules! assert_typed {
     }};
 }
 
+macro_rules! assert_matches {
+    ($pattern:pat, $value:expr) => {
+        let $pattern = $value else {
+            panic!("assert_matches failed!");
+        };
+    };
+}
+
 pub enum LookupResult {
     DefinitionIndex(usize, NodeIndex),
     Definition(usize, Definition),
@@ -2732,7 +2740,7 @@ impl Typer {
                 let Some(expected_field_index) =
                     get_field_index_by_name(&self.typed_nodes, field_name_text, &expected_fields)
                 else {
-                    type_error!(self, "union doesn't contain a field with this name");
+                    type_error_at_parser_node!(self, "union doesn't contain a field with this name", field_literals[0]);
                 };
 
                 let expected_type_kind_id = expected_fields[expected_field_index].type_kind_id;
@@ -2758,6 +2766,14 @@ impl Typer {
                 typed_field_literals.push(typed_field_literal);
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
+
+                assert_matches!(NodeKind::FieldLiteral { name: field_name, .. }, &self.get_typer_node(typed_field_literal).node_kind);
+                assert_matches!(NodeKind::Name { text: field_name_text }, &self.get_typer_node(*field_name).node_kind);
+                assert_matches!(NodeKind::Name { text: expected_field_name_text }, &self.get_typer_node(expected_field.name).node_kind);
+
+                if field_name_text != expected_field_name_text {
+                    type_error_at_parser_node!(self, "incorrect field name", *field);
+                }
 
                 if !self.is_assignment_valid(
                     field_literal_type.type_kind_id,
