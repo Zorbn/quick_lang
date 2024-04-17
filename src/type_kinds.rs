@@ -160,4 +160,15 @@ impl TypeKinds {
 
         self.type_kinds[type_kind_id] = type_kind;
     }
+
+    pub fn dereference_type_kind_id(&self, type_kind_id: usize) -> (usize, bool) {
+        if let TypeKind::Pointer {
+            inner_type_kind_id, ..
+        } = self.get_by_id(type_kind_id)
+        {
+            (inner_type_kind_id, true)
+        } else {
+            (type_kind_id, false)
+        }
+    }
 }

@@ -1,10 +1,17 @@
 use std::{collections::HashSet, ffi::OsString, mem, sync::Arc};
 
 use crate::{
-    assert_matches, const_value::ConstValue, environment::Environment, file_data::FileData, namespace::{
+    assert_matches,
+    const_value::ConstValue,
+    environment::Environment,
+    file_data::FileData,
+    namespace::{
         Definition, DefinitionIndexError, DefinitionIndices, Identifier, Namespace,
         NamespaceGenericArg, NamespaceLookupResult, DEFINITION_ERROR,
-    }, parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op}, position::Position, type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds}
+    },
+    parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
+    position::Position,
+    type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds},
 };
 
 #[derive(Clone, Debug)]
@@ -76,7 +83,7 @@ impl LookupResult {
     }
 }
 
-pub enum IdentifierLookupResult {
+enum IdentifierLookupResult {
     Some(usize, Type),
     Ambiguous,
     None,
@@ -89,9 +96,16 @@ enum LookupKind {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum LookupLocation {
+enum LookupLocation {
     Namespace(usize),
     File(usize),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ReturnTypeComparison {
+    Matches,
+    DoesntMatch,
+    DoesntReturn,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -3364,12 +3378,18 @@ impl Typer {
             let typed_scoped_statement =
                 self.check_node_with_hint(scoped_statement, Some(expected_return_type_kind_id));
 
-            if let Some(return_type) = self.ensure_typed_statement_returns(typed_scoped_statement) {
-                if !self.is_assignment_valid(expected_return_type_kind_id, return_type.type_kind_id)
-                {
-                    type_error!(self, "function does not return the correct type");
+            let is_return_type_valid = match self.compare_typed_statement_return_type(
+                typed_scoped_statement,
+                expected_return_type_kind_id,
+            ) {
+                ReturnTypeComparison::Matches => true,
+                ReturnTypeComparison::DoesntReturn => {
+                    self.type_kinds.get_by_id(expected_return_type_kind_id) == TypeKind::Void
                 }
-            } else if self.type_kinds.get_by_id(expected_return_type_kind_id) != TypeKind::Void {
+                ReturnTypeComparison::DoesntMatch => false,
+            };
+
+            if !is_return_type_valid {
                 type_error!(
                     self,
                     "function does not return the correct type on all execution paths"
@@ -3440,8 +3460,12 @@ impl Typer {
             let typed_left = self.check_node(left);
             let left_type = assert_typed!(self, typed_left);
 
+            let (dereferenced_left_type_kind_id, _) = self
+                .type_kinds
+                .dereference_type_kind_id(left_type.type_kind_id);
+
             let (TypeKind::Namespace { namespace_id } | TypeKind::Struct { namespace_id, .. }) =
-                self.type_kinds.get_by_id(left_type.type_kind_id)
+                self.type_kinds.get_by_id(dereferenced_left_type_kind_id)
             else {
                 type_error!(self, "expected namespace before field access in type name");
             };
@@ -3761,61 +3785,121 @@ impl Typer {
         None
     }
 
-    fn ensure_typed_statement_returns(&self, statement: NodeIndex) -> Option<Type> {
+    fn is_return_type_valid(
+        &self,
+        return_type: &Option<Type>,
+        expected_type_kind_id: usize,
+    ) -> bool {
+        if let Some(return_type) = return_type {
+            return_type.type_kind_id == expected_type_kind_id
+        } else {
+            self.type_kinds.get_by_id(expected_type_kind_id) == TypeKind::Void
+        }
+    }
+
+    // Returns None if the statement doesn't return any type, otherwise returns whether or not
+    // the statement's return type is valid based on the desired type.
+    fn compare_typed_statement_return_type(
+        &self,
+        statement: NodeIndex,
+        expected_type_kind_id: usize,
+    ) -> ReturnTypeComparison {
         match &self.get_typer_node(statement).node_kind {
             NodeKind::Block { statements } => {
+                let mut result = ReturnTypeComparison::DoesntReturn;
+
                 for statement in statements.iter() {
-                    if let Some(return_type) = self.ensure_typed_statement_returns(*statement) {
-                        return Some(return_type);
+                    match self
+                        .compare_typed_statement_return_type(*statement, expected_type_kind_id)
+                    {
+                        ReturnTypeComparison::Matches => result = ReturnTypeComparison::Matches,
+                        ReturnTypeComparison::DoesntMatch => {
+                            return ReturnTypeComparison::DoesntMatch
+                        }
+                        ReturnTypeComparison::DoesntReturn => {}
                     }
                 }
 
-                None
+                result
             }
             NodeKind::Statement { inner: Some(inner) } => {
-                self.ensure_typed_statement_returns(*inner)
+                self.compare_typed_statement_return_type(*inner, expected_type_kind_id)
             }
-            NodeKind::ReturnStatement {
-                expression: Some(expression),
-            } => self.get_typer_node(*expression).node_type.clone(),
+            NodeKind::ReturnStatement { expression } => {
+                let return_type = if let Some(expression) = expression {
+                    &self.get_typer_node(*expression).node_type
+                } else {
+                    &None
+                };
+
+                if self.is_return_type_valid(return_type, expected_type_kind_id) {
+                    ReturnTypeComparison::Matches
+                } else {
+                    ReturnTypeComparison::DoesntMatch
+                }
+            }
             NodeKind::DeferStatement { statement } => {
-                self.ensure_typed_statement_returns(*statement)
+                self.compare_typed_statement_return_type(*statement, expected_type_kind_id)
             }
             NodeKind::IfStatement {
                 scoped_statement,
                 next: Some(next),
                 ..
-            } => self.ensure_both_typed_statements_return(*scoped_statement, *next),
+            } => self.compare_both_typed_statement_return_types(
+                *scoped_statement,
+                *next,
+                expected_type_kind_id,
+            ),
             NodeKind::SwitchStatement { case_statement, .. } => {
-                self.ensure_typed_statement_returns(*case_statement)
+                self.compare_typed_statement_return_type(*case_statement, expected_type_kind_id)
             }
             NodeKind::CaseStatement {
                 scoped_statement,
                 next: Some(next),
                 ..
-            } => self.ensure_both_typed_statements_return(*scoped_statement, *next),
-            _ => None,
+            } => self.compare_both_typed_statement_return_types(
+                *scoped_statement,
+                *next,
+                expected_type_kind_id,
+            ),
+            NodeKind::IfStatement {
+                scoped_statement,
+                next: None,
+                ..
+            } => self.compare_typed_statement_return_type(*scoped_statement, expected_type_kind_id),
+            NodeKind::WhileLoop {
+                scoped_statement, ..
+            } => self.compare_typed_statement_return_type(*scoped_statement, expected_type_kind_id),
+            NodeKind::ForLoop {
+                scoped_statement, ..
+            } => self.compare_typed_statement_return_type(*scoped_statement, expected_type_kind_id),
+            _ => ReturnTypeComparison::DoesntReturn,
         }
     }
 
-    fn ensure_both_typed_statements_return(
+    fn compare_both_typed_statement_return_types(
         &self,
         statement: NodeIndex,
         next: NodeIndex,
-    ) -> Option<Type> {
-        let Some(statement_type) = self.ensure_typed_statement_returns(statement) else {
-            return None;
-        };
+        expected_type_kind_id: usize,
+    ) -> ReturnTypeComparison {
+        let statement_result =
+            self.compare_typed_statement_return_type(statement, expected_type_kind_id);
+        let next_result = self.compare_typed_statement_return_type(next, expected_type_kind_id);
 
-        let Some(next_type) = self.ensure_typed_statement_returns(next) else {
-            return None;
-        };
-
-        if statement_type.type_kind_id == next_type.type_kind_id {
-            return Some(statement_type);
+        if statement_result == ReturnTypeComparison::DoesntMatch
+            || next_result == ReturnTypeComparison::DoesntMatch
+        {
+            return ReturnTypeComparison::DoesntMatch;
         }
 
-        None
+        if statement_result == ReturnTypeComparison::Matches
+            || next_result == ReturnTypeComparison::Matches
+        {
+            return ReturnTypeComparison::Matches;
+        }
+
+        ReturnTypeComparison::DoesntReturn
     }
 
     fn is_node_numeric_literal(&self, index: NodeIndex) -> bool {

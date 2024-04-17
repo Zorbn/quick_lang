@@ -71,10 +71,11 @@ func Main(argc Int, argv *val *val Char) Int
     Puts(hi);
 
     var testString = String.Create();
-    testString.PushCString(stringWithEscape.data);
-    testString.PushFloat32(137.43);
-    testString.PushChar('\n');
-    testString.PushPointer.<Point>(allocatedPoint);
+    testString
+        .PushCString(stringWithEscape.data)
+        .PushFloat32(137.43)
+        .PushChar('\n')
+        .PushPointer.<Point>(allocatedPoint);
     puts(testString.data);
     testString.Destroy();
 

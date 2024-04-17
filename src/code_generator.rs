@@ -1351,15 +1351,7 @@ impl CodeGenerator {
             if let NodeKind::FieldAccess { left, name, .. } = self.get_typer_node(left).node_kind {
                 let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
 
-                let (dereferenced_left_type_kind_id, is_left_pointer) =
-                    if let TypeKind::Pointer {
-                        inner_type_kind_id, ..
-                    } = self.type_kinds.get_by_id(left_type.type_kind_id)
-                    {
-                        (inner_type_kind_id, true)
-                    } else {
-                        (left_type.type_kind_id, false)
-                    };
+                let (dereferenced_left_type_kind_id, is_left_pointer) = self.type_kinds.dereference_type_kind_id(left_type.type_kind_id);
 
                 if let TypeKind::Struct {
                     fields, is_union, ..
@@ -1608,15 +1600,7 @@ impl CodeGenerator {
             _ => {}
         }
 
-        let (dereferenced_left_type_kind_id, is_left_pointer) =
-            if let TypeKind::Pointer {
-                inner_type_kind_id, ..
-            } = self.type_kinds.get_by_id(left_type.type_kind_id)
-            {
-                (inner_type_kind_id, true)
-            } else {
-                (left_type.type_kind_id, false)
-            };
+        let (dereferenced_left_type_kind_id, is_left_pointer) = self.type_kinds.dereference_type_kind_id(left_type.type_kind_id);
 
         if let TypeKind::Struct {
             fields, is_union, ..
