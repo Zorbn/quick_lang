@@ -96,7 +96,7 @@ struct String
     {
         if (cString == 0 as *val Char)
         {
-            return;
+            return me;
         }
 
         while (cString.* != '\0')

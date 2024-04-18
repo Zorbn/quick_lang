@@ -801,7 +801,7 @@ impl Typer {
                 left,
                 field_literals,
             } => self.struct_literal(left, field_literals),
-            NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression),
+            NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression, None),
             NodeKind::TypeSize { type_name } => self.type_size(type_name, None),
             NodeKind::StructDefinition {
                 name,
@@ -941,6 +941,7 @@ impl Typer {
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, hint),
             NodeKind::IntLiteral { text } => self.int_literal(text, hint),
             NodeKind::FloatLiteral { text } => self.float_literal(text, hint),
+            NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression, hint),
             NodeKind::TypeSize { type_name } => self.type_size(type_name, hint),
             NodeKind::Block { statements } => self.block(statements, hint),
             NodeKind::Statement { inner } => self.statement(inner, hint),
@@ -2771,7 +2772,8 @@ impl Typer {
             }
 
             for (field, expected_field) in field_literals.iter().zip(expected_fields.iter()) {
-                let typed_field_literal = self.check_node(*field);
+                let typed_field_literal =
+                    self.check_node_with_hint(*field, Some(expected_field.type_kind_id));
                 typed_field_literals.push(typed_field_literal);
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
@@ -2822,9 +2824,9 @@ impl Typer {
         })
     }
 
-    fn field_literal(&mut self, name: NodeIndex, expression: NodeIndex) -> NodeIndex {
+    fn field_literal(&mut self, name: NodeIndex, expression: NodeIndex, hint: Option<usize>) -> NodeIndex {
         let typed_name = self.check_node(name);
-        let typed_expression = self.check_node(expression);
+        let typed_expression = self.check_node_with_hint(expression, hint);
         let expression_type = assert_typed!(self, typed_expression);
 
         self.add_node(TypedNode {
