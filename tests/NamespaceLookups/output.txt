@@ -1,0 +1,1 @@
+Type error at Main\Main.quick:18:5: abmiguous identifier, multiple definitions are in scope

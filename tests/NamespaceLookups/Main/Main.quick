@@ -1,0 +1,21 @@
+using A;
+using B;
+
+func Fine() Void
+{
+
+}
+
+func Main() Int
+{
+    // There is a clear winner here, the definition in the current namespace.
+    Fine();
+
+    // There is a clear winner here, the definition in the parent namespace.
+    AlsoFine();
+
+    // There isn't a clear winner between A.UhOh and B.UhOh!
+    UhOh();
+
+    return 0;
+}
