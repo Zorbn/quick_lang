@@ -1,0 +1,19 @@
+hi
+hello
+137.429993
+Hello
+got point
+hi
+hello world
+bb
+f
+in
+            a block
+boolean is true
+boolean is true
+defer in loop2
+defer in loop1
+defer in block in loop
+defer later in loop
+defer in loop
+defer in main

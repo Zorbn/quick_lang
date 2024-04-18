@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf, process::ExitCode};
+use std::{env, fs, path::PathBuf, process::ExitCode};
 
 mod code_generator;
 mod compiler;
@@ -27,6 +27,7 @@ fn main() -> ExitCode {
     let mut is_expected = false;
     let mut is_debug_mode = false;
     let mut is_unsafe_mode = false;
+    let mut do_clean = false;
     let mut do_measure_time = false;
     let mut do_use_msvc = false;
 
@@ -51,6 +52,9 @@ fn main() -> ExitCode {
             "--test-expected" => {
                 is_test = true;
                 is_expected = true;
+            }
+            "--clean" => {
+                do_clean = true;
             }
             "--time" => {
                 do_measure_time = true;
@@ -99,8 +103,15 @@ fn main() -> ExitCode {
             &args[0],
             &args[1],
             core_path,
+            do_clean,
             is_expected,
         ).unwrap();
+
+        return ExitCode::SUCCESS;
+    }
+
+    if do_clean {
+        clean_project(&args[1]);
 
         return ExitCode::SUCCESS;
     }
@@ -114,6 +125,19 @@ fn main() -> ExitCode {
         do_use_msvc,
         c_flags,
     )
+}
+
+fn clean_project(project_path: &str) {
+    let mut build_path = PathBuf::from(project_path);
+    build_path.push("./build");
+
+    let Ok(build_path) = build_path.canonicalize() else {
+        return;
+    };
+
+    if fs::remove_dir_all(&build_path).is_ok() {
+        println!("Cleaned \"{:?}\"!", build_path);
+    }
 }
 
 fn get_core_path() -> Option<PathBuf> {

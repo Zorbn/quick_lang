@@ -1,0 +1,9 @@
+func Main() Int
+{
+    var helloString = String.FromView("Hello World, here's a number: ");
+    helloString.PushFloat32(777.777);
+
+    Console.WriteLine(helloString.ToView());
+
+    return 0;
+}

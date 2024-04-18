@@ -1,9 +1,12 @@
 use std::{fs, io, path::PathBuf, process::{Command, Output}};
 
+use crate::clean_project;
+
 pub fn test(
     exe_path: &str,
     test_directory: &str,
     core_path: &str,
+    do_clean: bool,
     is_expected: bool,
 ) -> io::Result<()> {
     let canonical_core_path = PathBuf::from(core_path).canonicalize()?;
@@ -19,7 +22,11 @@ pub fn test(
 
         let path = path.to_str().unwrap();
 
-        test_project(exe_path, path, core_path, is_expected);
+        if do_clean {
+            clean_project(path);
+        } else {
+            test_project(exe_path, path, core_path, is_expected);
+        }
     }
 
     Ok(())
@@ -39,15 +46,17 @@ fn test_project(exe_path: &str, project_path: &str, core_path: &str, is_expected
 
     push_output(&mut output, &compiler_output);
 
-    let mut output_exe_path = PathBuf::from(project_path);
-    output_exe_path.push("./build/Out.exe");
+    if is_output_empty(&compiler_output) {
+        let mut output_exe_path = PathBuf::from(project_path);
+        output_exe_path.push("./build/Out.exe");
 
-    if let Ok(output_exe_output) = Command::new(output_exe_path)
-        .current_dir(project_path)
-        .output()
-    {
-        push_output(&mut output, &output_exe_output);
-    };
+        if let Ok(output_exe_output) = Command::new(output_exe_path)
+            .current_dir(project_path)
+            .output()
+        {
+            push_output(&mut output, &output_exe_output);
+        };
+    }
 
     if is_expected {
         fs::write(expected_output_path, output).unwrap();
@@ -79,4 +88,8 @@ fn push_output(string: &mut String, output: &Output) {
 
     let output_stderr = String::from_utf8_lossy(&output.stderr);
     string.push_str(&output_stderr);
+}
+
+fn is_output_empty(output: &Output) -> bool {
+    output.stdout.is_empty() && output.stderr.is_empty()
 }

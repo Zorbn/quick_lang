@@ -1,0 +1,21 @@
+func Main() Int
+{
+    val myVal = 5;
+    myVal = 6;
+
+    val myStruct = MyStruct
+    {
+        a = 5,
+    };
+    myStruct.a = 6;
+
+    val myArray = [1, 2, 3, 4];
+    myArray[2] = 4;
+
+    return 0;
+}
+
+struct MyStruct
+{
+    a Int;
+}

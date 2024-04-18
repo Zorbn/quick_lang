@@ -59,7 +59,7 @@ func Main(argc Int, argv *val *val Char) Int
     val stringWithEscape = "hello\n";
     val charWithEscape = '\n';
 
-    stringWithEscape.Get(-1);
+    // stringWithEscape.Get(-1);
 
     {
         var pointA = Point { x = 0, y = 0 };

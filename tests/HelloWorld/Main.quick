@@ -1,0 +1,6 @@
+func Main() Int
+{
+    Console.WriteLine("Hello world!");
+
+    return 0;
+}

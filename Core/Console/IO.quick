@@ -1,0 +1,4 @@
+func WriteLine(view StringView) UInt
+{
+    return Internal.puts(view.data);
+}

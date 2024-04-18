@@ -36,6 +36,15 @@ struct String
         return string;
     }
 
+    func ToView(me *var String) StringView
+    {
+        return StringView
+        {
+            data = me.data,
+            count = me.count,
+        };
+    }
+
     func Reserve(me *var String, count Int) Void
     {
         val newTargetCapacity = me.count + count;

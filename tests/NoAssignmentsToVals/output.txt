@@ -1,0 +1,3 @@
+Type error at Main.quick:4:5: only vars can be assigned to
+Type error at Main.quick:10:5: only vars can be assigned to
+Type error at Main.quick:13:5: only vars can be assigned to

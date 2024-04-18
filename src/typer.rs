@@ -2761,7 +2761,7 @@ impl Typer {
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                if !self.is_assignment_valid(field_literal_type.type_kind_id, expected_type_kind_id)
+                if !self.is_assignment_valid(expected_type_kind_id, field_literal_type.type_kind_id)
                 {
                     type_error_at_parser_node!(self, "incorrect field type", field_literals[0]);
                 }
@@ -2803,8 +2803,8 @@ impl Typer {
                 }
 
                 if !self.is_assignment_valid(
-                    field_literal_type.type_kind_id,
                     expected_field.type_kind_id,
+                    field_literal_type.type_kind_id,
                 ) {
                     type_error_at_parser_node!(self, "incorrect field type", *field);
                 }
