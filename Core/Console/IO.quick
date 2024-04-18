@@ -1,3 +1,8 @@
+func Write(view StringView) Void
+{
+    Internal.CoreSystemConsoleWrite(view.data);
+}
+
 func WriteLine(view StringView) Void
 {
     Internal.puts(view.data);

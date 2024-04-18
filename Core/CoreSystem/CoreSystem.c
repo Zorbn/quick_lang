@@ -80,6 +80,11 @@ void CoreSystemError(char *message)
     abort();
 }
 
+void CoreSystemConsoleWrite(const char *str)
+{
+    fputs(str, stdout);
+}
+
 void CoreSystemConsoleWriteChar(char c)
 {
     putc(c, stdout);

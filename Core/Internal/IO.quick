@@ -1,3 +1,4 @@
 extern func puts(str *val Char) Int32;
+extern func CoreSystemConsoleWrite(str *val Char) Void;
 extern func CoreSystemConsoleWriteChar(char Int32) Void;
 extern func CoreSystemConsoleFlush() Void;

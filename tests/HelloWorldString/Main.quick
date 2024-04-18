@@ -2,8 +2,9 @@ func Main() Int
 {
     var helloString = String.FromView("Hello World, here's a number: ");
     helloString.PushFloat32(777.777);
+    helloString.PushChar('\n');
 
-    Console.WriteLine(helloString.ToView());
+    Console.Write(helloString.ToView());
 
     return 0;
 }
