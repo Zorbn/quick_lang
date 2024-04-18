@@ -1,0 +1,12 @@
+func Main() Int
+{
+    val myStringView = "abcdefg";
+
+    Console.WriteChar(myStringView.Get(3));
+    Console.WriteChar(myStringView.Get(0));
+    Console.WriteChar('\n');
+    Console.WriteChar(myStringView.Get(7));
+    Console.WriteChar('\n');
+
+    return 0;
+}

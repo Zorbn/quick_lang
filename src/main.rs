@@ -125,14 +125,8 @@ fn clean_project(project_path: &str) {
     let mut build_path = PathBuf::from(project_path);
     build_path.push("./build");
 
-    let Ok(build_path) = build_path.canonicalize() else {
-        return;
-    };
-
-    if fs::remove_dir_all(&build_path).is_ok() {
-        let build_path_str = build_path.to_str().unwrap();
-
-        println!("Cleaned \"{}\"!", build_path_str);
+    if fs::remove_dir_all(build_path).is_ok() {
+        println!("Cleaned build directory of project \"{}\"!", project_path);
     }
 }
 

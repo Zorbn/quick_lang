@@ -1,4 +1,14 @@
-func WriteLine(view StringView) UInt
+func WriteLine(view StringView) Void
 {
-    return Internal.puts(view.data);
+    Internal.puts(view.data);
+}
+
+func WriteChar(char Char) Void
+{
+    Internal.CoreSystemConsoleWriteChar(char as Int32);
+}
+
+func Flush() Void
+{
+    Internal.CoreSystemConsoleFlush();
 }

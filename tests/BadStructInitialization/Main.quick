@@ -1,0 +1,43 @@
+struct MyStruct
+{
+    a Int;
+    b Bool;
+}
+
+union MyUnion
+{
+    a Int;
+    b Bool;
+}
+
+func Main() Int
+{
+    val myUnion = MyUnion
+    {
+        a = 5,
+        b = false,
+    };
+
+    val myUnion2 = MyUnion
+    {
+    };
+
+    val myStruct = MyStruct
+    {
+        a = 5,
+        b = 3,
+    };
+
+    val myStruct = MyStruct
+    {
+        a = 5,
+    };
+
+    val myStruct = MyStruct
+    {
+        a = 5,
+        a = true,
+    };
+
+    return 0;
+}

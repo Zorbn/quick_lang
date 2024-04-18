@@ -1,0 +1,3 @@
+Type error at Main.quick:34:16: incorrect argument type
+Type error at Main.quick:39:9: incorrect field type
+Type error at Main.quick:46:5: mismatched types in variable declaration

@@ -1,0 +1,5 @@
+Type error at Main.quick:15:19: incorrect number of fields, expected one field to initialize a union
+Type error at Main.quick:21:20: incorrect number of fields, expected one field to initialize a union
+Type error at Main.quick:28:9: incorrect field type
+Type error at Main.quick:31:20: incorrect number of fields
+Type error at Main.quick:39:9: incorrect field name

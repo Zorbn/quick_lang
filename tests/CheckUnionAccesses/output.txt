@@ -1,0 +1,2 @@
+Ready to eat
+Wrong variant error at Main.quick:17:19

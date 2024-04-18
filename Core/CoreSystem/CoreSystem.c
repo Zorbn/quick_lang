@@ -75,6 +75,17 @@ void CoreSystemBoolToString(char *out, intptr_t outCount, bool value)
 
 void CoreSystemError(char *message)
 {
+    fflush(stdout);
     fprintf(stderr, "%s\n", message);
     abort();
+}
+
+void CoreSystemConsoleWriteChar(char c)
+{
+    putc(c, stdout);
+}
+
+void CoreSystemConsoleFlush(void)
+{
+    fflush(stdout);
 }

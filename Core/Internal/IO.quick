@@ -1,1 +1,3 @@
-extern func puts(str *val Char) UInt;
+extern func puts(str *val Char) Int32;
+extern func CoreSystemConsoleWriteChar(char Int32) Void;
+extern func CoreSystemConsoleFlush() Void;

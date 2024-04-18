@@ -1,0 +1,64 @@
+// Constants are loosely typed, eg. 0 can be a UInt8, Int32, etc.
+// Other conversions must be done with a cast, eg. myInt as Float32.
+
+func Main() Int
+{
+    Good();
+    Bad();
+
+    return 0;
+}
+
+func Good() Void
+{
+    MyFunction(14, 37, 44, 10.0, 50.75);
+
+    val myStruct = MyStruct
+    {
+        uint8 = 10,
+        int32 = 77.2 as Int32,
+        int = 44,
+        float32 = 17.7,
+        float64 = 647.11,
+    };
+
+    val uint8 UInt8 = 10;
+    val int32 Int32 = 77.2 as Int32;
+    val int Int = 44;
+    val float32 Float32 = 10.0;
+    val float64 Float64 = 871.44;
+}
+
+func Bad() Void
+{
+    MyFunction(14.0, 37, 44, 10, 50);
+
+    val myStruct = MyStruct
+    {
+        uint8 = 10,
+        int32 = 77.2,
+        int = 44,
+        float32 = 17.7,
+        float64 = 647.11,
+    };
+
+    val uint8 UInt8 = 10;
+    val int32 Int32 = 77.2;
+    val int Int = 44;
+    val float32 Float32 = 10.0;
+    val float64 Float64 = 871.44;
+}
+
+struct MyStruct
+{
+    uint8 UInt8;
+    int32 Int32;
+    int Int;
+    float32 Float32;
+    float64 Float64;
+}
+
+func MyFunction(uint8 UInt8, int32 Int32, int Int, float32 Float32, float64 Float64) Void
+{
+
+}

@@ -1,0 +1,20 @@
+union Onion
+{
+    rawData Int;
+    choppedData Int;
+    cookedData StringView;
+}
+
+func Main() Int
+{
+    val onion = Onion
+    {
+        cookedData = "Ready to eat",
+    };
+
+    Console.WriteLine(onion.cookedData);
+
+    val rawData = onion.rawData;
+
+    return 0;
+}

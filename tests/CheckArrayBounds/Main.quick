@@ -1,0 +1,11 @@
+func Main() Int
+{
+    val array = ["Hello", "World", "!"];
+
+    Console.WriteLine(array[0]);
+    Console.WriteLine(array[1]);
+    Console.WriteLine(array[2]);
+    Console.WriteLine(array[-1]);
+
+    return 0;
+}
