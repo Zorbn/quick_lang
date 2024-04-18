@@ -1,0 +1,26 @@
+func Main() Int
+{
+    var myGenericStruct = MyGenericStruct.<UInt8, Bool, StringView>
+    {
+        a = 5,
+        b = true,
+    };
+
+    var implicitInt = myGenericStruct.DoStuff("Hello");
+    var explicitInt UInt8 = implicitInt;
+
+    val myImmutableGenericStruct = MyGenericStruct.<UInt8, Bool, StringView>
+    {
+        a = 5,
+        b = true,
+    };
+
+    myImmutableGenericStruct.DoStuff("Hello");
+
+    var string = String.Create();
+    string.PushUInt8(explicitInt);
+
+    Console.WriteLine(string.ToView());
+
+    return 0;
+}

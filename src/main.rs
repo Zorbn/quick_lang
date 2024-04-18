@@ -2,7 +2,6 @@ use std::{env, fs, path::PathBuf, process::ExitCode};
 
 mod code_generator;
 mod compiler;
-mod tester;
 mod const_value;
 mod emitter;
 mod emitter_stack;
@@ -12,6 +11,7 @@ mod lexer;
 mod namespace;
 mod parser;
 mod position;
+mod tester;
 mod type_kinds;
 mod typer;
 
@@ -99,13 +99,7 @@ fn main() -> ExitCode {
     };
 
     if is_test {
-        tester::test(
-            &args[0],
-            &args[1],
-            core_path,
-            do_clean,
-            is_expected,
-        ).unwrap();
+        tester::test(&args[0], &args[1], core_path, do_clean, is_expected).unwrap();
 
         return ExitCode::SUCCESS;
     }
@@ -136,7 +130,9 @@ fn clean_project(project_path: &str) {
     };
 
     if fs::remove_dir_all(&build_path).is_ok() {
-        println!("Cleaned \"{:?}\"!", build_path);
+        let build_path_str = build_path.to_str().unwrap();
+
+        println!("Cleaned \"{}\"!", build_path_str);
     }
 }
 
