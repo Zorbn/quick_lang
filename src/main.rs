@@ -2,6 +2,7 @@ use std::{env, path::PathBuf, process::ExitCode};
 
 mod code_generator;
 mod compiler;
+mod tester;
 mod const_value;
 mod emitter;
 mod emitter_stack;
@@ -22,9 +23,12 @@ fn main() -> ExitCode {
     }
 
     let mut c_flags_start = None;
+    let mut is_test = false;
+    let mut is_expected = false;
     let mut is_debug_mode = false;
     let mut is_unsafe_mode = false;
-    let mut use_msvc = false;
+    let mut do_measure_time = false;
+    let mut do_use_msvc = false;
 
     let Some(core_path) = get_core_path() else {
         println!("Couldn't determine default core path");
@@ -41,6 +45,16 @@ fn main() -> ExitCode {
         }
 
         match arg.as_str() {
+            "--test" => {
+                is_test = true;
+            }
+            "--test-expected" => {
+                is_test = true;
+                is_expected = true;
+            }
+            "--time" => {
+                do_measure_time = true;
+            }
             "--debug" => {
                 is_debug_mode = true;
             }
@@ -48,7 +62,7 @@ fn main() -> ExitCode {
                 is_unsafe_mode = true;
             }
             "--msvc" => {
-                use_msvc = true;
+                do_use_msvc = true;
             }
             "--core-path" => {
                 is_looking_for_core_path = true;
@@ -80,12 +94,24 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     };
 
+    if is_test {
+        tester::test(
+            &args[0],
+            &args[1],
+            core_path,
+            is_expected,
+        ).unwrap();
+
+        return ExitCode::SUCCESS;
+    }
+
     compiler::compile(
         &args[1],
         core_path,
         is_debug_mode,
         is_unsafe_mode,
-        use_msvc,
+        do_measure_time,
+        do_use_msvc,
         c_flags,
     )
 }

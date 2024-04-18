@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <inttypes.h>
 
@@ -70,4 +71,10 @@ void CoreSystemPointerToString(char *out, intptr_t outCount, void *value)
 void CoreSystemBoolToString(char *out, intptr_t outCount, bool value)
 {
     snprintf(out, outCount, "%s", value ? "true" : "false");
+}
+
+void CoreSystemError(char *message)
+{
+    fprintf(stderr, "%s\n", message);
+    abort();
 }

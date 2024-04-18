@@ -17,7 +17,8 @@ pub fn compile(
     core_path: &str,
     is_debug_mode: bool,
     is_unsafe_mode: bool,
-    use_msvc: bool,
+    do_measure_time: bool,
+    do_use_msvc: bool,
     c_flags: &[String],
 ) -> ExitCode {
     let mut files = Vec::new();
@@ -73,16 +74,18 @@ pub fn compile(
 
     gen(typers, &files, &output_paths, is_unsafe_mode);
 
-    println!(
-        "Frontend finished in: {:.2?}ms",
-        frontend_start.elapsed().as_millis()
-    );
+    if do_measure_time {
+        println!(
+            "Frontend finished in: {:.2?}ms",
+            frontend_start.elapsed().as_millis()
+        );
+    }
 
     let backend_start = Instant::now();
 
     let mut compiler_command = create_compiler_command(
         is_debug_mode,
-        use_msvc,
+        do_use_msvc,
         c_flags,
         &output_paths,
         core_system_path,
@@ -100,10 +103,12 @@ pub fn compile(
         }
     }
 
-    println!(
-        "Backend finished in: {:.2?}ms",
-        backend_start.elapsed().as_millis()
-    );
+    if do_measure_time {
+        println!(
+            "Backend finished in: {:.2?}ms",
+            backend_start.elapsed().as_millis()
+        );
+    }
 
     ExitCode::SUCCESS
 }

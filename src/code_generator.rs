@@ -159,10 +159,7 @@ impl CodeGenerator {
 
         code_generator.header_emitter.emitln("#include <stdint.h>");
         code_generator.header_emitter.emitln("#include <stdbool.h>");
-        code_generator
-            .header_emitter
-            .emitln("uintptr_t puts(char const *str);");
-        code_generator.header_emitter.emitln("void abort(void);");
+        code_generator.header_emitter.emitln("void CoreSystemError(char *message);");
         code_generator
             .header_emitter
             .emitln("void *memmove(void *dst, const void *src, size_t size);");
@@ -911,6 +908,9 @@ impl CodeGenerator {
             } | TypedNode {
                 node_kind: NodeKind::Block { .. },
                 ..
+            } | TypedNode {
+                node_kind: NodeKind::CrashStatement { .. },
+                ..
             }
         );
 
@@ -1117,13 +1117,12 @@ impl CodeGenerator {
         _node_type: Option<Type>,
         _namespace_id: Option<usize>,
     ) {
-        self.body_emitters.top().body.emit("puts(\"");
+        self.body_emitters.top().body.emit("CoreSystemError(\"");
         self.body_emitters
             .top()
             .body
             .emit(&position.error_string("Runtime", &self.files));
         self.body_emitters.top().body.emitln("\");");
-        self.body_emitters.top().body.emitln("abort();");
     }
 
     fn if_statement(
@@ -2360,8 +2359,7 @@ impl CodeGenerator {
             .emitln("if (index < 0 || index >= count) {");
         self.body_emitters.top().body.indent();
 
-        self.body_emitters.top().body.emitln("puts(message);");
-        self.body_emitters.top().body.emitln("abort();");
+        self.body_emitters.top().body.emitln("CoreSystemError(message);");
 
         self.body_emitters.top().body.unindent();
         self.body_emitters.top().body.emitln("}");
@@ -2537,8 +2535,7 @@ impl CodeGenerator {
             .emitln("if (self->tag != tag) {");
         self.body_emitters.top().body.indent();
 
-        self.body_emitters.top().body.emitln("puts(message);");
-        self.body_emitters.top().body.emitln("abort();");
+        self.body_emitters.top().body.emitln("CoreSystemError(message);");
 
         self.body_emitters.top().body.unindent();
         self.body_emitters.top().body.emitln("}");
