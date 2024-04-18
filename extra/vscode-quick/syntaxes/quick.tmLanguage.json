@@ -185,6 +185,9 @@
 					"patterns": [
 						{
 							"include": "#type"
+						},
+						{
+							"include": "#operator"
 						}
 					]
 				},
