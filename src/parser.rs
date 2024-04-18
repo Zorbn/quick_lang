@@ -305,6 +305,7 @@ pub struct Parser {
 
     files: Arc<Vec<FileData>>,
     position: usize,
+    last_error_position: Option<usize>,
     file_index: usize,
 }
 
@@ -320,6 +321,7 @@ impl Parser {
                 file_index: 0,
             },
             position: 0,
+            last_error_position: None,
             file_index,
         }
     }
@@ -404,8 +406,26 @@ impl Parser {
     }
 
     fn error(&mut self, message: &str, position: Position) {
-        self.error_count += 1;
-        position.error("Syntax", message, &self.files);
+        let error_position = Some(self.position);
+
+        // Prevent the parser, from getting stuck on a single error,
+        // without always continuing on an error, which can cause a cascade of errors.
+        // func ..
+        // {
+        //      statement;
+        //      statement <- No semicolon!
+        // } <- We get an error here, because we expected a semicolon.
+        // If we always move forward that bracket won't be used to close the function.
+        // Then all the things after it will be considered as part of this function,
+        // leading to tons of confusing errors.
+        if error_position == self.last_error_position {
+            self.position += 1;
+        } else {
+            self.error_count += 1;
+            position.error("Syntax", message, &self.files);
+        }
+
+        self.last_error_position = error_position;
     }
 
     pub fn parse(&mut self, tokens: Vec<Token>) {
@@ -464,7 +484,7 @@ impl Parser {
 
                     variable_declarations.push(index);
                 }
-                _ => parse_error!(self, "unexpected token at top level", start, end),
+                _ => parse_error!(self, "unexpected token at top level", self.token_start(), self.token_end()),
             }
 
             end = self.node_end(index);
