@@ -108,12 +108,6 @@ enum ReturnTypeComparison {
     DoesntReturn,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct TypedDefinition {
-    pub index: NodeIndex,
-    pub is_shallow: bool,
-}
-
 pub const GLOBAL_NAMESPACE_ID: usize = 0;
 
 #[derive(Clone)]
@@ -121,7 +115,7 @@ pub struct Typer {
     all_nodes: Arc<Vec<Vec<Node>>>,
 
     pub typed_nodes: Vec<TypedNode>,
-    pub typed_definitions: Vec<TypedDefinition>,
+    pub typed_definitions: Vec<NodeIndex>,
     pub type_kinds: TypeKinds,
     pub main_function_declaration: Option<NodeIndex>,
     pub error_count: usize,
@@ -723,6 +717,7 @@ impl Typer {
                 name,
                 type_name,
                 expression,
+                ..
             } => self.variable_declaration(
                 declaration_kind,
                 name,
@@ -835,6 +830,7 @@ impl Typer {
             NodeKind::Function {
                 declaration,
                 scoped_statement,
+                ..
             } => self.function(
                 declaration,
                 scoped_statement,
@@ -906,6 +902,7 @@ impl Typer {
             NodeKind::Function {
                 declaration,
                 scoped_statement,
+                ..
             } => Some(self.function(
                 declaration,
                 scoped_statement,
@@ -970,6 +967,7 @@ impl Typer {
             NodeKind::Function {
                 declaration,
                 scoped_statement,
+                ..
             } => self.function(
                 declaration,
                 scoped_statement,
@@ -983,6 +981,7 @@ impl Typer {
                 name,
                 type_name,
                 expression,
+                ..
             } => self.variable_declaration(
                 declaration_kind,
                 name,
@@ -1150,10 +1149,7 @@ impl Typer {
             namespace_id: Some(namespace_id),
         });
 
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            is_shallow: false,
-        });
+        self.typed_definitions.push(index);
 
         index
     }
@@ -1340,6 +1336,7 @@ impl Typer {
                 name: typed_name,
                 type_name: typed_type_name,
                 expression: typed_expression,
+                is_shallow: namespace_id.is_some() && Some(file_index) != self.file_index,
             },
             node_type: Some(variable_type.clone()),
             namespace_id,
@@ -1350,10 +1347,7 @@ impl Typer {
 
             self.namespaces[namespace_id]
                 .define(identifier, Definition::Variable { variable_type });
-            self.typed_definitions.push(TypedDefinition {
-                index,
-                is_shallow: Some(file_index) != self.file_index,
-            });
+            self.typed_definitions.push(index);
         } else {
             self.scope_environment.insert(name_text, variable_type);
         }
@@ -2955,10 +2949,7 @@ impl Typer {
             namespace_id: Some(self.file_namespace_ids[file_index]),
         });
 
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            is_shallow: Some(file_index) != self.file_index,
-        });
+        self.typed_definitions.push(index);
 
         index
     }
@@ -3003,10 +2994,7 @@ impl Typer {
             namespace_id: Some(self.file_namespace_ids[file_index]),
         });
 
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            is_shallow: false,
-        });
+        self.typed_definitions.push(index);
 
         index
     }
@@ -3318,6 +3306,7 @@ impl Typer {
             node_kind: NodeKind::Function {
                 declaration: typed_declaration,
                 scoped_statement: typed_scoped_statement,
+                is_shallow: !is_deep_check,
             },
             node_type: Some(Type {
                 type_kind_id: declaration_type.type_kind_id,
@@ -3326,10 +3315,7 @@ impl Typer {
             namespace_id: Some(namespace_id),
         });
 
-        self.typed_definitions.push(TypedDefinition {
-            index,
-            is_shallow: !is_deep_check,
-        });
+        self.typed_definitions.push(index);
 
         index
     }

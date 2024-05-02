@@ -93,6 +93,7 @@ pub enum NodeKind {
     Function {
         declaration: NodeIndex,
         scoped_statement: NodeIndex,
+        is_shallow: bool,
     },
     ExternFunction {
         declaration: NodeIndex,
@@ -119,6 +120,7 @@ pub enum NodeKind {
         name: NodeIndex,
         type_name: Option<NodeIndex>,
         expression: Option<NodeIndex>,
+        is_shallow: bool,
     },
     ReturnStatement {
         expression: Option<NodeIndex>,
@@ -800,6 +802,7 @@ impl Parser {
             kind: NodeKind::Function {
                 declaration,
                 scoped_statement,
+                is_shallow: false,
             },
             start,
             end,
@@ -1021,6 +1024,7 @@ impl Parser {
                 name,
                 type_name,
                 expression,
+                is_shallow: false,
             },
             start,
             end,

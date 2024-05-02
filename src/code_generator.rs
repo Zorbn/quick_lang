@@ -13,7 +13,7 @@ use crate::{
     parser::{DeclarationKind, MethodKind, NodeIndex, NodeKind, Op},
     position::Position,
     type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
-    typer::{InstanceKind, Type, TypedDefinition, TypedNode, GLOBAL_NAMESPACE_ID},
+    typer::{InstanceKind, Type, TypedNode, GLOBAL_NAMESPACE_ID},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -109,7 +109,7 @@ pub struct CodeGenerator {
     namespaces: Vec<Namespace>,
     string_view_type_kind_id: usize,
     main_function_declaration: Option<NodeIndex>,
-    typed_definitions: Vec<TypedDefinition>,
+    typed_definitions: Vec<NodeIndex>,
     files: Arc<Vec<FileData>>,
 
     pub header_emitter: Emitter,
@@ -133,7 +133,7 @@ impl CodeGenerator {
         namespaces: Vec<Namespace>,
         string_view_type_kind_id: usize,
         main_function_declaration: Option<NodeIndex>,
-        typed_definitions: Vec<TypedDefinition>,
+        typed_definitions: Vec<NodeIndex>,
         files: Arc<Vec<FileData>>,
         is_unsafe_mode: bool,
     ) -> Self {
@@ -184,7 +184,7 @@ impl CodeGenerator {
 
     pub fn gen(&mut self) {
         for i in 0..self.typed_definitions.len() {
-            let TypedDefinition { index, is_shallow } = self.typed_definitions[i];
+            let index = self.typed_definitions[i];
 
             let TypedNode {
                 node_kind,
@@ -193,20 +193,11 @@ impl CodeGenerator {
             } = self.get_typer_node(index).clone();
 
             match node_kind {
-                NodeKind::Function {
-                    declaration,
-                    scoped_statement,
-                } => self.function(
-                    declaration,
-                    scoped_statement,
-                    is_shallow,
-                    node_type,
-                    namespace_id,
-                ),
                 NodeKind::VariableDeclaration {
                     declaration_kind,
                     name,
                     expression,
+                    is_shallow,
                     ..
                 } => {
                     self.variable_declaration(
@@ -254,10 +245,11 @@ impl CodeGenerator {
             NodeKind::Function {
                 declaration,
                 scoped_statement,
+                is_shallow,
             } => self.function(
                 declaration,
                 scoped_statement,
-                false,
+                is_shallow,
                 node_type,
                 namespace_id,
             ),
@@ -287,12 +279,13 @@ impl CodeGenerator {
                 declaration_kind,
                 name,
                 expression,
+                is_shallow,
                 ..
             } => self.variable_declaration(
                 declaration_kind,
                 name,
                 expression,
-                false,
+                is_shallow,
                 node_type,
                 namespace_id,
                 EmitterKind::Body,
@@ -2382,7 +2375,7 @@ impl CodeGenerator {
 
     fn emit_top_level_variable_initializers(&mut self) {
         for i in 0..self.typed_definitions.len() {
-            let TypedDefinition { index, .. } = self.typed_definitions[i];
+            let index = self.typed_definitions[i];
 
             let TypedNode {
                 node_kind,
