@@ -193,16 +193,6 @@ impl CodeGenerator {
             } = self.get_typer_node(index).clone();
 
             match node_kind {
-                NodeKind::StructDefinition {
-                    name,
-                    fields,
-                    is_union,
-                    ..
-                } => self.struct_definition(name, fields, is_union, node_type, namespace_id),
-                NodeKind::EnumDefinition {
-                    name,
-                    variant_names,
-                } => self.enum_definition(name, variant_names, node_type, namespace_id),
                 NodeKind::Function {
                     declaration,
                     scoped_statement,
@@ -213,9 +203,6 @@ impl CodeGenerator {
                     node_type,
                     namespace_id,
                 ),
-                NodeKind::ExternFunction { declaration } => {
-                    self.extern_function(declaration, node_type, namespace_id)
-                }
                 NodeKind::VariableDeclaration {
                     declaration_kind,
                     name,
@@ -234,7 +221,7 @@ impl CodeGenerator {
                     self.global_variable_emitter.emitln(";");
                     self.global_variable_emitter.newline()
                 }
-                _ => panic!("unexpected definition kind: {:?}", node_kind),
+                _ => self.gen_node(index),
             }
         }
     }
