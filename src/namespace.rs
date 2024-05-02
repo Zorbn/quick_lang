@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display, hash::Hash, sync::Arc};
+use std::{collections::{hash_map::Iter, HashMap}, fmt::Display, hash::Hash, sync::Arc};
 
 use crate::{parser::NodeIndex, typer::Type};
 
@@ -62,6 +62,10 @@ impl DefinitionIndices {
         for (name, index) in &definition_indices.indices {
             let _ = self.insert(name.clone(), *index);
         }
+    }
+
+    pub fn iter(&self) -> Iter<Arc<str>, NodeIndex> {
+        self.indices.iter()
     }
 
     fn has_name(&self, name: &str) -> bool {

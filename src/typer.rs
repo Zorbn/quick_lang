@@ -700,19 +700,11 @@ impl Typer {
 
         let typed_index = match self.get_parser_node(index).kind.clone() {
             NodeKind::TopLevel {
-                functions,
-                structs,
-                enums,
-                aliases,
-                variable_declarations,
+                usings,
                 definition_indices,
                 ..
             } => self.top_level(
-                functions,
-                structs,
-                enums,
-                aliases,
-                variable_declarations,
+                usings,
                 definition_indices,
                 file_index,
             ),
@@ -1029,157 +1021,68 @@ impl Typer {
         typed_index
     }
 
-    fn check_functions(
-        &mut self,
-        functions: Arc<Vec<NodeIndex>>,
-        namespace_id: usize,
-        typed_functions: &mut Vec<NodeIndex>,
-    ) {
-        for function in functions.iter() {
-            let declaration = if let NodeKind::Function { declaration, .. } =
-                &self.get_parser_node(*function).kind
-            {
-                declaration
-            } else if let NodeKind::ExternFunction { declaration } =
-                &self.get_parser_node(*function).kind
-            {
-                declaration
-            } else {
-                panic!("invalid function");
-            };
-
-            assert_matches!(
-                NodeKind::FunctionDeclaration {
-                    name,
-                    generic_params,
-                    ..
-                },
-                &self.get_parser_node(*declaration).kind
-            );
-
-            if !generic_params.is_empty() {
-                continue;
+    // A top level node is checkable if it doesn't have any generic parameters and
+    // is valid at the top level of a file.
+    fn get_checkable_top_level_name(&mut self, node: NodeIndex) -> Option<NodeIndex> {
+        match &self.get_parser_node(node).kind {
+            NodeKind::StructDefinition { name, generic_params, .. } => {
+                if generic_params.is_empty() {
+                    Some(*name)
+                } else {
+                    None
+                }
             }
-
-            assert_matches!(
-                NodeKind::Name { text: name_text },
-                self.get_parser_node(*name).kind.clone()
-            );
-
-            if self.namespaces[namespace_id].is_name_defined(name_text) {
-                continue;
+            NodeKind::Function { declaration, .. } => self.get_checkable_top_level_name(*declaration),
+            NodeKind::ExternFunction { declaration, .. } => self.get_checkable_top_level_name(*declaration),
+            NodeKind::FunctionDeclaration { name, generic_params, .. } => {
+                if generic_params.is_empty() {
+                    Some(*name)
+                } else {
+                    None
+                }
             }
-
-            typed_functions.push(self.check_node_with_namespace(*function, namespace_id));
+            NodeKind::EnumDefinition { name, .. } => Some(*name),
+            NodeKind::VariableDeclaration { name, .. } => Some(*name),
+            _ => None
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    fn check_top_level_node(
+        &mut self,
+        top_level_node: NodeIndex,
+        namespace_id: usize,
+    ) {
+        let Some(name) = self.get_checkable_top_level_name(top_level_node) else {
+            return;
+        };
+
+        assert_matches!(
+            NodeKind::Name { text: name_text },
+            self.get_parser_node(name).kind.clone()
+        );
+
+        if self.namespaces[namespace_id].is_name_defined(name_text) {
+            return;
+        }
+
+        self.check_node_with_namespace(top_level_node, namespace_id);
+    }
+
     fn top_level(
         &mut self,
-        functions: Arc<Vec<NodeIndex>>,
-        structs: Arc<Vec<NodeIndex>>,
-        enums: Arc<Vec<NodeIndex>>,
-        aliases: Arc<Vec<NodeIndex>>,
-        variable_declarations: Arc<Vec<NodeIndex>>,
+        usings: Arc<Vec<NodeIndex>>,
         definition_indices: Arc<DefinitionIndices>,
         file_index: usize,
     ) -> NodeIndex {
-        let mut typed_aliases = Vec::new();
-        for alias in aliases.iter() {
-            let typed_alias = self.check_node(*alias);
-            typed_aliases.push(typed_alias);
-        }
+        let namespace_id = self.file_namespace_ids[file_index];
 
-        let mut typed_structs = Vec::new();
-        for struct_definition in structs.iter() {
-            assert_matches!(
-                NodeKind::StructDefinition {
-                    name,
-                    generic_params,
-                    ..
-                },
-                &self.get_parser_node(*struct_definition).kind
-            );
-
-            if !generic_params.is_empty() {
-                continue;
-            }
-
-            assert_matches!(
-                NodeKind::Name { text: name_text },
-                self.get_parser_node(*name).kind.clone()
-            );
-
-            if self
-                .get_file_namespace(file_index)
-                .is_name_defined(name_text)
-            {
-                continue;
-            }
-
-            typed_structs.push(self.check_node(*struct_definition));
-        }
-
-        let mut typed_enums = Vec::new();
-        for enum_definition in enums.iter() {
-            assert_matches!(
-                NodeKind::EnumDefinition { name, .. },
-                &self.get_parser_node(*enum_definition).kind
-            );
-            assert_matches!(
-                NodeKind::Name { text: name_text },
-                self.get_parser_node(*name).kind.clone()
-            );
-
-            if self
-                .get_file_namespace(file_index)
-                .is_name_defined(name_text)
-            {
-                continue;
-            }
-
-            typed_enums.push(self.check_node(*enum_definition));
-        }
-
-        let mut typed_functions = Vec::new();
-        self.check_functions(
-            functions,
-            self.file_namespace_ids[file_index],
-            &mut typed_functions,
-        );
-
-        let mut typed_variable_declarations = Vec::new();
-        for variable_declaration in variable_declarations.iter() {
-            assert_matches!(
-                NodeKind::VariableDeclaration { name, .. },
-                &self.get_parser_node(*variable_declaration).kind
-            );
-            assert_matches!(
-                NodeKind::Name { text: name_text },
-                self.get_parser_node(*name).kind.clone()
-            );
-
-            if self
-                .get_file_namespace(file_index)
-                .is_name_defined(name_text)
-            {
-                continue;
-            }
-
-            let namespace_id = self.file_namespace_ids[file_index];
-            typed_variable_declarations
-                .push(self.check_node_with_namespace(*variable_declaration, namespace_id));
+        for (_, top_level_node) in definition_indices.iter() {
+            self.check_top_level_node(*top_level_node, namespace_id);
         }
 
         self.add_node(TypedNode {
             node_kind: NodeKind::TopLevel {
-                functions: Arc::new(typed_functions),
-                structs: Arc::new(typed_structs),
-                enums: Arc::new(typed_enums),
-                aliases: Arc::new(typed_aliases),
-                variable_declarations: Arc::new(typed_variable_declarations),
-                usings: Arc::new(Vec::new()),
+                usings,
                 definition_indices,
             },
             node_type: None,
@@ -3032,14 +2935,15 @@ impl Typer {
             },
         );
 
-        let mut typed_functions = Vec::new();
-        self.check_functions(functions, namespace_id, &mut typed_functions);
+        for function in functions.iter() {
+            self.check_top_level_node(*function, namespace_id);
+        }
 
         let index = self.add_node(TypedNode {
             node_kind: NodeKind::StructDefinition {
                 name: typed_name,
                 fields: Arc::new(typed_fields),
-                functions: Arc::new(typed_functions),
+                functions,
                 generic_params: Arc::new(Vec::new()),
                 definition_indices,
                 is_union,

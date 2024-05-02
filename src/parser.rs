@@ -65,11 +65,6 @@ pub enum NodeKind {
         text: Arc<str>,
     },
     TopLevel {
-        functions: Arc<Vec<NodeIndex>>,
-        structs: Arc<Vec<NodeIndex>>,
-        enums: Arc<Vec<NodeIndex>>,
-        aliases: Arc<Vec<NodeIndex>>,
-        variable_declarations: Arc<Vec<NodeIndex>>,
         usings: Arc<Vec<NodeIndex>>,
         definition_indices: Arc<DefinitionIndices>,
     },
@@ -434,16 +429,9 @@ impl Parser {
         self.start_index = self.top_level();
     }
 
-    // TODO: Functions, structs, and enums could probably all be stored in the same vec.
     fn top_level(&mut self) -> NodeIndex {
-        let mut functions = Vec::new();
-        let mut structs = Vec::new();
-        let mut enums = Vec::new();
-        let mut aliases = Vec::new();
-        let mut variable_declarations = Vec::new();
-        let mut usings = Vec::new();
-
         let mut definition_indices = DefinitionIndices::new();
+        let mut usings = Vec::new();
 
         let start = self.token_start();
         let mut end = self.token_end();
@@ -454,19 +442,15 @@ impl Parser {
             match *self.token_kind() {
                 TokenKind::Func => {
                     index = self.function(&mut definition_indices);
-                    functions.push(index);
                 }
                 TokenKind::Extern => {
                     index = self.extern_function(&mut definition_indices);
-                    functions.push(index);
                 }
                 TokenKind::Struct | TokenKind::Union => {
                     index = self.struct_definition(&mut definition_indices);
-                    structs.push(index);
                 }
                 TokenKind::Enum => {
                     index = self.enum_definition(&mut definition_indices);
-                    enums.push(index);
                 }
                 TokenKind::Using => {
                     index = self.using();
@@ -474,15 +458,12 @@ impl Parser {
                 }
                 TokenKind::Alias => {
                     index = self.alias(&mut definition_indices);
-                    aliases.push(index);
                 }
                 TokenKind::Val | TokenKind::Const => {
                     index = self.variable_declaration(Some(&mut definition_indices));
 
                     assert_token!(self, TokenKind::Semicolon, start, self.token_end());
                     self.position += 1;
-
-                    variable_declarations.push(index);
                 }
                 _ => parse_error!(self, "unexpected token at top level", self.token_start(), self.token_end()),
             }
@@ -492,11 +473,6 @@ impl Parser {
 
         self.add_node(Node {
             kind: NodeKind::TopLevel {
-                functions: Arc::new(functions),
-                structs: Arc::new(structs),
-                enums: Arc::new(enums),
-                aliases: Arc::new(aliases),
-                variable_declarations: Arc::new(variable_declarations),
                 usings: Arc::new(usings),
                 definition_indices: Arc::new(definition_indices),
             },

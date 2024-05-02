@@ -248,11 +248,8 @@ impl CodeGenerator {
 
         match node_kind {
             NodeKind::TopLevel {
-                functions,
-                structs,
-                enums,
                 ..
-            } => self.top_level(functions, structs, enums, node_type, namespace_id),
+            } => self.top_level(node_type, namespace_id),
             NodeKind::StructDefinition {
                 name,
                 fields,
@@ -565,12 +562,12 @@ impl CodeGenerator {
 
     fn top_level(
         &mut self,
-        _functions: Arc<Vec<NodeIndex>>,
-        _structs: Arc<Vec<NodeIndex>>,
-        _enums: Arc<Vec<NodeIndex>>,
         _node_type: Option<Type>,
         _namespace_id: Option<usize>,
     ) {
+        // We ignore the top level node because we want to generate all typed definitions, some of which aren't in the top level.
+        // eg. generic definitions, definitions pulled from another file.
+        // TODO: Should these definitions be added to the typed top level rather than stored in a special typed definitions list?
     }
 
     fn struct_definition(
