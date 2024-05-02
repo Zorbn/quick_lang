@@ -1,9 +1,9 @@
-struct StringView
+struct Span.[T]
 {
-    data *val Char;
+    data *val T;
     count Int;
 
-    func Get(me *val StringView, index Int) Char
+    func Get(me *val Span.[T], index Int) T
     {
         if (index < 0 || index >= me.count)
         {
@@ -11,13 +11,13 @@ struct StringView
         }
 
         val dataStart = me.data as UInt;
-        val dataIndex = dataStart + index as UInt * sizeof Char;
-        val dataPointer = dataIndex as *val Char;
+        val dataIndex = dataStart + index as UInt * sizeof T;
+        val dataPointer = dataIndex as *val T;
 
         return dataPointer.*;
     }
 
-    func Equals(me *val StringView, other *val StringView) Bool
+    func Equals(me *val Span.[T], other *val Span.[T]) Bool
     {
         if (me.count != other.count) return false;
 

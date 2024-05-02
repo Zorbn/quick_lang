@@ -106,7 +106,7 @@ impl Display for TokenKind {
             TokenKind::Asterisk => "*",
             TokenKind::Ampersand => "&",
             TokenKind::Dereference => ".*",
-            TokenKind::GenericSpecifier => ".<",
+            TokenKind::GenericSpecifier => ".[",
             TokenKind::Divide => "/",
             TokenKind::LessLess => "<<",
             TokenKind::GreaterGreater => ">>",
@@ -232,7 +232,7 @@ fn two_char_ops() -> &'static HashMap<String, TokenKind> {
         ops.insert("&&".into(), TokenKind::And);
         ops.insert("||".into(), TokenKind::Or);
         ops.insert(".*".into(), TokenKind::Dereference);
-        ops.insert(".<".into(), TokenKind::GenericSpecifier);
+        ops.insert(".[".into(), TokenKind::GenericSpecifier);
         ops.insert("<<".into(), TokenKind::LessLess);
         ops.insert(">>".into(), TokenKind::GreaterGreater);
         ops.insert("<<=".into(), TokenKind::LessLessEqual);

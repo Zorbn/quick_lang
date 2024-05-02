@@ -1,4 +1,4 @@
-func Alloc<T>(value T) *var T
+func Alloc.[T](value T) *var T
 {
     val pointer = Internal.malloc(sizeof T) as *var T;
     pointer.* = value;
@@ -6,7 +6,7 @@ func Alloc<T>(value T) *var T
     return pointer;
 }
 
-func Free<T>(value *var T) Void
+func Free.[T](value *var T) Void
 {
     Internal.free(value as *var Void);
 }

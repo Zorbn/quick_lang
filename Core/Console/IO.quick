@@ -1,11 +1,11 @@
-func Write(view StringView) Void
+func Write(span Span.[Char]) Void
 {
-    Internal.CoreSystemConsoleWrite(view.data);
+    Internal.CoreSystemConsoleWrite(span.data);
 }
 
-func WriteLine(view StringView) Void
+func WriteLine(span Span.[Char]) Void
 {
-    Internal.puts(view.data);
+    Internal.puts(span.data);
 }
 
 func WriteChar(char Char) Void

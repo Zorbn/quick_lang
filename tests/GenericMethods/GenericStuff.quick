@@ -1,9 +1,9 @@
-struct MyGenericStruct<A, B, C>
+struct MyGenericStruct.[A, B, C]
 {
     a A;
     b B;
 
-    func DoStuff(me *val MyGenericStruct.<A, B, C>, c C) A
+    func DoStuff(me *val MyGenericStruct.[A, B, C], c C) A
     {
         return me.a;
     }

@@ -1,10 +1,10 @@
 func Main() Int
 {
-    var helloString = String.FromView("Hello World, here's a number: ");
+    var helloString = String.FromSpan("Hello World, here's a number: ");
     helloString.PushFloat32(777.777);
     helloString.PushChar('\n');
 
-    Console.Write(helloString.ToView());
+    Console.Write(helloString.ToSpan());
 
     return 0;
 }

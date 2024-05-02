@@ -281,6 +281,18 @@ macro_rules! assert_matches {
     };
 }
 
+macro_rules! matches_or_error {
+    ($self:ident, $pattern:pat, $value:expr, $start:expr, $end:expr) => {
+        let $pattern = $value else {
+            return $self.add_node(Node {
+                kind: NodeKind::Error,
+                start: $start,
+                end: $end,
+            });
+        };
+    };
+}
+
 macro_rules! parse_error {
     ($self:ident, $message:expr, $start:expr, $end:expr) => {{
         return $self.parse_error($message, $start, $end);
@@ -467,7 +479,12 @@ impl Parser {
                     assert_token!(self, TokenKind::Semicolon, start, self.token_end());
                     self.position += 1;
                 }
-                _ => parse_error!(self, "unexpected token at top level", self.token_start(), self.token_end()),
+                _ => parse_error!(
+                    self,
+                    "unexpected token at top level",
+                    self.token_start(),
+                    self.token_end()
+                ),
             }
 
             end = self.node_end(index);
@@ -507,7 +524,7 @@ impl Parser {
 
         let mut generic_params = Vec::new();
 
-        if *self.token_kind() == TokenKind::Less {
+        if *self.token_kind() == TokenKind::GenericSpecifier {
             if let Some(error_node) = self.parse_generic_params(start, &mut generic_params) {
                 return error_node;
             }
@@ -719,12 +736,14 @@ impl Parser {
         start: Position,
         generic_params: &mut Vec<NodeIndex>,
     ) -> Option<NodeIndex> {
-        if let Some(error_node) = self.assert_token(TokenKind::Less, start, self.token_end()) {
+        if let Some(error_node) =
+            self.assert_token(TokenKind::GenericSpecifier, start, self.token_end())
+        {
             return Some(error_node);
         }
         self.position += 1;
 
-        while *self.token_kind() != TokenKind::Greater {
+        while *self.token_kind() != TokenKind::RBracket {
             let name = self.name();
             generic_params.push(name);
 
@@ -738,7 +757,7 @@ impl Parser {
             self.position += 1;
         }
 
-        if let Some(error_node) = self.assert_token(TokenKind::Greater, start, self.token_end()) {
+        if let Some(error_node) = self.assert_token(TokenKind::RBracket, start, self.token_end()) {
             return Some(error_node);
         }
         self.position += 1;
@@ -755,7 +774,7 @@ impl Parser {
 
         let mut generic_params = Vec::new();
 
-        if *self.token_kind() == TokenKind::Less {
+        if *self.token_kind() == TokenKind::GenericSpecifier {
             if let Some(error_node) = self.parse_generic_params(start, &mut generic_params) {
                 return error_node;
             }
@@ -788,14 +807,20 @@ impl Parser {
         let scoped_statement = self.scoped_statement();
         let end = self.node_end(scoped_statement);
 
-        assert_matches!(
+        matches_or_error!(
+            self,
             NodeKind::FunctionDeclaration { name, .. },
-            self.nodes[declaration.node_index].kind
+            self.nodes[declaration.node_index].kind,
+            start,
+            end
         );
 
-        assert_matches!(
+        matches_or_error!(
+            self,
             NodeKind::Name { text: name_text },
-            self.nodes[name.node_index].kind.clone()
+            self.nodes[name.node_index].kind.clone(),
+            start,
+            end
         );
 
         let index = self.add_node(Node {
@@ -892,7 +917,13 @@ impl Parser {
         let statement = self.statement();
         let end = self.node_end(statement);
 
-        assert_matches!(NodeKind::Statement { inner }, &self.nodes[statement.node_index].kind);
+        matches_or_error!(
+            self,
+            NodeKind::Statement { inner },
+            &self.nodes[statement.node_index].kind,
+            start,
+            end
+        );
 
         if let Some(inner) = inner {
             if matches!(self.nodes[inner.node_index].kind, NodeKind::Block { .. }) {
@@ -1031,7 +1062,10 @@ impl Parser {
         });
 
         if let Some(definition_indices) = definition_indices {
-            assert_matches!(NodeKind::Name { text: name_text }, self.nodes[name.node_index].kind.clone());
+            assert_matches!(
+                NodeKind::Name { text: name_text },
+                self.nodes[name.node_index].kind.clone()
+            );
 
             if definition_indices.insert(name_text, index).is_err() {
                 parse_error!(self, DEFINITION_ERROR, start, end);
@@ -1318,7 +1352,7 @@ impl Parser {
      * Primary: Literals, identifiers, parenthesized expressions
      *
      * (Nestable, eg. &pointer^)
-     * UnarySuffix: .<, .*, [], (), ., as, {}
+     * UnarySuffix: .[, .*, [], (), ., as, {}
      * UnaryPrefix: *, !, ~, +, -
      *
      * (Chainable, eg. a * b / c)
@@ -1571,7 +1605,7 @@ impl Parser {
         }
         self.position += 1;
 
-        while *self.token_kind() != TokenKind::Greater {
+        while *self.token_kind() != TokenKind::RBracket {
             generic_arg_type_names.push(self.type_name());
 
             if *self.token_kind() != TokenKind::Comma {
@@ -1585,7 +1619,7 @@ impl Parser {
         }
 
         *end = self.token_end();
-        if let Some(error_node) = self.assert_token(TokenKind::Greater, start, *end) {
+        if let Some(error_node) = self.assert_token(TokenKind::RBracket, start, *end) {
             return Some(error_node);
         }
         self.position += 1;

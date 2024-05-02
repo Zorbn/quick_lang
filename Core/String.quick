@@ -28,17 +28,17 @@ struct String
         Internal.free(me.data as *var Void);
     }
 
-    func FromView(view StringView) String
+    func FromSpan(span Span.[Char]) String
     {
         var string = String.Create();
-        string.PushView(view);
+        string.PushSpan(span);
 
         return string;
     }
 
-    func ToView(me *var String) StringView
+    func ToSpan(me *var String) Span.[Char]
     {
-        return StringView
+        return Span.[Char]
         {
             data = me.data,
             count = me.count,
@@ -84,15 +84,15 @@ struct String
         return me;
     }
 
-    func PushView(me *var String, view StringView) *var String
+    func PushSpan(me *var String, span Span.[Char]) *var String
     {
-        me.Reserve(view.count);
+        me.Reserve(span.count);
 
-        for (i of 0 < view.count)
+        for (i of 0 < span.count)
         {
             var stringChar = (me.data as UInt + me.count as UInt) as *var Char;
-            var viewChar = (view.data as UInt + i as UInt) as *var Char;
-            stringChar.* = viewChar.*;
+            var spanChar = (span.data as UInt + i as UInt) as *var Char;
+            stringChar.* = spanChar.*;
             me.count += 1;
         }
 
@@ -262,7 +262,7 @@ struct String
         return me;
     }
 
-    func PushPointer<T>(me *var String, value *val T) *var String
+    func PushPointer.[T](me *var String, value *val T) *var String
     {
         const bufferCount = 32;
         var buffer [bufferCount]Char = ?;

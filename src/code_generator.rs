@@ -2139,6 +2139,19 @@ impl CodeGenerator {
             self.type_kinds.get_by_id(type_kind_id)
         );
 
+
+        let mut is_generic = has_generic_params;
+
+        if let TypedNode { namespace_id: Some(namespace_id), .. } = self.get_typer_node(name) {
+            is_generic = is_generic || !self.namespaces[*namespace_id].generic_args.is_empty();
+        }
+
+        // TODO: This creates excess code for generic functions! Is that ok?
+        // Generic functions may be generated in multiple files, since they are generated in all files that they are used.
+        if is_generic {
+            self.emitter(kind).emit("static ")
+        }
+
         self.emit_type_kind_left(return_type_kind_id, kind, true, true);
 
         self.emit_function_name(name, type_kind_id, has_generic_params, kind);
@@ -2402,7 +2415,7 @@ impl CodeGenerator {
 
         self.function_prototype_emitter.emit("static inline ");
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
-        self.function_prototype_emitter.emit("* ");
+        self.function_prototype_emitter.emit("* __");
         self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
         self.function_prototype_emitter.emit("__CheckTag(");
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
@@ -2414,7 +2427,7 @@ impl CodeGenerator {
 
         self.body_emitters.top().body.emit("static inline ");
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
-        self.body_emitters.top().body.emit("* ");
+        self.body_emitters.top().body.emit("* __");
         self.emit_struct_name(type_kind_id, EmitterKind::Body);
         self.body_emitters.top().body.emit("__CheckTag(");
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
@@ -2468,6 +2481,7 @@ impl CodeGenerator {
             return;
         }
 
+        self.emitter(kind).emit("__");
         self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
         self.emitter(kind).emit("__CheckTag((");
         self.emit_type_kind_left(
@@ -2502,7 +2516,7 @@ impl CodeGenerator {
         self.function_prototype_emitter.emit("static inline ");
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
         self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, true);
-        self.function_prototype_emitter.emit("* ");
+        self.function_prototype_emitter.emit("* __");
         self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
         self.function_prototype_emitter.emit("__WithTag(");
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
@@ -2514,7 +2528,7 @@ impl CodeGenerator {
         self.body_emitters.top().body.emit("static inline ");
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
         self.emit_type_kind_right(type_kind_id, EmitterKind::Body, true);
-        self.body_emitters.top().body.emit("* ");
+        self.body_emitters.top().body.emit("* __");
         self.emit_struct_name(type_kind_id, EmitterKind::Body);
         self.body_emitters.top().body.emit("__WithTag(");
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
@@ -2538,6 +2552,7 @@ impl CodeGenerator {
         tag: usize,
         kind: EmitterKind,
     ) {
+        self.emitter(kind).emit("__");
         self.emit_struct_name(dereferenced_left_type_kind_id, kind);
         self.emitter(kind).emit("__WithTag((");
         self.emit_type_kind_left(dereferenced_left_type_kind_id, kind, false, false);
@@ -2631,7 +2646,7 @@ impl CodeGenerator {
     }
 
     fn emit_struct_equals(&mut self, type_kind_id: usize) {
-        self.function_prototype_emitter.emit("static inline bool ");
+        self.function_prototype_emitter.emit("static inline bool __");
         self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
         self.function_prototype_emitter.emit("__Equals(");
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
@@ -2640,7 +2655,7 @@ impl CodeGenerator {
         self.function_prototype_emitter.emitln(" *right);");
         self.function_prototype_emitter.newline();
 
-        self.body_emitters.top().body.emit("static inline bool ");
+        self.body_emitters.top().body.emit("static inline bool __");
         self.emit_struct_name(type_kind_id, EmitterKind::Body);
         self.body_emitters.top().body.emit("__Equals(");
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
@@ -2726,6 +2741,7 @@ impl CodeGenerator {
         right: NodeIndex,
         kind: EmitterKind,
     ) {
+        self.emitter(kind).emit("__");
         self.emit_struct_name(type_kind_id, kind);
         self.emitter(kind).emit("__Equals(&");
 

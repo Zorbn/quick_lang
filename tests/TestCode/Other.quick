@@ -1,13 +1,13 @@
 using Conflictor;
 using QuickCode;
 
-struct GenericStruct<A, B>
+struct GenericStruct.[A, B]
 {
     a A;
     b B;
 }
 
-struct SimpleGeneric<A>
+struct SimpleGeneric.[A]
 {
     a A;
 }
@@ -23,12 +23,12 @@ func takesPoint(point Point) Void
     Puts(hi);
 }
 
-func genericFunction2<C, D>(a C, b D) C
+func genericFunction2.[C, D](a C, b D) C
 {
     val arrayA = [a, a, a];
     val arrayB = [b, b];
 
-    val genericStruct = GenericStruct.<A, B> { a = 5, b = false };
+    val genericStruct = GenericStruct.[A, B] { a = 5, b = false };
 
     return arrayA[2];
 }
@@ -43,7 +43,7 @@ func callsMain() Void
     Main(argc, *argv.data);
 }
 
-func useMyString(myString MyStringView) Void
+func useMyString(myCharSpan MyCharSpan) Void
 {
 
 }

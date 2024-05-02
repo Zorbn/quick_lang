@@ -48,9 +48,6 @@
 			"include": "#curly-brackets"
 		},
 		{
-			"include": "#square-brackets"
-		},
-		{
 			"include": "#round-brackets"
 		},
 		{
@@ -59,7 +56,7 @@
 	],
 	"repository": {
 		"function-declaration": {
-			"match": "\\b(func)\\b\\s*(\\w+)(<[\\w,\\s]*>)?",
+			"match": "\\b(func)\\b\\s*(\\w+)(\\.\\[[\\w,\\s]*\\])?",
 			"captures": {
 				"1": {
 					"name": "keyword.quick"
@@ -73,14 +70,14 @@
 							"include": "#type"
 						},
 						{
-							"include": "#angle-brackets"
+							"include": "#operator"
 						}
 					]
 				}
 			}
 		},
 		"struct-declaration": {
-			"match": "\\b(struct|union)\\b\\s*(\\w+)(<[\\w,\\s]*>)?",
+			"match": "\\b(struct|union)\\b\\s*(\\w+)(\\.\\[[\\w,\\s]*\\])?",
 			"captures": {
 				"1": {
 					"name": "keyword.quick"
@@ -94,7 +91,7 @@
 							"include": "#type"
 						},
 						{
-							"include": "#angle-brackets"
+							"include": "#operator"
 						}
 					]
 				}
@@ -176,7 +173,7 @@
 			"match": "\\b\\d\\d*(\\.\\d*)?\\b"
 		},
 		"function-call": {
-			"match": "(\\w+)\\s*(\\.<[\\w,\\s]*>)?(\\()",
+			"match": "(\\w+)\\s*(\\.\\[[\\w,\\s]*\\])?(\\()",
 			"captures": {
 				"1": {
 					"name": "entity.name.function.quick"
@@ -210,15 +207,11 @@
 		},
 		"operator": {
 			"name": "keyword.operator.quick",
-			"match": "(\\.|\\+|-|\\*|&|\\/|=|<|>|!|\\^|~|%|\\||\\?|!=|==|<=|>=|\\+=|-=|\\*=|\\/=|&&|\\|\\||\\.\\*|\\.<|<<|>>|<<=|>>=|%=|&=|\\^=|\\|=)"
+			"match": "(!=|==|<=|>=|\\+=|-=|\\*=|\\/=|&&|\\|\\||\\.\\*|\\.\\[|<<|>>|<<=|>>=|%=|&=|\\^=|\\|=|\\.|\\+|-|\\*|&|\\/|=|<|>|!|\\^|~|%|\\||\\?|\\[|\\])"
 		},
 		"curly-brackets": {
 			"name": "punctuation.brackets.curly.quick",
 			"match": "[\\{\\}]"
-		},
-		"square-brackets": {
-			"name": "punctuation.brackets.square.quick",
-			"match": "[\\[\\]]"
 		},
 		"round-brackets": {
 			"name": "punctuation.brackets.round.quick",

@@ -1,10 +1,10 @@
 using QuickCode;
 
-alias MyStringView = StringView;
+alias MyCharSpan = Span.[Char];
 
 extern func puts(str *val Char) UInt;
 
-func Puts(str StringView) UInt
+func Puts(str Span.[Char]) UInt
 {
     return puts(str.data);
 }
@@ -25,10 +25,10 @@ union SimpleUnion
     a Int;
     b Bool;
     c Int;
-    d StringView;
+    d Span.[Char];
 }
 
-union GenericUnion<A, B>
+union GenericUnion.[A, B]
 {
     a A;
     b B;
@@ -36,7 +36,7 @@ union GenericUnion<A, B>
 
 struct None {}
 
-union Maybe<T>
+union Maybe.[T]
 {
     some T;
     none None;
@@ -51,10 +51,10 @@ const hi = "hi";
 
 func Main(argc Int, argv *val *val Char) Int
 {
-    val allocatedPoint = Alloc.<Point>(Point { x = 0, y = 0 });
-    val allocatedInt = Alloc.<Int>(777);
+    val allocatedPoint = Alloc.[Point](Point { x = 0, y = 0 });
+    val allocatedInt = Alloc.[Int](777);
 
-    Free.<Int>(allocatedInt);
+    Free.[Int](allocatedInt);
 
     val stringWithEscape = "hello\n";
     val charWithEscape = '\n';
@@ -75,7 +75,7 @@ func Main(argc Int, argv *val *val Char) Int
         .PushCString(stringWithEscape.data)
         .PushFloat32(137.43);
         // .PushChar('\n')
-        // .PushPointer.<Point>(allocatedPoint);
+        // .PushPointer.[Point](allocatedPoint);
     puts(testString.data);
     testString.Destroy();
 
@@ -93,8 +93,8 @@ func Main(argc Int, argv *val *val Char) Int
     var containsFuncPtr = ContainsFuncPtr { funcPtr = *print };
     containsFuncPtr.funcPtr.*();
 
-    val myMyString MyStringView = "MyString";
-    useMyString(myMyString);
+    val myCharSpan MyCharSpan = "MyString";
+    useMyString(myCharSpan);
 
     var uninitializedPoint Point = ?;
     uninitializedPoint = Point { x = 0, y = 0 };
@@ -105,8 +105,8 @@ func Main(argc Int, argv *val *val Char) Int
 
     val bitwiseMess = 1 & 5 << 5 >> 4 | 3;
 
-    var mySome = Maybe.<Int> { some = 5 };
-    val myNone = Maybe.<Int> { none = None {} };
+    var mySome = Maybe.[Int] { some = 5 };
+    val myNone = Maybe.[Int] { none = None {} };
 
     mySome.some = 3;
 
@@ -126,12 +126,12 @@ func Main(argc Int, argv *val *val Char) Int
 
     val someonesName = Name.Carson;
 
-    var genericUnion = GenericUnion.<Int32, Int64> { b = 0 as Int64 };
+    var genericUnion = GenericUnion.[Int32, Int64] { b = 0 as Int64 };
     genericUnion.a = 5 as Int32;
     genericUnion.b = 8 as Int64;
     val testUnionAccess = genericUnion.b;
     val unionTag = genericUnion as Tag;
-    val otherTag = GenericUnion.<Int32, Int64>.b;
+    val otherTag = GenericUnion.[Int32, Int64].b;
 
     var function *val func(Int, Int) Int = *add;
     function.*(1, 2);
@@ -148,7 +148,7 @@ func Main(argc Int, argv *val *val Char) Int
     var b Int = a * 2;
     val c = b /= b / 4;
 
-    val str StringView = "hello world";
+    val str Span.[Char] = "hello world";
     Puts(str);
 
     var byte UInt8 = 255 as UInt8;
@@ -174,12 +174,12 @@ func Main(argc Int, argv *val *val Char) Int
     var myArrayCopy [3]Int = takeArray(myArray);
     var otherCopy [3]Int = myArrayCopy;
     var repeatArray [400]Int = [1, 2, 3, 4; 100];
-    var repeatStringArray [400]StringView = ["a", "bb", "ccc", "dddd"; 100];
+    var repeatStringArray [400]Span.[Char] = ["a", "bb", "ccc", "dddd"; 100];
     repeatStringArray[0] = "hello";
     Puts(repeatStringArray[377]);
 
-    var multiA [2][3]StringView = [["a", "b", "ccc"], ["d", "e", "f"]];
-    var multiB [2][3]StringView = multiA;
+    var multiA [2][3]Span.[Char] = [["a", "b", "ccc"], ["d", "e", "f"]];
+    var multiB [2][3]Span.[Char] = multiA;
     Puts(multiA[1][2]);
 
     var xy [2]Point = [
@@ -302,26 +302,26 @@ func Main(argc Int, argv *val *val Char) Int
         b,
     );
 
-    val genericResult Int = genericFunction.<Int, Bool>(777, true);
-    val genericResult2 = genericFunction.<Bool, Bool>(false, true);
-    val genericResult3 = genericFunction.<Bool, Bool>(false, true);
+    val genericResult Int = genericFunction.[Int, Bool](777, true);
+    val genericResult2 = genericFunction.[Bool, Bool](false, true);
+    val genericResult3 = genericFunction.[Bool, Bool](false, true);
 
-    val nonGenericPtr = *genericFunction.<Int, Int>;
+    val nonGenericPtr = *genericFunction.[Int, Int];
     val nonGenericDoublePtr = *nonGenericPtr;
 
-    val genericStruct = GenericStruct.<Int, Int> { a = 5, b = 6 };
-    val genericStruct2 = GenericStruct.<Bool, Int> { a = true, b = 6 };
-    val genericStruct3 = GenericStruct.<Int, Int> { a = 5, b = 6 };
-    val genericStruct4 GenericStruct.<Int, Int> = returnsGeneric();
+    val genericStruct = GenericStruct.[Int, Int] { a = 5, b = 6 };
+    val genericStruct2 = GenericStruct.[Bool, Int] { a = true, b = 6 };
+    val genericStruct3 = GenericStruct.[Int, Int] { a = 5, b = 6 };
+    val genericStruct4 GenericStruct.[Int, Int] = returnsGeneric();
 
     Puts("reached end"); // Shouldn't happen because of all of the returns, recursions, etc above.
 
     return 0;
 }
 
-func returnsGeneric() GenericStruct.<Int, Int>
+func returnsGeneric() GenericStruct.[Int, Int]
 {
-    return GenericStruct.<Int, Int> { a = 5, b = 6 };
+    return GenericStruct.[Int, Int] { a = 5, b = 6 };
 }
 
 func add(a Int, b Int) Int
@@ -375,14 +375,14 @@ func takeArray(a [3]Int) [3]Int
 func returnFunPtr() *val func(Int, Int) Int
     return *add;
 
-func genericFunction<A, B>(a A, b B) A
+func genericFunction.[A, B](a A, b B) A
 {
     val arrayA = [a, a, a];
     val arrayB = [b, b];
 
-    genericFunction.<A, B>(a, b);
-    genericFunction.<B, A>(b, a);
-    // val genericStruct = GenericStruct.<A, B> { a = 5, b = false };
+    genericFunction.[A, B](a, b);
+    genericFunction.[B, A](b, a);
+    // val genericStruct = GenericStruct.[A, B] { a = 5, b = false };
 
     return arrayA[2];
 }

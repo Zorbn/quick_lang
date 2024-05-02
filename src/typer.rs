@@ -435,16 +435,21 @@ impl Typer {
     }
 
     fn find_string_view(&mut self) {
+        let char_id = self.type_kinds.add_or_get(TypeKind::Char);
+
         self.string_view_type_kind_id = if let IdentifierLookupResult::Some(_, string_view_type) =
             self.lookup_identifier(
-                Identifier::new("StringView"),
+                Identifier {
+                    name: "Span".into(),
+                    generic_arg_type_kind_ids: Some(Arc::new(vec![char_id])),
+                },
                 LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
                 LookupKind::Types,
                 None,
             ) {
             string_view_type.type_kind_id
         } else {
-            panic!("StringView type not found");
+            panic!("Span.[Char] type not found");
         };
     }
 
@@ -697,11 +702,7 @@ impl Typer {
                 usings,
                 definition_indices,
                 ..
-            } => self.top_level(
-                usings,
-                definition_indices,
-                file_index,
-            ),
+            } => self.top_level(usings, definition_indices, file_index),
             NodeKind::ExternFunction { declaration } => {
                 self.extern_function(declaration, file_index)
             }
@@ -788,7 +789,9 @@ impl Typer {
                 left,
                 field_literals,
             } => self.struct_literal(left, field_literals),
-            NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression, None),
+            NodeKind::FieldLiteral { name, expression } => {
+                self.field_literal(name, expression, None)
+            }
             NodeKind::TypeSize { type_name } => self.type_size(type_name, None),
             NodeKind::StructDefinition {
                 name,
@@ -930,7 +933,9 @@ impl Typer {
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, hint),
             NodeKind::IntLiteral { text } => self.int_literal(text, hint),
             NodeKind::FloatLiteral { text } => self.float_literal(text, hint),
-            NodeKind::FieldLiteral { name, expression } => self.field_literal(name, expression, hint),
+            NodeKind::FieldLiteral { name, expression } => {
+                self.field_literal(name, expression, hint)
+            }
             NodeKind::TypeSize { type_name } => self.type_size(type_name, hint),
             NodeKind::Block { statements } => self.block(statements, hint),
             NodeKind::Statement { inner } => self.statement(inner, hint),
@@ -1024,16 +1029,28 @@ impl Typer {
     // is valid at the top level of a file.
     fn get_checkable_top_level_name(&mut self, node: NodeIndex) -> Option<NodeIndex> {
         match &self.get_parser_node(node).kind {
-            NodeKind::StructDefinition { name, generic_params, .. } => {
+            NodeKind::StructDefinition {
+                name,
+                generic_params,
+                ..
+            } => {
                 if generic_params.is_empty() {
                     Some(*name)
                 } else {
                     None
                 }
             }
-            NodeKind::Function { declaration, .. } => self.get_checkable_top_level_name(*declaration),
-            NodeKind::ExternFunction { declaration, .. } => self.get_checkable_top_level_name(*declaration),
-            NodeKind::FunctionDeclaration { name, generic_params, .. } => {
+            NodeKind::Function { declaration, .. } => {
+                self.get_checkable_top_level_name(*declaration)
+            }
+            NodeKind::ExternFunction { declaration, .. } => {
+                self.get_checkable_top_level_name(*declaration)
+            }
+            NodeKind::FunctionDeclaration {
+                name,
+                generic_params,
+                ..
+            } => {
                 if generic_params.is_empty() {
                     Some(*name)
                 } else {
@@ -1042,15 +1059,11 @@ impl Typer {
             }
             NodeKind::EnumDefinition { name, .. } => Some(*name),
             NodeKind::VariableDeclaration { name, .. } => Some(*name),
-            _ => None
+            _ => None,
         }
     }
 
-    fn check_top_level_node(
-        &mut self,
-        top_level_node: NodeIndex,
-        namespace_id: usize,
-    ) {
+    fn check_top_level_node(&mut self, top_level_node: NodeIndex, namespace_id: usize) {
         let Some(name) = self.get_checkable_top_level_name(top_level_node) else {
             return;
         };
@@ -2721,7 +2734,12 @@ impl Typer {
         })
     }
 
-    fn field_literal(&mut self, name: NodeIndex, expression: NodeIndex, hint: Option<usize>) -> NodeIndex {
+    fn field_literal(
+        &mut self,
+        name: NodeIndex,
+        expression: NodeIndex,
+        hint: Option<usize>,
+    ) -> NodeIndex {
         let typed_name = self.check_node(name);
         let typed_expression = self.check_node_with_hint(expression, hint);
         let expression_type = assert_typed!(self, typed_expression);
@@ -3335,6 +3353,7 @@ impl Typer {
         for generic_arg_type_name in generic_arg_type_names.iter() {
             let typed_generic_arg = self.check_node(*generic_arg_type_name);
             let generic_arg_type = assert_typed!(self, typed_generic_arg);
+
             if generic_arg_type.instance_kind != InstanceKind::Name {
                 type_error!(self, "expected type name");
             }
