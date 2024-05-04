@@ -28,7 +28,7 @@ struct String
         Internal.free(me.data as *var Void);
     }
 
-    func FromSpan(span Span.[Char]) String
+    func FromSpan(span Span.<Char>) String
     {
         var string = String.Create();
         string.PushSpan(span);
@@ -36,9 +36,9 @@ struct String
         return string;
     }
 
-    func ToSpan(me *var String) Span.[Char]
+    func ToSpan(me *var String) Span.<Char>
     {
-        return Span.[Char]
+        return Span.<Char>
         {
             data = me.data,
             count = me.count,
@@ -84,7 +84,7 @@ struct String
         return me;
     }
 
-    func PushSpan(me *var String, span Span.[Char]) *var String
+    func PushSpan(me *var String, span Span.<Char>) *var String
     {
         me.Reserve(span.count);
 
@@ -262,7 +262,7 @@ struct String
         return me;
     }
 
-    func PushPointer.[T](me *var String, value *val T) *var String
+    func PushPointer.<T>(me *var String, value *val T) *var String
     {
         const bufferCount = 32;
         var buffer [bufferCount]Char = ?;

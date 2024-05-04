@@ -336,8 +336,16 @@ impl Parser {
     }
 
     fn token_kind(&self) -> &TokenKind {
+        self.get_token_kind(self.position)
+    }
+
+    fn peek_token_kind(&self) -> &TokenKind {
+        self.get_token_kind(self.position + 1)
+    }
+
+    fn get_token_kind(&self, position: usize) -> &TokenKind {
         let tokens = self.tokens.as_ref().unwrap();
-        if let Some(token) = tokens.get(self.position) {
+        if let Some(token) = tokens.get(position) {
             &token.kind
         } else {
             &TokenKind::Eof
@@ -743,7 +751,7 @@ impl Parser {
         }
         self.position += 1;
 
-        while *self.token_kind() != TokenKind::RBracket {
+        while *self.token_kind() != TokenKind::Greater {
             let name = self.name();
             generic_params.push(name);
 
@@ -757,7 +765,7 @@ impl Parser {
             self.position += 1;
         }
 
-        if let Some(error_node) = self.assert_token(TokenKind::RBracket, start, self.token_end()) {
+        if let Some(error_node) = self.assert_token(TokenKind::Greater, start, self.token_end()) {
             return Some(error_node);
         }
         self.position += 1;
@@ -1352,7 +1360,7 @@ impl Parser {
      * Primary: Literals, identifiers, parenthesized expressions
      *
      * (Nestable, eg. &pointer^)
-     * UnarySuffix: .[, .*, [], (), ., as, {}
+     * UnarySuffix: .<, .*, [], (), ., as, {}
      * UnaryPrefix: *, !, ~, +, -
      *
      * (Chainable, eg. a * b / c)
@@ -1554,7 +1562,12 @@ impl Parser {
                 TokenKind::Percent => Op::Modulo,
                 TokenKind::Ampersand => Op::BitwiseAnd,
                 TokenKind::LessLess => Op::LeftShift,
-                TokenKind::GreaterGreater => Op::RightShift,
+                // We can't have a LessLess token because it prevents nested generic specifiers like GenericThing.<Span.<Char>>.
+                TokenKind::Greater if *self.peek_token_kind() == TokenKind::Greater => {
+                    self.position += 1;
+
+                    Op::RightShift
+                },
                 _ => break,
             };
             self.position += 1;
@@ -1605,7 +1618,7 @@ impl Parser {
         }
         self.position += 1;
 
-        while *self.token_kind() != TokenKind::RBracket {
+        while *self.token_kind() != TokenKind::Greater {
             generic_arg_type_names.push(self.type_name());
 
             if *self.token_kind() != TokenKind::Comma {
@@ -1619,7 +1632,7 @@ impl Parser {
         }
 
         *end = self.token_end();
-        if let Some(error_node) = self.assert_token(TokenKind::RBracket, start, *end) {
+        if let Some(error_node) = self.assert_token(TokenKind::Greater, start, *end) {
             return Some(error_node);
         }
         self.position += 1;

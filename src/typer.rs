@@ -449,7 +449,7 @@ impl Typer {
             ) {
             string_view_type.type_kind_id
         } else {
-            panic!("Span.[Char] type not found");
+            panic!("Span.<Char> type not found");
         };
     }
 

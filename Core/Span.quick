@@ -1,9 +1,9 @@
-struct Span.[T]
+struct Span.<T>
 {
     data *val T;
     count Int;
 
-    func Get(me *val Span.[T], index Int) T
+    func Get(me *val Span.<T>, index Int) T
     {
         if (index < 0 || index >= me.count)
         {
@@ -17,7 +17,7 @@ struct Span.[T]
         return dataPointer.*;
     }
 
-    func Equals(me *val Span.[T], other *val Span.[T]) Bool
+    func Equals(me *val Span.<T>, other *val Span.<T>) Bool
     {
         if (me.count != other.count) return false;
 

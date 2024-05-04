@@ -1,12 +1,12 @@
 func BFunc() Void
 {
-    var zombie = Zombie.[Int] { data = 1 };
-    Zombie.[Int].Eat(*zombie, 7);
-    Zombie.[Int].EatGeneric.[Int](*zombie, 7, 4);
+    var zombie = Zombie.<Int> { data = 1 };
+    Zombie.<Int>.Eat(*zombie, 7);
+    Zombie.<Int>.EatGeneric.<Int>(*zombie, 7, 4);
     zombie.Eat(7);
-    zombie.EatGeneric.[Int](7, 4);
+    zombie.EatGeneric.<Int>(7, 4);
     zombie.DoNothing();
-    Zombie.[Bool].Static();
+    Zombie.<Bool>.Static();
 
     var person = Person { data = 1 };
     person.Eat(4);
@@ -22,22 +22,22 @@ struct Person
     }
 }
 
-struct Zombie.[T]
+struct Zombie.<T>
 {
     data Int;
 
-    func Eat(me *var Zombie.[T], newData Int) Void
+    func Eat(me *var Zombie.<T>, newData Int) Void
     {
         me.data = newData;
     }
 
-    func EatGeneric.[A](me *var Zombie.[T], newData Int, genericThing A) Void
+    func EatGeneric.<A>(me *var Zombie.<T>, newData Int, genericThing A) Void
     {
         val otherGenericThing = genericThing;
         me.data = newData;
     }
 
-    func DoNothing(me *val Zombie.[T]) Void
+    func DoNothing(me *val Zombie.<T>) Void
     {
 
     }

@@ -1,6 +1,6 @@
 func Main() Int
 {
-    var myGenericStruct = MyGenericStruct.[UInt8, Bool, Span.[Char]]
+    var myGenericStruct = MyGenericStruct.<UInt8, Bool, Span.<Char>>
     {
         a = 5,
         b = true,
@@ -9,7 +9,7 @@ func Main() Int
     var implicitInt = myGenericStruct.DoStuff("Hello");
     var explicitInt UInt8 = implicitInt;
 
-    val myImmutableGenericStruct = MyGenericStruct.[UInt8, Bool, Span.[Char]]
+    val myImmutableGenericStruct = MyGenericStruct.<UInt8, Bool, Span.<Char>>
     {
         a = 5,
         b = true,

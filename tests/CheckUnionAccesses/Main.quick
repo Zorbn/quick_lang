@@ -2,7 +2,7 @@ union Onion
 {
     rawData Int;
     choppedData Int;
-    cookedData Span.[Char];
+    cookedData Span.<Char>;
 }
 
 func Main() Int

@@ -8,19 +8,19 @@ struct DStruct
 
 }
 
-struct DGenericStruct.[T]
+struct DGenericStruct.<T>
 {
     t T;
 }
 
-func DTakesGenericStruct.[T](t Folder.D.DGenericStruct.[T]) Void
+func DTakesGenericStruct.<T>(t Folder.D.DGenericStruct.<T>) Void
 {
     val otherT = t;
 }
 
 func RandomFunc() Void
 {
-    Folder.D.DTakesGenericStruct.[Int](Folder.D.DGenericStruct.[Int]
+    Folder.D.DTakesGenericStruct.<Int>(Folder.D.DGenericStruct.<Int>
     {
         t = 4,
     });

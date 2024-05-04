@@ -1,9 +1,9 @@
-func Write(span Span.[Char]) Void
+func Write(span Span.<Char>) Void
 {
     Internal.CoreSystemConsoleWrite(span.data);
 }
 
-func WriteLine(span Span.[Char]) Void
+func WriteLine(span Span.<Char>) Void
 {
     Internal.puts(span.data);
 }
