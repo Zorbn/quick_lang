@@ -7,7 +7,7 @@ struct Span.<T>
     {
         if (index < 0 || index >= me.count)
         {
-            crash;
+            Runtime.Error("Span access out of bounds!");
         }
 
         val dataStart = me.data as UInt;

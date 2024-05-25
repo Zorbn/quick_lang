@@ -1,4 +1,4 @@
 Hello
 World
 !
-Out of bounds error at Main.quick:8:23
+Array access out of bounds!

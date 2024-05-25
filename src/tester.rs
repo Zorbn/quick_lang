@@ -73,9 +73,15 @@ fn test_project(exe_path: &str, project_path: &str, core_path: &str, is_expected
     };
 
     if output != expected_output {
-        println!(
-            "Project \"{}\" had unexpected output:\n{}\n",
-            project_path, output
+        let output_ending = if output.ends_with('\n') {
+            ""
+        } else {
+            "\n"
+        };
+
+        print!(
+            "Project \"{}\" had unexpected output:\n{}{}",
+            project_path, output, output_ending
         );
     } else {
         println!("Project \"{}\" succeeded!", project_path);

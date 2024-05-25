@@ -11,7 +11,6 @@ use crate::{
     file_data::FileData,
     namespace::Namespace,
     parser::{DeclarationKind, MethodKind, NodeIndex, NodeKind, Op},
-    position::Position,
     type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
     typer::{InstanceKind, Type, TypedNode, GLOBAL_NAMESPACE_ID},
 };
@@ -108,7 +107,7 @@ pub struct CodeGenerator {
     typed_nodes: Vec<TypedNode>,
     type_kinds: TypeKinds,
     namespaces: Vec<Namespace>,
-    string_view_type_kind_id: usize,
+    span_char_type_kind_id: usize,
     main_function_declaration: Option<NodeIndex>,
     typed_definitions: Vec<NodeIndex>,
     files: Arc<Vec<FileData>>,
@@ -134,7 +133,7 @@ impl CodeGenerator {
         typed_nodes: Vec<TypedNode>,
         type_kinds: TypeKinds,
         namespaces: Vec<Namespace>,
-        string_view_type_kind_id: usize,
+        span_char_type_kind_id: usize,
         main_function_declaration: Option<NodeIndex>,
         typed_definitions: Vec<NodeIndex>,
         files: Arc<Vec<FileData>>,
@@ -145,7 +144,7 @@ impl CodeGenerator {
             typed_nodes,
             type_kinds,
             namespaces,
-            string_view_type_kind_id,
+            span_char_type_kind_id,
             main_function_declaration,
             typed_definitions,
             files,
@@ -165,7 +164,7 @@ impl CodeGenerator {
 
         code_generator.emitln("#include <stdint.h>", EmitterKind::Header);
         code_generator.emitln("#include <stdbool.h>", EmitterKind::Header);
-        code_generator.emitln("void CoreSystemError(char *message);", EmitterKind::Header);
+        code_generator.emitln("void Internal__ErrorTrace(char const *message, intptr_t skipCount);", EmitterKind::Header);
         code_generator.emitln(
             "void *memmove(void *dst, const void *src, size_t size);",
             EmitterKind::Header,
@@ -274,7 +273,6 @@ impl CodeGenerator {
             node_kind,
             node_type,
             namespace_id,
-            start,
             ..
         } = self.get_typer_node(index).clone();
 
@@ -325,7 +323,6 @@ impl CodeGenerator {
             NodeKind::BreakStatement => self.break_statement(),
             NodeKind::ContinueStatement => self.continue_statement(),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
-            NodeKind::CrashStatement {} => self.crash_statement(start),
             NodeKind::IfStatement {
                 expression,
                 scoped_statement,
@@ -366,11 +363,11 @@ impl CodeGenerator {
             NodeKind::IndexAccess {
                 left,
                 expression,
-            } => self.index_access(left, expression, start, EmitterKind::Body),
+            } => self.index_access(left, expression, EmitterKind::Body),
             NodeKind::FieldAccess {
                 left,
                 name,
-            } => self.field_access(left, name, node_type, start, EmitterKind::Body),
+            } => self.field_access(left, name, node_type, EmitterKind::Body),
             NodeKind::Cast { left, .. } => self.cast(left, node_type, EmitterKind::Body),
             NodeKind::GenericSpecifier {
                 left,
@@ -420,7 +417,6 @@ impl CodeGenerator {
             node_kind,
             node_type,
             namespace_id,
-            start,
             ..
         } = self.get_typer_node(index).clone();
 
@@ -439,11 +435,11 @@ impl CodeGenerator {
             NodeKind::IndexAccess {
                 left,
                 expression,
-            } => self.index_access(left, expression, start, emitter_kind),
+            } => self.index_access(left, expression, emitter_kind),
             NodeKind::FieldAccess {
                 left,
                 name,
-            } => self.field_access(left, name, node_type, start, emitter_kind),
+            } => self.field_access(left, name, node_type, emitter_kind),
             NodeKind::Cast { left, .. } => self.cast(left, node_type, emitter_kind),
             NodeKind::GenericSpecifier {
                 left,
@@ -777,9 +773,6 @@ impl CodeGenerator {
             } | TypedNode {
                 node_kind: NodeKind::Block { .. },
                 ..
-            } | TypedNode {
-                node_kind: NodeKind::CrashStatement { .. },
-                ..
             }
         );
 
@@ -973,15 +966,6 @@ impl CodeGenerator {
         self.body_emitters.push(0);
         self.gen_node(statement);
         self.body_emitters.pop_to_bottom();
-    }
-
-    fn crash_statement(&mut self, start: Position) {
-        self.emit("CoreSystemError(\"", EmitterKind::Body);
-        self.emit(
-            &start.error_string("Runtime", &self.files),
-            EmitterKind::Body,
-        );
-        self.emitln("\");", EmitterKind::Body);
     }
 
     fn if_statement(
@@ -1343,7 +1327,6 @@ impl CodeGenerator {
         &mut self,
         left: NodeIndex,
         expression: NodeIndex,
-        start: Position,
         emitter_kind: EmitterKind,
     ) {
         self.gen_node_with_emitter(left, emitter_kind);
@@ -1365,12 +1348,7 @@ impl CodeGenerator {
             self.gen_node_with_emitter(expression, emitter_kind);
             self.emit(", ", emitter_kind);
             self.emit(&element_count.to_string(), EmitterKind::Body);
-            self.emit(", ", emitter_kind);
-
-            self.emit("\"", emitter_kind);
-            let error_message = start.error_string("Out of bounds", &self.files);
-            self.emit(&error_message, emitter_kind);
-            self.emit("\")", emitter_kind);
+            self.emit(")", emitter_kind);
         }
 
         self.emit("]", emitter_kind);
@@ -1381,7 +1359,6 @@ impl CodeGenerator {
         left: NodeIndex,
         name: NodeIndex,
         node_type: Option<Type>,
-        start: Position,
         emitter_kind: EmitterKind,
     ) {
         let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
@@ -1440,7 +1417,6 @@ impl CodeGenerator {
                     is_left_pointer,
                     left,
                     name,
-                    start,
                     tag,
                     emitter_kind,
                 );
@@ -1611,7 +1587,7 @@ impl CodeGenerator {
 
     fn string_literal(&mut self, text: Arc<String>, emitter_kind: EmitterKind) {
         self.emit("(struct ", emitter_kind);
-        self.emit_struct_name(self.string_view_type_kind_id, emitter_kind);
+        self.emit_struct_name(self.span_char_type_kind_id, emitter_kind);
         self.emitln(") {", emitter_kind);
         self.indent(emitter_kind);
         self.emit(".count = ", emitter_kind);
@@ -2141,13 +2117,13 @@ impl CodeGenerator {
 
     fn emit_bounds_check(&mut self) {
         self.emitln(
-            "static inline intptr_t __BoundsCheck(intptr_t index, intptr_t count, char *message);",
+            "static inline intptr_t __BoundsCheck(intptr_t index, intptr_t count);",
             EmitterKind::FunctionPrototype,
         );
         self.newline(EmitterKind::FunctionPrototype);
 
         self.emitln(
-            "intptr_t __BoundsCheck(intptr_t index, intptr_t count, char *message) {",
+            "intptr_t __BoundsCheck(intptr_t index, intptr_t count) {",
             EmitterKind::Body,
         );
         self.indent(EmitterKind::Body);
@@ -2155,7 +2131,7 @@ impl CodeGenerator {
         self.emitln("if (index < 0 || index >= count) {", EmitterKind::Body);
         self.indent(EmitterKind::Body);
 
-        self.emitln("CoreSystemError(message);", EmitterKind::Body);
+        self.emitln("Internal__ErrorTrace(\"Array access out of bounds!\", 3);", EmitterKind::Body);
 
         self.unindent(EmitterKind::Body);
         self.emitln("}", EmitterKind::Body);
@@ -2307,7 +2283,7 @@ impl CodeGenerator {
         self.emit(" *self", EmitterKind::FunctionPrototype);
         self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, false);
         self.emitln(
-            ", intptr_t tag, char *message);",
+            ", intptr_t tag);",
             EmitterKind::FunctionPrototype,
         );
         self.newline(EmitterKind::FunctionPrototype);
@@ -2320,13 +2296,13 @@ impl CodeGenerator {
         self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
         self.emit(" *self", EmitterKind::Body);
         self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
-        self.emitln(", intptr_t tag, char *message) {", EmitterKind::Body);
+        self.emitln(", intptr_t tag) {", EmitterKind::Body);
         self.indent(EmitterKind::Body);
 
         self.emitln("if (self->tag != tag) {", EmitterKind::Body);
         self.indent(EmitterKind::Body);
 
-        self.emitln("CoreSystemError(message);", EmitterKind::Body);
+        self.emitln("Internal__ErrorTrace(\"Accessed wrong union variant!\", 3);", EmitterKind::Body);
 
         self.unindent(EmitterKind::Body);
         self.emitln("}", EmitterKind::Body);
@@ -2344,7 +2320,6 @@ impl CodeGenerator {
         is_left_pointer: bool,
         left: NodeIndex,
         name: NodeIndex,
-        position: Position,
         tag: usize,
         emitter_kind: EmitterKind,
     ) {
@@ -2382,13 +2357,7 @@ impl CodeGenerator {
 
         self.emit(", ", emitter_kind);
         self.emit(&tag.to_string(), emitter_kind);
-
-        self.emit(", ", emitter_kind);
-
-        self.emit("\"", emitter_kind);
-        let error_message = position.error_string("Wrong variant", &self.files);
-        self.emit(&error_message, emitter_kind);
-        self.emit("\")->variant.", emitter_kind);
+        self.emit(")->variant.", emitter_kind);
 
         self.gen_node_with_emitter(name, emitter_kind);
     }

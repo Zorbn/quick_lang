@@ -130,7 +130,6 @@ pub enum NodeKind {
     DeferStatement {
         statement: NodeIndex,
     },
-    CrashStatement {},
     IfStatement {
         expression: NodeIndex,
         scoped_statement: NodeIndex,
@@ -967,7 +966,6 @@ impl Parser {
             TokenKind::Break => Some(self.break_statement()),
             TokenKind::Continue => Some(self.continue_statement()),
             TokenKind::Defer => Some(self.defer_statement()),
-            TokenKind::Crash => Some(self.crash_statement()),
             TokenKind::If => Some(self.if_statement()),
             TokenKind::Switch => Some(self.switch_statement()),
             TokenKind::While => Some(self.while_loop()),
@@ -1135,19 +1133,6 @@ impl Parser {
 
         self.add_node(Node {
             kind: NodeKind::DeferStatement { statement },
-            start,
-            end,
-        })
-    }
-
-    fn crash_statement(&mut self) -> NodeIndex {
-        let start = self.token_start();
-        let end = self.token_end();
-        assert_token!(self, TokenKind::Crash, start, self.token_end());
-        self.position += 1;
-
-        self.add_node(Node {
-            kind: NodeKind::CrashStatement {},
             start,
             end,
         })

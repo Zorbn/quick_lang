@@ -128,7 +128,8 @@ pub struct Typer {
     pub namespaces: Vec<Namespace>,
     file_namespace_ids: Vec<usize>,
     file_used_namespace_ids: Vec<Vec<usize>>,
-    pub string_view_type_kind_id: usize,
+    pub span_char_type_kind_id: usize,
+    span_char_identifier: Option<Identifier>,
 
     scope_type_kind_environment: Environment<Identifier, usize>,
     scope_environment: Environment<Arc<str>, Type>,
@@ -150,7 +151,8 @@ impl Typer {
             typed_definitions: Vec::new(),
             type_kinds: TypeKinds::new(),
             namespaces: Vec::with_capacity(file_count),
-            string_view_type_kind_id: 0,
+            span_char_type_kind_id: 0,
+            span_char_identifier: None,
             main_function_declaration: None,
             error_count: 0,
 
@@ -172,7 +174,7 @@ impl Typer {
     pub fn new_for_file(base_typer: &Typer, file_index: usize) -> Self {
         let mut typer = base_typer.clone();
         typer.file_index = Some(file_index);
-        typer.find_string_view();
+        typer.find_span_char();
 
         typer
     }
@@ -434,23 +436,20 @@ impl Typer {
                 type_kind_id: tag_id,
             },
         );
+
+        self.span_char_identifier = Some(Identifier {
+            name: "Span".into(),
+            generic_arg_type_kind_ids: Some(Arc::new(vec![char_id])),
+        });
     }
 
-    fn find_string_view(&mut self) {
-        let char_id = self.type_kinds.add_or_get(TypeKind::Char);
-
-        self.string_view_type_kind_id = if let IdentifierLookupResult::Some(_, string_view_type) =
-            self.lookup_identifier(
-                Identifier {
-                    name: "Span".into(),
-                    generic_arg_type_kind_ids: Some(Arc::new(vec![char_id])),
-                },
-                LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
-                LookupKind::Types,
-                None,
-            ) {
-            string_view_type.type_kind_id
-        } else {
+    fn find_span_char(&mut self) {
+        let IdentifierLookupResult::Some(_, _) = self.lookup_identifier(
+            self.span_char_identifier.clone().unwrap(),
+            LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
+            LookupKind::Types,
+            None,
+        ) else {
             panic!("Span.<Char> type not found");
         };
     }
@@ -746,7 +745,6 @@ impl Typer {
             NodeKind::BreakStatement => self.break_statement(),
             NodeKind::ContinueStatement => self.continue_statement(),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
-            NodeKind::CrashStatement {} => self.crash_statement(),
             NodeKind::IfStatement {
                 expression,
                 scoped_statement,
@@ -1436,14 +1434,6 @@ impl Typer {
             NodeKind::DeferStatement {
                 statement: typed_statement,
             },
-            None,
-            None,
-        )
-    }
-
-    fn crash_statement(&mut self) -> NodeIndex {
-        self.add_node(
-            NodeKind::CrashStatement {},
             None,
             None,
         )
@@ -2487,7 +2477,7 @@ impl Typer {
         self.add_node(
             NodeKind::StringLiteral { text },
             Some(Type {
-                type_kind_id: self.string_view_type_kind_id,
+                type_kind_id: self.span_char_type_kind_id,
                 instance_kind: InstanceKind::Literal,
             }),
             None,
@@ -2875,6 +2865,11 @@ impl Typer {
         };
 
         let type_kind_id = self.type_kinds.add_placeholder();
+
+        if Some(&identifier) == self.span_char_identifier.as_ref() {
+            self.span_char_type_kind_id = type_kind_id;
+        }
+
         self.get_file_namespace(file_index)
             .define(identifier, Definition::TypeKind { type_kind_id });
 

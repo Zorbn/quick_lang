@@ -1,0 +1,68 @@
+func Exit() Void
+{
+    Console.Flush();
+    Internal.abort();
+}
+
+func Error(message Span.<Char>) Void
+{
+    Internal.ErrorTrace(message.data, 3);
+}
+
+func StackTrace(skipCount Int) Void
+{
+    const maxFrames UInt = 100;
+
+    var stack = [0 as *var Void; maxFrames];
+    var process = Internal.GetCurrentProcess();
+
+    var result = Internal.SymInitialize(process, 0 as *val Char, 1);
+
+    var frameCount = Internal.RtlCaptureStackBackTrace(0, maxFrames, stack as *var Void, 0 as *var UInt);
+
+    var symbol = Internal.calloc(sizeof Internal.SymbolInfo + 254 * sizeof Char, 1) as *var Internal.SymbolInfo;
+    symbol.maxNameLen = 255;
+    symbol.sizeOfStruct = sizeof Internal.SymbolInfo;
+
+    var line = Internal.calloc(sizeof Internal.ImageHlpLine64, 1) as *var Internal.ImageHlpLine64;
+    line.sizeOfStruct = sizeof Internal.ImageHlpLine64;
+
+    var skipCountU16 = skipCount as UInt16;
+
+    for (i of skipCountU16 < frameCount)
+    {
+        result = Internal.SymFromAddr(process, stack[i] as UInt64, 0 as *var UInt64, symbol);
+
+        if (result == 0)
+        {
+            break;
+        }
+
+        if (Internal.strcmp(symbol.name as *val Char, "main".data) == 0)
+        {
+            break;
+        }
+
+        var dwDisplacement UInt32 = 0; // Not optional!
+        result = Internal.SymGetLineFromAddr64(process, stack[i] as UInt64, *dwDisplacement, line);
+
+        if (result == 0)
+        {
+            break;
+        }
+
+        var lineString = String.Create();
+        lineString.PushCString(symbol.name as *val Char);
+        lineString.PushSpan(" > ");
+        lineString.PushCString(line.fileName);
+        lineString.PushSpan(":");
+        lineString.PushUInt32(line.lineNumber);
+
+        Console.WriteLine(lineString.ToSpan());
+
+        lineString.Destroy();
+    }
+
+    Free.<Internal.SymbolInfo>(symbol);
+    Free.<Internal.ImageHlpLine64>(line);
+}

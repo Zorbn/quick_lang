@@ -196,7 +196,7 @@ fn gen(
             typer.typed_nodes,
             typer.type_kinds,
             typer.namespaces,
-            typer.string_view_type_kind_id,
+            typer.span_char_type_kind_id,
             typer.main_function_declaration,
             typer.typed_definitions,
             files.clone(),
@@ -308,7 +308,8 @@ fn create_compiler_command(
         compiler_command
             .args(["-Fe:", "build/Out.exe", core_system_path_str])
             .args(output_paths)
-            .args(c_flags);
+            .args(c_flags)
+            .args(["/link", "Dbghelp.lib", "Kernel32.lib"]);
 
         compiler_command
     } else {
@@ -321,7 +322,8 @@ fn create_compiler_command(
         compiler_command
             .args(["-o", "build/Out.exe", core_system_path_str])
             .args(output_paths)
-            .args(c_flags);
+            .args(c_flags)
+            .args(["-Lc:/lib64", "-lDbghelp", "-lKernel32"]);
 
         compiler_command
     }

@@ -1,2 +1,2 @@
 da
-Runtime error at Span.quick:10:13
+Span access out of bounds!

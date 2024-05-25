@@ -25,9 +25,6 @@
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.
-- Stack traces as part of crashes.
-    - Remove crash keyword and special functions for index/field crashes.
-    - Include a stack trace, assert, etc, function in the standard library and use that instead.
 
 #### Cleanup
 - Refer to TODOs in source files.

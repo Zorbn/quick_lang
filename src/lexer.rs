@@ -73,7 +73,6 @@ pub enum TokenKind {
     By,
     As,
     Defer,
-    Crash,
     Sizeof,
     True,
     False,
@@ -156,7 +155,6 @@ impl Display for TokenKind {
             TokenKind::By => "by",
             TokenKind::As => "as",
             TokenKind::Defer => "defer",
-            TokenKind::Crash => "crash",
             TokenKind::Sizeof => "sizeof",
             TokenKind::True => "true",
             TokenKind::False => "false",
@@ -207,7 +205,6 @@ fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
         keywords.insert(Arc::from("by"), TokenKind::By);
         keywords.insert(Arc::from("as"), TokenKind::As);
         keywords.insert(Arc::from("defer"), TokenKind::Defer);
-        keywords.insert(Arc::from("crash"), TokenKind::Crash);
         keywords.insert(Arc::from("sizeof"), TokenKind::Sizeof);
         keywords.insert(Arc::from("true"), TokenKind::True);
         keywords.insert(Arc::from("false"), TokenKind::False);

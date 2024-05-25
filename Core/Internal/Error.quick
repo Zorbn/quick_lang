@@ -1,0 +1,9 @@
+extern func abort() Void;
+
+func ErrorTrace(message *val Char, skipCount Int) Void
+{
+    puts(message);
+
+    Runtime.StackTrace(skipCount);
+    Runtime.Exit();
+}

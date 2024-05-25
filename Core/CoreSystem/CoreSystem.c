@@ -73,13 +73,6 @@ void CoreSystemBoolToString(char *out, intptr_t outCount, bool value)
     snprintf(out, outCount, "%s", value ? "true" : "false");
 }
 
-void CoreSystemError(char *message)
-{
-    fflush(stdout);
-    fprintf(stderr, "%s\n", message);
-    abort();
-}
-
 void CoreSystemConsoleWrite(const char *str)
 {
     fputs(str, stdout);
