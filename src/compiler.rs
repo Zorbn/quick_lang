@@ -72,7 +72,7 @@ pub fn compile(
 
     let output_paths = get_output_paths(&files);
 
-    gen(typers, &files, &output_paths, is_unsafe_mode);
+    gen(typers, &files, &output_paths, is_debug_mode, is_unsafe_mode);
 
     if do_measure_time {
         println!(
@@ -188,6 +188,7 @@ fn gen(
     typers: Vec<Typer>,
     files: &Arc<Vec<FileData>>,
     output_paths: &[PathBuf],
+    is_debug_mode: bool,
     is_unsafe_mode: bool,
 ) {
     for (typer, output_path) in typers.into_iter().zip(output_paths.iter()) {
@@ -199,6 +200,7 @@ fn gen(
             typer.main_function_declaration,
             typer.typed_definitions,
             files.clone(),
+            is_debug_mode,
             is_unsafe_mode,
         );
         code_generator.gen();

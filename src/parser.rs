@@ -130,9 +130,7 @@ pub enum NodeKind {
     DeferStatement {
         statement: NodeIndex,
     },
-    CrashStatement {
-        position: Position,
-    },
+    CrashStatement {},
     IfStatement {
         expression: NodeIndex,
         scoped_statement: NodeIndex,
@@ -180,12 +178,10 @@ pub enum NodeKind {
     IndexAccess {
         left: NodeIndex,
         expression: NodeIndex,
-        position: Position,
     },
     FieldAccess {
         left: NodeIndex,
         name: NodeIndex,
-        position: Position,
     },
     Cast {
         left: NodeIndex,
@@ -1151,7 +1147,7 @@ impl Parser {
         self.position += 1;
 
         self.add_node(Node {
-            kind: NodeKind::CrashStatement { position: start },
+            kind: NodeKind::CrashStatement {},
             start,
             end,
         })
@@ -1709,7 +1705,6 @@ impl Parser {
                         kind: NodeKind::FieldAccess {
                             left,
                             name,
-                            position: start,
                         },
                         start,
                         end,
@@ -1728,7 +1723,6 @@ impl Parser {
                         kind: NodeKind::IndexAccess {
                             left,
                             expression,
-                            position: start,
                         },
                         start,
                         end,
