@@ -99,7 +99,8 @@ fn main() -> ExitCode {
     };
 
     if is_test {
-        tester::test(&args[0], &args[1], core_path, do_clean, is_expected).unwrap();
+        tester::test(&args[0], &args[1], core_path, do_clean, is_expected)
+            .expect("Unable to complete tests");
 
         return ExitCode::SUCCESS;
     }

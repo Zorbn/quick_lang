@@ -1,3 +1,4 @@
+use core::panic;
 use std::{
     collections::HashSet,
     sync::{Arc, OnceLock},
@@ -323,6 +324,7 @@ impl CodeGenerator {
             NodeKind::BreakStatement => self.break_statement(),
             NodeKind::ContinueStatement => self.continue_statement(),
             NodeKind::DeferStatement { statement } => self.defer_statement(statement),
+            NodeKind::DeleteStatement { expression } => self.delete_statement(expression),
             NodeKind::IfStatement {
                 expression,
                 scoped_statement,
@@ -353,7 +355,7 @@ impl CodeGenerator {
             NodeKind::Binary { left, op, right } => {
                 self.binary(left, op, right, node_type, EmitterKind::Body)
             }
-            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, EmitterKind::Body),
+            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type, EmitterKind::Body),
             NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op, EmitterKind::Body),
             NodeKind::Call {
                 left,
@@ -425,7 +427,7 @@ impl CodeGenerator {
             NodeKind::Binary { left, op, right } => {
                 self.binary(left, op, right, node_type, emitter_kind)
             }
-            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, emitter_kind),
+            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type, emitter_kind),
             NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op, emitter_kind),
             NodeKind::Call {
                 left,
@@ -968,6 +970,22 @@ impl CodeGenerator {
         self.body_emitters.pop_to_bottom();
     }
 
+    fn delete_statement(&mut self, expression: NodeIndex) {
+        let expression_type_kind_id = self.get_typer_node(expression).node_type.as_ref().unwrap().type_kind_id;
+
+        let void_id = self.type_kinds.add_or_get(TypeKind::Void);
+
+        let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
+            param_type_kind_ids: vec![expression_type_kind_id].into(),
+            return_type_kind_id: void_id,
+        });
+
+        self.emit_function_name_string("Free", function_type_kind_id, true, EmitterKind::Body);
+        self.emit("(", EmitterKind::Body);
+        self.gen_node(expression);
+        self.emit(")", EmitterKind::Body)
+    }
+
     fn if_statement(
         &mut self,
         expression: NodeIndex,
@@ -1231,19 +1249,82 @@ impl CodeGenerator {
         }
     }
 
-    fn unary_prefix(&mut self, op: Op, right: NodeIndex, emitter_kind: EmitterKind) {
-        self.emit(
-            match op {
-                Op::Plus => "+",
-                Op::Minus => "-",
-                Op::Not => "!",
-                Op::Reference => "&",
-                _ => panic!("expected unary prefix operator"),
-            },
-            emitter_kind,
-        );
+    fn unary_prefix(&mut self, op: Op, right: NodeIndex, node_type: Option<Type>, emitter_kind: EmitterKind) {
+        match op {
+            Op::New => {
+                let type_kind_id = node_type.unwrap().type_kind_id;
+                let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
+
+                let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
+                    param_type_kind_ids: vec![dereferenced_type_kind_id].into(),
+                    return_type_kind_id: type_kind_id,
+                });
+
+                self.emit_function_name_string("Alloc", function_type_kind_id, true, emitter_kind);
+                self.emit("(", emitter_kind);
+            }
+            Op::Scope => {
+                let type_kind_id = node_type.unwrap().type_kind_id;
+
+                let scope_result = self.temp_variable_name("scopeResult");
+
+                self.emit_type_kind_left(type_kind_id, EmitterKind::Top, false, true);
+                self.emit(&scope_result, EmitterKind::Top);
+                self.emit_type_kind_right(type_kind_id, EmitterKind::Top, false);
+                self.emitln(";", EmitterKind::Top);
+
+                {
+                    let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
+
+                    let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
+                        param_type_kind_ids: vec![dereferenced_type_kind_id].into(),
+                        return_type_kind_id: type_kind_id,
+                    });
+
+                    self.emit("(", emitter_kind);
+                    self.emit(&scope_result, emitter_kind);
+                    self.emit(" = ", emitter_kind);
+                    self.emit_function_name_string("Alloc", function_type_kind_id, true, emitter_kind);
+                    self.emit("(", emitter_kind);
+                }
+
+                self.body_emitters.push(0);
+                {
+                    let void_id = self.type_kinds.add_or_get(TypeKind::Void);
+
+                    let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
+                        param_type_kind_ids: vec![type_kind_id].into(),
+                        return_type_kind_id: void_id,
+                    });
+
+                    self.emit_function_name_string("Free", function_type_kind_id, true, emitter_kind);
+                    self.emit("(", emitter_kind);
+                    self.emit(&scope_result, emitter_kind);
+                    self.emitln(");", emitter_kind);
+                }
+                self.body_emitters.pop_to_bottom();
+            }
+            _ => {
+                self.emit(
+                    match op {
+                        Op::Plus => "+",
+                        Op::Minus => "-",
+                        Op::Not => "!",
+                        Op::Reference => "&",
+                        _ => panic!("expected unary prefix operator"),
+                    },
+                    emitter_kind,
+                );
+            }
+        }
 
         self.gen_node_with_emitter(right, emitter_kind);
+
+        match op {
+            Op::New => self.emit(")", emitter_kind),
+            Op::Scope => self.emit("))", emitter_kind),
+            _ => {}
+        }
     }
 
     fn unary_suffix(&mut self, left: NodeIndex, op: Op, emitter_kind: EmitterKind) {
@@ -2161,6 +2242,21 @@ impl CodeGenerator {
         emitter_kind: EmitterKind,
     ) {
         self.gen_node_with_emitter(name, emitter_kind);
+
+        if is_generic {
+            self.emit("__", emitter_kind);
+            self.emit_number_backwards(type_kind_id, emitter_kind);
+        }
+    }
+
+    fn emit_function_name_string(
+        &mut self,
+        name: &str,
+        type_kind_id: usize,
+        is_generic: bool,
+        emitter_kind: EmitterKind,
+    ) {
+        self.emit(name, emitter_kind);
 
         if is_generic {
             self.emit("__", emitter_kind);

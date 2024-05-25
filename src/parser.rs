@@ -49,6 +49,8 @@ pub enum Op {
     Or,
     Reference,
     Dereference,
+    New,
+    Scope,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -129,6 +131,9 @@ pub enum NodeKind {
     ContinueStatement,
     DeferStatement {
         statement: NodeIndex,
+    },
+    DeleteStatement {
+        expression: NodeIndex,
     },
     IfStatement {
         expression: NodeIndex,
@@ -966,6 +971,7 @@ impl Parser {
             TokenKind::Break => Some(self.break_statement()),
             TokenKind::Continue => Some(self.continue_statement()),
             TokenKind::Defer => Some(self.defer_statement()),
+            TokenKind::Delete => Some(self.delete_statement()),
             TokenKind::If => Some(self.if_statement()),
             TokenKind::Switch => Some(self.switch_statement()),
             TokenKind::While => Some(self.while_loop()),
@@ -1133,6 +1139,21 @@ impl Parser {
 
         self.add_node(Node {
             kind: NodeKind::DeferStatement { statement },
+            start,
+            end,
+        })
+    }
+
+    fn delete_statement(&mut self) -> NodeIndex {
+        let start = self.token_start();
+        assert_token!(self, TokenKind::Delete, start, self.token_end());
+        self.position += 1;
+
+        let expression = self.expression();
+        let end = self.node_end(expression);
+
+        self.add_node(Node {
+            kind: NodeKind::DeleteStatement { expression },
             start,
             end,
         })
@@ -1342,7 +1363,7 @@ impl Parser {
      *
      * (Nestable, eg. &pointer^)
      * UnarySuffix: .<, .*, [], (), ., as, {}
-     * UnaryPrefix: *, !, ~, +, -
+     * UnaryPrefix: *, !, ~, +, -, new, scope
      *
      * (Chainable, eg. a * b / c)
      * Factor: *, /, %, &, <<, >>
@@ -1573,6 +1594,8 @@ impl Parser {
             TokenKind::Plus => Op::Plus,
             TokenKind::Minus => Op::Minus,
             TokenKind::Asterisk => Op::Reference,
+            TokenKind::New => Op::New,
+            TokenKind::Scope => Op::Scope,
             _ => return self.unary_suffix(),
         };
         self.position += 1;

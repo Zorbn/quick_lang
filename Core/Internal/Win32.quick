@@ -10,7 +10,7 @@ struct SymbolInfo
     value UInt64;
     address UInt64;
     register UInt32;
-    scope UInt32;
+    symbolScope UInt32;
     tag UInt32;
     nameLen UInt32;
     maxNameLen UInt32;

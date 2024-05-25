@@ -1,0 +1,15 @@
+func Main() Int
+{
+    var a = 5;
+    var b = new 5;
+    var c = scope 5;
+
+    if (b.* == a && c.* == a)
+    {
+        Console.WriteLine("Equal!");
+    }
+
+    delete b;
+
+    return 0;
+}

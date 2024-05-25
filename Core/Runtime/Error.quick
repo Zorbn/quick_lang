@@ -63,6 +63,6 @@ func StackTrace(skipCount Int) Void
         lineString.Destroy();
     }
 
-    Free.<Internal.SymbolInfo>(symbol);
-    Free.<Internal.ImageHlpLine64>(line);
+    delete symbol;
+    delete line;
 }

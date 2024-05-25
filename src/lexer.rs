@@ -74,6 +74,9 @@ pub enum TokenKind {
     As,
     Defer,
     Sizeof,
+    New,
+    Delete,
+    Scope,
     True,
     False,
     IntLiteral { text: Arc<str> },
@@ -156,6 +159,9 @@ impl Display for TokenKind {
             TokenKind::As => "as",
             TokenKind::Defer => "defer",
             TokenKind::Sizeof => "sizeof",
+            TokenKind::New => "new",
+            TokenKind::Delete => "delete",
+            TokenKind::Scope => "scope",
             TokenKind::True => "true",
             TokenKind::False => "false",
             TokenKind::IntLiteral { text } => text,
@@ -206,6 +212,9 @@ fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
         keywords.insert(Arc::from("as"), TokenKind::As);
         keywords.insert(Arc::from("defer"), TokenKind::Defer);
         keywords.insert(Arc::from("sizeof"), TokenKind::Sizeof);
+        keywords.insert(Arc::from("new"), TokenKind::New);
+        keywords.insert(Arc::from("delete"), TokenKind::Delete);
+        keywords.insert(Arc::from("scope"), TokenKind::Scope);
         keywords.insert(Arc::from("true"), TokenKind::True);
         keywords.insert(Arc::from("false"), TokenKind::False);
         keywords

@@ -21,7 +21,6 @@
 - Default parameters.
 - `for elem in array {}`
 - Possibly generic type inference, so specifiers aren't required?
-- Maybe new/scope/delete keywords like in Beef?
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.
