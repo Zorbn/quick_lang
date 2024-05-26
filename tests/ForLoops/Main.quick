@@ -1,0 +1,64 @@
+struct Iterator
+{
+    index Int;
+
+    func Next(me *var Iterator) Bool
+    {
+        me.index += 1;
+
+        return me.index <= 10;
+    }
+
+    func GetCurrent(me *val Iterator) Int
+    {
+        return me.index;
+    }
+}
+
+// struct NonIterator
+// {
+//     index Int;
+//
+//     func Next(me *var NonIterator, a Int) Bool
+//     {
+//         me.index += 1;
+//
+//         return me.index <= 10;
+//     }
+//
+//     func GetCurrent(me *val NonIterator) Int
+//     {
+//         return me.index;
+//     }
+// }
+
+func Main() Int
+{
+    var iterator1 = Iterator { index = 0 };
+
+    for (var a in iterator1)
+    {
+        val string = scope String.Create();
+        string.PushSpan("Iterator1: ");
+        string.PushInt(a);
+
+        Console.WriteLine(string.ToSpan());
+    }
+
+    var iterator2 = Iterator { index = 0 };
+
+    Console.WriteLine("");
+
+    while (iterator2.Next())
+    {
+        val a = iterator2.GetCurrent();
+
+        val string = scope String.Create();
+        string.PushSpan("Iterator2: ");
+        string.PushInt(a);
+
+        Console.WriteLine(string.ToSpan());
+    }
+
+    return 0;
+}

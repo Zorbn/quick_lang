@@ -70,6 +70,7 @@ pub enum TokenKind {
     While,
     For,
     Of,
+    In,
     By,
     As,
     Defer,
@@ -155,6 +156,7 @@ impl Display for TokenKind {
             TokenKind::While => "while",
             TokenKind::For => "for",
             TokenKind::Of => "of",
+            TokenKind::In => "in",
             TokenKind::By => "by",
             TokenKind::As => "as",
             TokenKind::Defer => "defer",
@@ -208,6 +210,7 @@ fn keywords() -> &'static HashMap<Arc<str>, TokenKind> {
         keywords.insert(Arc::from("while"), TokenKind::While);
         keywords.insert(Arc::from("for"), TokenKind::For);
         keywords.insert(Arc::from("of"), TokenKind::Of);
+        keywords.insert(Arc::from("in"), TokenKind::In);
         keywords.insert(Arc::from("by"), TokenKind::By);
         keywords.insert(Arc::from("as"), TokenKind::As);
         keywords.insert(Arc::from("defer"), TokenKind::Defer);

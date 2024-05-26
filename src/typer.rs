@@ -1468,6 +1468,12 @@ impl Typer {
         next: Option<NodeIndex>,
     ) -> NodeIndex {
         let typed_expression = self.check_node(expression);
+        let expression_type = assert_typed!(self, typed_expression);
+
+        if self.type_kinds.get_by_id(expression_type.type_kind_id) != TypeKind::Bool {
+            type_error!(self, "if statement expression must be of type bool");
+        }
+
         let typed_scoped_statement = self.check_node(scoped_statement);
         let typed_next = self.check_optional_node(next, None);
 
@@ -1482,6 +1488,8 @@ impl Typer {
         )
     }
 
+    // TODO: Make sure the type of the expression is switchable.
+    // TODO: Make sure the expression and all case statement expressions have the same type.
     fn switch_statement(&mut self, expression: NodeIndex, case_statement: NodeIndex) -> NodeIndex {
         let typed_expression = self.check_node(expression);
         let typed_case_statement = self.check_node(case_statement);
@@ -1519,6 +1527,11 @@ impl Typer {
 
     fn while_loop(&mut self, expression: NodeIndex, scoped_statement: NodeIndex) -> NodeIndex {
         let typed_expression = self.check_node(expression);
+        let expression_type = assert_typed!(self, typed_expression);
+
+        if self.type_kinds.get_by_id(expression_type.type_kind_id) != TypeKind::Bool {
+            type_error!(self, "while loop expression must be of type bool");
+        }
 
         self.loop_stack += 1;
         let typed_scoped_statement = self.check_node(scoped_statement);

@@ -25,6 +25,7 @@
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.
+- D language creator talked about "poisoning" nodes that have errors, basically ignore errors from nodes that have children with errors to prevent error cascades. Maybe look into this?
 
 #### Cleanup
 - Refer to TODOs in source files.

@@ -1299,6 +1299,7 @@ impl Parser {
         })
     }
 
+    // TODO: It should be possible to specify type in for, eg. "for (var a Int of 0 < 10)"
     fn for_loop(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::For, start, self.token_end());
@@ -1321,54 +1322,222 @@ impl Parser {
 
         let iterator = self.name();
 
-        assert_token!(self, TokenKind::Of, start, self.token_end());
-        self.position += 1;
+        // TODO: Refactor into multiple functions:
+        if *self.token_kind() == TokenKind::In {
+            // _ iterable = ...
+            // while (iterable.Next())
+            // {
+            //     _ iterator = iterable.GetCurrent();
+            //     *scoped statement goes here*
+            // }
 
-        let from = self.term();
-
-        let op = match *self.token_kind() {
-            TokenKind::Less => Op::Less,
-            TokenKind::LessEqual => Op::LessEqual,
-            TokenKind::Greater => Op::Greater,
-            TokenKind::GreaterEqual => Op::GreaterEqual,
-            _ => parse_error!(
-                self,
-                "expected comparison operator",
-                start,
-                self.token_end()
-            ),
-        };
-        self.position += 1;
-
-        let to = self.term();
-
-        let mut by = None;
-
-        if *self.token_kind() == TokenKind::By {
             self.position += 1;
 
-            by = Some(self.term());
+            let iterable_expression = self.expression();
+
+            let header_end = self.token_end();
+            assert_token!(self, TokenKind::RParen, start, header_end);
+            self.position += 1;
+
+            let scoped_statement = self.scoped_statement();
+            let end = self.node_end(scoped_statement);
+
+            // TODO: Make some functions to ease desugaring.
+            // TODO: Make type errors for desugared nodes replaceable with a custom error (eg. "expected an iterable in for-in loop")
+            // TODO: Maybe move desugaring to be part of type checking to allow new/delete/scope to be desugared,
+            // and for for-in to support calling on certain non-iterables (Arrays and things with .GetIterable())
+            let scoped_statement_statement = self.add_node(Node {
+                kind: NodeKind::Statement { inner: Some(scoped_statement) },
+                start,
+                end: header_end,
+            });
+
+            // TODO: Make sure iterable name doesn't collide. Use similar method to code_generator.
+            let iterable_name = self.add_node(Node {
+                kind: NodeKind::Name {
+                    text: "__iterable".into(),
+                },
+                start,
+                end: header_end,
+            });
+
+            let iterable = self.add_node(Node {
+                kind: NodeKind::Identifier {
+                    name: iterable_name,
+                },
+                start,
+                end: header_end,
+            });
+
+            let iterable_declaration = self.add_node(Node {
+                kind: NodeKind::VariableDeclaration {
+                    declaration_kind: DeclarationKind::Var,
+                    name: iterable_name,
+                    type_name: None,
+                    expression: Some(iterable_expression),
+                    is_shallow: false,
+                },
+                start,
+                end: header_end,
+            });
+
+            let iterable_declaration_statement = self.add_node(Node {
+                kind: NodeKind::Statement { inner: Some(iterable_declaration) },
+                start,
+                end: header_end,
+            });
+
+            // TODO: Reuse arcs that are always the same. eg, the one for this name.
+            let next = self.add_node(Node {
+                kind: NodeKind::Name {
+                    text: "Next".into(),
+                },
+                start,
+                end: header_end,
+            });
+
+            let next_access = self.add_node(Node {
+                kind: NodeKind::FieldAccess {
+                    left: iterable,
+                    name: next,
+                },
+                start,
+                end: header_end,
+            });
+
+            let next_call = self.add_node(Node {
+                kind: NodeKind::Call {
+                    left: next_access,
+                    args: vec![].into(),
+                    method_kind: MethodKind::Unknown,
+                },
+                start,
+                end: header_end,
+            });
+
+            // TODO: Reuse arcs that are always the same. eg, the one for this name.
+            let get_current = self.add_node(Node {
+                kind: NodeKind::Name {
+                    text: "GetCurrent".into(),
+                },
+                start,
+                end: header_end,
+            });
+
+            let get_current_access = self.add_node(Node {
+                kind: NodeKind::FieldAccess {
+                    left: iterable,
+                    name: get_current,
+                },
+                start,
+                end: header_end,
+            });
+
+            let get_current_call = self.add_node(Node {
+                kind: NodeKind::Call {
+                    left: get_current_access,
+                    args: vec![].into(),
+                    method_kind: MethodKind::Unknown,
+                },
+                start,
+                end: header_end,
+            });
+
+            let iterator_declaration = self.add_node(Node {
+                kind: NodeKind::VariableDeclaration {
+                    declaration_kind: DeclarationKind::Var,
+                    name: iterator,
+                    type_name: None,
+                    expression: Some(get_current_call),
+                    is_shallow: false,
+                },
+                start,
+                end: header_end,
+            });
+
+            let iterator_declaration_statement = self.add_node(Node {
+                kind: NodeKind::Statement { inner: Some(iterator_declaration) },
+                start,
+                end: header_end,
+            });
+
+            let inner_loop_block = self.add_node(Node {
+                kind: NodeKind::Block { statements: vec![iterator_declaration_statement, scoped_statement_statement].into() },
+                start,
+                end: header_end,
+            });
+
+            let while_loop = self.add_node(Node {
+                kind: NodeKind::WhileLoop {
+                    expression: next_call,
+                    scoped_statement: inner_loop_block,
+                },
+                start,
+                end,
+            });
+
+            let while_loop_statement = self.add_node(Node {
+                kind: NodeKind::Statement { inner: Some(while_loop) },
+                start,
+                end: header_end,
+            });
+
+            self.add_node(Node {
+                kind: NodeKind::Block { statements: vec![iterable_declaration_statement, while_loop_statement].into() },
+                start,
+                end,
+            })
+        } else if *self.token_kind() == TokenKind::Of {
+            self.position += 1;
+
+            let from = self.term();
+
+            let op = match *self.token_kind() {
+                TokenKind::Less => Op::Less,
+                TokenKind::LessEqual => Op::LessEqual,
+                TokenKind::Greater => Op::Greater,
+                TokenKind::GreaterEqual => Op::GreaterEqual,
+                _ => parse_error!(
+                    self,
+                    "expected comparison operator",
+                    start,
+                    self.token_end()
+                ),
+            };
+            self.position += 1;
+
+            let to = self.term();
+
+            let mut by = None;
+
+            if *self.token_kind() == TokenKind::By {
+                self.position += 1;
+
+                by = Some(self.term());
+            }
+
+            assert_token!(self, TokenKind::RParen, start, self.token_end());
+            self.position += 1;
+
+            let scoped_statement = self.scoped_statement();
+            let end = self.node_end(scoped_statement);
+
+            self.add_node(Node {
+                kind: NodeKind::ForLoop {
+                    declaration_kind,
+                    iterator,
+                    op,
+                    from,
+                    to,
+                    by,
+                    scoped_statement,
+                },
+                start,
+                end,
+            })
+        } else {
+            parse_error!(self, "expected of or in keyword in for loop", start, self.token_end());
         }
-
-        assert_token!(self, TokenKind::RParen, start, self.token_end());
-        self.position += 1;
-
-        let scoped_statement = self.scoped_statement();
-        let end = self.node_end(scoped_statement);
-
-        self.add_node(Node {
-            kind: NodeKind::ForLoop {
-                declaration_kind,
-                iterator,
-                op,
-                from,
-                to,
-                by,
-                scoped_statement,
-            },
-            start,
-            end,
-        })
     }
 
     /*
