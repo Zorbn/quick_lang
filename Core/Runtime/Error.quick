@@ -51,7 +51,7 @@ func StackTrace(skipCount Int) Void
             break;
         }
 
-        var lineString = String.Create();
+        var lineString = scope String.Create();
         lineString.PushCString(symbol.name as *val Char);
         lineString.PushSpan(" > ");
         lineString.PushCString(line.fileName);
@@ -59,8 +59,6 @@ func StackTrace(skipCount Int) Void
         lineString.PushUInt32(line.lineNumber);
 
         Console.WriteLine(lineString.ToSpan());
-
-        lineString.Destroy();
     }
 
     delete symbol;

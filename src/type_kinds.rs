@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
-    assert_matches, namespace::{Definition, Identifier, Namespace, NamespaceLookupResult}, parser::{MethodKind, NodeIndex, NodeKind}, typer::{InstanceKind, Type, TypedNode}
+    assert_matches,
+    namespace::{Definition, Identifier, Namespace, NamespaceLookupResult},
+    parser::{MethodKind, NodeIndex, NodeKind},
+    typer::{InstanceKind, Type, TypedNode},
 };
 
 #[derive(Debug, PartialEq)]
@@ -237,8 +240,7 @@ impl TypeKinds {
         }
 
         if let TypeKind::Pointer {
-            inner_type_kind_id,
-            ..
+            inner_type_kind_id, ..
         } = self.get_by_id(instance_type.type_kind_id)
         {
             if self.is_assignment_valid(param_type_kind_id, inner_type_kind_id) {
@@ -249,24 +251,37 @@ impl TypeKinds {
         None
     }
 
-    pub fn is_destructor_call_valid(&mut self, instance_type: Type, namespaces: &[Namespace]) -> Option<MethodKind> {
-        let (dereferenced_type_kind_id, _) = self.dereference_type_kind_id(instance_type.type_kind_id);
+    pub fn is_destructor_call_valid(
+        &mut self,
+        instance_type: Type,
+        namespaces: &[Namespace],
+    ) -> Option<MethodKind> {
+        let (dereferenced_type_kind_id, _) =
+            self.dereference_type_kind_id(instance_type.type_kind_id);
 
-        let TypeKind::Struct { namespace_id, .. } = self.get_by_id(dereferenced_type_kind_id) else {
+        let TypeKind::Struct { namespace_id, .. } = self.get_by_id(dereferenced_type_kind_id)
+        else {
             return None;
         };
 
         let namespace = &namespaces[namespace_id];
 
-        let NamespaceLookupResult::Definition(Definition::Function { type_kind_id, .. }) = namespace.lookup(&Identifier::new(self.destructor_name.clone())) else {
+        let NamespaceLookupResult::Definition(Definition::Function { type_kind_id, .. }) =
+            namespace.lookup(&Identifier::new(self.destructor_name.clone()))
+        else {
             return None;
         };
 
-        let TypeKind::Function { param_type_kind_ids, return_type_kind_id } = self.get_by_id(type_kind_id) else {
+        let TypeKind::Function {
+            param_type_kind_ids,
+            return_type_kind_id,
+        } = self.get_by_id(type_kind_id)
+        else {
             return None;
         };
 
-        if param_type_kind_ids.len() != 1 || return_type_kind_id != self.add_or_get(TypeKind::Void) {
+        if param_type_kind_ids.len() != 1 || return_type_kind_id != self.add_or_get(TypeKind::Void)
+        {
             return None;
         }
 

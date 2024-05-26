@@ -1,4 +1,8 @@
-use std::{fs, io, path::PathBuf, process::{Command, Output}};
+use std::{
+    fs, io,
+    path::PathBuf,
+    process::{Command, Output},
+};
 
 use crate::clean_project;
 
@@ -73,11 +77,7 @@ fn test_project(exe_path: &str, project_path: &str, core_path: &str, is_expected
     };
 
     if output != expected_output {
-        let output_ending = if output.ends_with('\n') {
-            ""
-        } else {
-            "\n"
-        };
+        let output_ending = if output.ends_with('\n') { "" } else { "\n" };
 
         print!(
             "Project \"{}\" had unexpected output:\n{}{}",

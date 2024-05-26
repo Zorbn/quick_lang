@@ -1303,7 +1303,9 @@ impl Typer {
             if typed_expression.is_some() || declaration_kind == DeclarationKind::Const {
                 let expression_type = assert_typed!(self, typed_expression.unwrap());
 
-                if !self.type_kinds.is_assignment_valid(variable_type.type_kind_id, expression_type.type_kind_id)
+                if !self
+                    .type_kinds
+                    .is_assignment_valid(variable_type.type_kind_id, expression_type.type_kind_id)
                 {
                     type_error!(self, "mismatched types in variable declaration");
                 }
@@ -1428,8 +1430,10 @@ impl Typer {
         }
 
         let TypeKind::Pointer {
-            inner_type_kind_id: dereferenced_type_kind_id, is_inner_mutable,
-        } = self.type_kinds.get_by_id(expression_type.type_kind_id) else {
+            inner_type_kind_id: dereferenced_type_kind_id,
+            is_inner_mutable,
+        } = self.type_kinds.get_by_id(expression_type.type_kind_id)
+        else {
             type_error!(self, "only pointers can be deleted");
         };
 
@@ -1437,16 +1441,20 @@ impl Typer {
             type_error!(self, "only pointers to vars can be deleted");
         }
 
-        self.lookup_identifier(Identifier {
-            name: self.free_name.clone(),
-            generic_arg_type_kind_ids: Some(vec![dereferenced_type_kind_id].into()) },
+        self.lookup_identifier(
+            Identifier {
+                name: self.free_name.clone(),
+                generic_arg_type_kind_ids: Some(vec![dereferenced_type_kind_id].into()),
+            },
             LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
             LookupKind::All,
             None,
         );
 
         self.add_node(
-            NodeKind::DeleteStatement { expression: typed_expression },
+            NodeKind::DeleteStatement {
+                expression: typed_expression,
+            },
             None,
             None,
         )
@@ -1685,7 +1693,10 @@ impl Typer {
                 type_error!(self, "only vars can be assigned to");
             }
 
-            if !self.type_kinds.is_assignment_valid(left_type.type_kind_id, right_type.type_kind_id) {
+            if !self
+                .type_kinds
+                .is_assignment_valid(left_type.type_kind_id, right_type.type_kind_id)
+            {
                 type_error!(self, "type mismatch");
             }
         } else if left_type.type_kind_id != right_type.type_kind_id {
@@ -1888,9 +1899,11 @@ impl Typer {
                 )
             }
             Op::New => {
-                self.lookup_identifier(Identifier {
-                    name: self.alloc_name.clone(),
-                    generic_arg_type_kind_ids: Some(vec![right_type.type_kind_id].into()) },
+                self.lookup_identifier(
+                    Identifier {
+                        name: self.alloc_name.clone(),
+                        generic_arg_type_kind_ids: Some(vec![right_type.type_kind_id].into()),
+                    },
                     LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
                     LookupKind::All,
                     None,
@@ -1911,9 +1924,11 @@ impl Typer {
                 )
             }
             Op::Scope => {
-                self.lookup_identifier(Identifier {
-                    name: self.alloc_into_name.clone(),
-                    generic_arg_type_kind_ids: Some(vec![right_type.type_kind_id].into()) },
+                self.lookup_identifier(
+                    Identifier {
+                        name: self.alloc_into_name.clone(),
+                        generic_arg_type_kind_ids: Some(vec![right_type.type_kind_id].into()),
+                    },
                     LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
                     LookupKind::All,
                     None,
@@ -2053,8 +2068,9 @@ impl Typer {
                     type_error!(self, "static methods cannot be called on instances");
                 }
 
-                let Some(validated_method_kind) =
-                    self.type_kinds.is_method_call_valid(param_type_kind_ids[0], left_type)
+                let Some(validated_method_kind) = self
+                    .type_kinds
+                    .is_method_call_valid(param_type_kind_ids[0], left_type)
                 else {
                     type_error!(
                         self,
@@ -2082,7 +2098,10 @@ impl Typer {
 
             let arg_type = assert_typed!(self, typed_arg);
 
-            if !self.type_kinds.is_assignment_valid(*param_type_kind_id, arg_type.type_kind_id) {
+            if !self
+                .type_kinds
+                .is_assignment_valid(*param_type_kind_id, arg_type.type_kind_id)
+            {
                 type_error_at_parser_node!(self, "incorrect argument type", *arg);
             }
         }
@@ -2700,7 +2719,9 @@ impl Typer {
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                if !self.type_kinds.is_assignment_valid(expected_type_kind_id, field_literal_type.type_kind_id)
+                if !self
+                    .type_kinds
+                    .is_assignment_valid(expected_type_kind_id, field_literal_type.type_kind_id)
                 {
                     type_error_at_parser_node!(self, "incorrect field type", field_literals[0]);
                 }

@@ -1,4 +1,9 @@
-use std::{collections::{hash_map::Iter, HashMap}, fmt::Display, hash::Hash, sync::Arc};
+use std::{
+    collections::{hash_map::Iter, HashMap},
+    fmt::Display,
+    hash::Hash,
+    sync::Arc,
+};
 
 use crate::{parser::NodeIndex, typer::Type};
 

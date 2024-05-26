@@ -1570,7 +1570,7 @@ impl Parser {
                     self.position += 1;
 
                     Op::RightShift
-                },
+                }
                 _ => break,
             };
             self.position += 1;
@@ -1711,10 +1711,7 @@ impl Parser {
                     let end = self.node_end(name);
 
                     left = self.add_node(Node {
-                        kind: NodeKind::FieldAccess {
-                            left,
-                            name,
-                        },
+                        kind: NodeKind::FieldAccess { left, name },
                         start,
                         end,
                     });
@@ -1729,10 +1726,7 @@ impl Parser {
                     self.position += 1;
 
                     left = self.add_node(Node {
-                        kind: NodeKind::IndexAccess {
-                            left,
-                            expression,
-                        },
+                        kind: NodeKind::IndexAccess { left, expression },
                         start,
                         end,
                     });

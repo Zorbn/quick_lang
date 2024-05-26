@@ -165,7 +165,10 @@ impl CodeGenerator {
 
         code_generator.emitln("#include <stdint.h>", EmitterKind::Header);
         code_generator.emitln("#include <stdbool.h>", EmitterKind::Header);
-        code_generator.emitln("void Internal__ErrorTrace(char const *message, intptr_t skipCount);", EmitterKind::Header);
+        code_generator.emitln(
+            "void Internal__ErrorTrace(char const *message, intptr_t skipCount);",
+            EmitterKind::Header,
+        );
         code_generator.emitln(
             "void *memmove(void *dst, const void *src, size_t size);",
             EmitterKind::Header,
@@ -355,21 +358,21 @@ impl CodeGenerator {
             NodeKind::Binary { left, op, right } => {
                 self.binary(left, op, right, node_type, EmitterKind::Body)
             }
-            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type, EmitterKind::Body),
+            NodeKind::UnaryPrefix { op, right } => {
+                self.unary_prefix(op, right, node_type, EmitterKind::Body)
+            }
             NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op, EmitterKind::Body),
             NodeKind::Call {
                 left,
                 args,
                 method_kind,
             } => self.call(left, args, method_kind, node_type, EmitterKind::Body),
-            NodeKind::IndexAccess {
-                left,
-                expression,
-            } => self.index_access(left, expression, EmitterKind::Body),
-            NodeKind::FieldAccess {
-                left,
-                name,
-            } => self.field_access(left, name, node_type, EmitterKind::Body),
+            NodeKind::IndexAccess { left, expression } => {
+                self.index_access(left, expression, EmitterKind::Body)
+            }
+            NodeKind::FieldAccess { left, name } => {
+                self.field_access(left, name, node_type, EmitterKind::Body)
+            }
             NodeKind::Cast { left, .. } => self.cast(left, node_type, EmitterKind::Body),
             NodeKind::GenericSpecifier {
                 left,
@@ -427,21 +430,21 @@ impl CodeGenerator {
             NodeKind::Binary { left, op, right } => {
                 self.binary(left, op, right, node_type, emitter_kind)
             }
-            NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, node_type, emitter_kind),
+            NodeKind::UnaryPrefix { op, right } => {
+                self.unary_prefix(op, right, node_type, emitter_kind)
+            }
             NodeKind::UnarySuffix { left, op } => self.unary_suffix(left, op, emitter_kind),
             NodeKind::Call {
                 left,
                 args,
                 method_kind,
             } => self.call(left, args, method_kind, node_type, emitter_kind),
-            NodeKind::IndexAccess {
-                left,
-                expression,
-            } => self.index_access(left, expression, emitter_kind),
-            NodeKind::FieldAccess {
-                left,
-                name,
-            } => self.field_access(left, name, node_type, emitter_kind),
+            NodeKind::IndexAccess { left, expression } => {
+                self.index_access(left, expression, emitter_kind)
+            }
+            NodeKind::FieldAccess { left, name } => {
+                self.field_access(left, name, node_type, emitter_kind)
+            }
             NodeKind::Cast { left, .. } => self.cast(left, node_type, emitter_kind),
             NodeKind::GenericSpecifier {
                 left,
@@ -970,10 +973,19 @@ impl CodeGenerator {
         self.body_emitters.pop_to_bottom();
     }
 
-    fn emit_destructor(&mut self, subject_name: &str, type_kind_id: usize, emitter_kind: EmitterKind, method_kind: MethodKind) {
+    fn emit_destructor(
+        &mut self,
+        subject_name: &str,
+        type_kind_id: usize,
+        emitter_kind: EmitterKind,
+        method_kind: MethodKind,
+    ) {
         let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
 
-        assert_matches!(TypeKind::Struct { namespace_id, .. }, self.type_kinds.get_by_id(dereferenced_type_kind_id));
+        assert_matches!(
+            TypeKind::Struct { namespace_id, .. },
+            self.type_kinds.get_by_id(dereferenced_type_kind_id)
+        );
         self.emit_namespace(namespace_id, emitter_kind);
         self.emit("Destroy(", emitter_kind);
 
@@ -998,7 +1010,10 @@ impl CodeGenerator {
             return_type_kind_id: void_id,
         });
 
-        if let Some(method_kind) = self.type_kinds.is_destructor_call_valid(expression_type, &self.namespaces) {
+        if let Some(method_kind) = self
+            .type_kinds
+            .is_destructor_call_valid(expression_type, &self.namespaces)
+        {
             // We don't want to re-evalutate the expression when we use it
             // multiple times (when calling the destructor, and when freeing).
             let free_subject = self.temp_variable_name("freeSubject");
@@ -1010,7 +1025,12 @@ impl CodeGenerator {
             self.gen_node_with_emitter(expression, EmitterKind::Top);
             self.emitln(";", EmitterKind::Top);
 
-            self.emit_destructor(&free_subject, expression_type_kind_id, EmitterKind::Body, method_kind);
+            self.emit_destructor(
+                &free_subject,
+                expression_type_kind_id,
+                EmitterKind::Body,
+                method_kind,
+            );
 
             self.emit_function_name_string("Free", free_type_kind_id, true, EmitterKind::Body);
             self.emit("(", EmitterKind::Body);
@@ -1287,11 +1307,18 @@ impl CodeGenerator {
         }
     }
 
-    fn unary_prefix(&mut self, op: Op, right: NodeIndex, node_type: Option<Type>, emitter_kind: EmitterKind) {
+    fn unary_prefix(
+        &mut self,
+        op: Op,
+        right: NodeIndex,
+        node_type: Option<Type>,
+        emitter_kind: EmitterKind,
+    ) {
         match op {
             Op::New => {
                 let type_kind_id = node_type.unwrap().type_kind_id;
-                let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
+                let (dereferenced_type_kind_id, _) =
+                    self.type_kinds.dereference_type_kind_id(type_kind_id);
 
                 let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
                     param_type_kind_ids: vec![dereferenced_type_kind_id].into(),
@@ -1305,7 +1332,8 @@ impl CodeGenerator {
                 let node_type = node_type.unwrap();
                 let type_kind_id = node_type.type_kind_id;
 
-                let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
+                let (dereferenced_type_kind_id, _) =
+                    self.type_kinds.dereference_type_kind_id(type_kind_id);
                 let dereferenced_node_type = Type {
                     type_kind_id: dereferenced_type_kind_id,
                     instance_kind: node_type.instance_kind,
@@ -1323,15 +1351,28 @@ impl CodeGenerator {
                 self.emit_type_kind_right(dereferenced_type_kind_id, EmitterKind::Top, false);
                 self.emitln(";", EmitterKind::Top);
 
-                self.emit_function_name_string("AllocInto", function_type_kind_id, true, emitter_kind);
+                self.emit_function_name_string(
+                    "AllocInto",
+                    function_type_kind_id,
+                    true,
+                    emitter_kind,
+                );
                 self.emit("(&", emitter_kind);
                 self.emit(&scope_result, emitter_kind);
                 self.emit(", ", emitter_kind);
 
                 self.body_emitters.push(0);
 
-                if let Some(method_kind) = self.type_kinds.is_destructor_call_valid(dereferenced_node_type, &self.namespaces) {
-                    self.emit_destructor(&scope_result, dereferenced_type_kind_id, EmitterKind::Body, method_kind);
+                if let Some(method_kind) = self
+                    .type_kinds
+                    .is_destructor_call_valid(dereferenced_node_type, &self.namespaces)
+                {
+                    self.emit_destructor(
+                        &scope_result,
+                        dereferenced_type_kind_id,
+                        EmitterKind::Body,
+                        method_kind,
+                    );
                 }
 
                 self.body_emitters.pop_to_bottom();
@@ -1438,12 +1479,7 @@ impl CodeGenerator {
         self.emit(")", emitter_kind);
     }
 
-    fn index_access(
-        &mut self,
-        left: NodeIndex,
-        expression: NodeIndex,
-        emitter_kind: EmitterKind,
-    ) {
+    fn index_access(&mut self, left: NodeIndex, expression: NodeIndex, emitter_kind: EmitterKind) {
         self.gen_node_with_emitter(left, emitter_kind);
         self.emit("[", emitter_kind);
 
@@ -2246,7 +2282,10 @@ impl CodeGenerator {
         self.emitln("if (index < 0 || index >= count) {", EmitterKind::Body);
         self.indent(EmitterKind::Body);
 
-        self.emitln("Internal__ErrorTrace(\"Array access out of bounds!\", 3);", EmitterKind::Body);
+        self.emitln(
+            "Internal__ErrorTrace(\"Array access out of bounds!\", 3);",
+            EmitterKind::Body,
+        );
 
         self.unindent(EmitterKind::Body);
         self.emitln("}", EmitterKind::Body);
@@ -2412,10 +2451,7 @@ impl CodeGenerator {
         self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
         self.emit(" *self", EmitterKind::FunctionPrototype);
         self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, false);
-        self.emitln(
-            ", intptr_t tag);",
-            EmitterKind::FunctionPrototype,
-        );
+        self.emitln(", intptr_t tag);", EmitterKind::FunctionPrototype);
         self.newline(EmitterKind::FunctionPrototype);
 
         self.emit("static inline ", EmitterKind::Body);
@@ -2432,7 +2468,10 @@ impl CodeGenerator {
         self.emitln("if (self->tag != tag) {", EmitterKind::Body);
         self.indent(EmitterKind::Body);
 
-        self.emitln("Internal__ErrorTrace(\"Accessed wrong union variant!\", 3);", EmitterKind::Body);
+        self.emitln(
+            "Internal__ErrorTrace(\"Accessed wrong union variant!\", 3);",
+            EmitterKind::Body,
+        );
 
         self.unindent(EmitterKind::Body);
         self.emitln("}", EmitterKind::Body);
