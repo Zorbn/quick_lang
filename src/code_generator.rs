@@ -353,6 +353,7 @@ impl CodeGenerator {
                 to,
                 by,
                 scoped_statement,
+                ..
             } => self.for_loop(iterator, op, from, to, by, scoped_statement, index),
             NodeKind::ConstExpression { .. } => self.const_expression(node_type, EmitterKind::Body),
             NodeKind::Binary { left, op, right } => {
@@ -1151,8 +1152,17 @@ impl CodeGenerator {
         scoped_statement: NodeIndex,
         index: NodeIndex,
     ) {
-        self.emit("for (intptr_t ", EmitterKind::Body);
+        let type_kind_id = self
+            .get_typer_node(from)
+            .node_type
+            .as_ref()
+            .unwrap()
+            .type_kind_id;
+
+        self.emit("for (", EmitterKind::Body);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, true);
         self.gen_node(iterator);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
         self.emit(" = ", EmitterKind::Body);
         self.gen_node(from);
         self.emit("; ", EmitterKind::Body);

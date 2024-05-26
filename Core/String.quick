@@ -88,7 +88,7 @@ struct String
     {
         me.Reserve(span.count);
 
-        for (i of 0 < span.count)
+        for (val i of 0 < span.count)
         {
             var stringChar = (me.data as UInt + me.count as UInt) as *var Char;
             var spanChar = (span.data as UInt + i as UInt) as *var Char;

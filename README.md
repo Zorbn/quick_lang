@@ -19,8 +19,9 @@
 
 #### Features
 - Default parameters.
-- `for elem in array {}`
+- `for (val elem in array) {}`
 - Possibly generic type inference, so specifiers aren't required?
+- Conditional compilation (#if DEBUG, #if UNSAFE, etc)
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.

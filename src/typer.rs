@@ -763,13 +763,14 @@ impl Typer {
                 scoped_statement,
             } => self.while_loop(expression, scoped_statement),
             NodeKind::ForLoop {
+                declaration_kind,
                 iterator,
                 op,
                 from,
                 to,
                 by,
                 scoped_statement,
-            } => self.for_loop(iterator, op, from, to, by, scoped_statement),
+            } => self.for_loop(declaration_kind, iterator, op, from, to, by, scoped_statement),
             NodeKind::ConstExpression { inner } => self.const_expression(inner, None),
             NodeKind::Binary { left, op, right } => self.binary(left, op, right, None),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, None),
@@ -1533,8 +1534,10 @@ impl Typer {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn for_loop(
         &mut self,
+        declaration_kind: DeclarationKind,
         iterator: NodeIndex,
         op: Op,
         from: NodeIndex,
@@ -1609,9 +1612,15 @@ impl Typer {
             self.get_typer_node(typed_iterator).node_kind.clone()
         );
 
+        let iterator_instance_kind = if declaration_kind == DeclarationKind::Var {
+            InstanceKind::Var
+        } else {
+            InstanceKind::Val
+        };
+
         let node_type = Type {
             type_kind_id: from_type.type_kind_id,
-            instance_kind: InstanceKind::Var,
+            instance_kind: iterator_instance_kind,
         };
         self.scope_environment
             .insert(iterator_text, node_type.clone());
@@ -1622,6 +1631,7 @@ impl Typer {
 
         self.add_node(
             NodeKind::ForLoop {
+                declaration_kind,
                 iterator: typed_iterator,
                 op,
                 from: typed_from,

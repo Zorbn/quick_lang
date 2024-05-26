@@ -232,7 +232,7 @@ func Main(argc Int, argv *val *val Char) Int
         x = 3;
     }
 
-    for (i of -10 < 10)
+    for (val i of -10 < 10)
     {
         defer Puts("defer in loop1");
         defer Puts("defer in loop2");
@@ -250,7 +250,7 @@ func Main(argc Int, argv *val *val Char) Int
         break;
     }
 
-    for (i of zero() <= 10)
+    for (val i of zero() <= 10)
     {
         defer Puts("defer in loop");
 
@@ -263,17 +263,17 @@ func Main(argc Int, argv *val *val Char) Int
         return 0;
     }
 
-    for (i of 10 >= 0 by -1)
+    for (val i of 10 >= 0 by -1)
     {
 
     }
 
-    for (i of 10 >= 0 by -1)
+    for (val i of 10 >= 0 by -1)
     {
 
     }
 
-    for (default of 10.0 >= 0.0 by -1.0);
+    for (val default of 10.0 >= 0.0 by -1.0);
 
     val si = 1;
     switch (si)

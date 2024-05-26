@@ -29,7 +29,7 @@ func StackTrace(skipCount Int) Void
 
     var skipCountU16 = skipCount as UInt16;
 
-    for (i of skipCountU16 < frameCount)
+    for (val i of skipCountU16 < frameCount)
     {
         result = Internal.SymFromAddr(process, stack[i] as UInt64, 0 as *var UInt64, symbol);
 

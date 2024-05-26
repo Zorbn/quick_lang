@@ -155,6 +155,7 @@ pub enum NodeKind {
         scoped_statement: NodeIndex,
     },
     ForLoop {
+        declaration_kind: DeclarationKind,
         iterator: NodeIndex,
         op: Op,
         from: NodeIndex,
@@ -1306,6 +1307,18 @@ impl Parser {
         assert_token!(self, TokenKind::LParen, start, self.token_end());
         self.position += 1;
 
+        let declaration_kind = match self.token_kind() {
+            TokenKind::Var => DeclarationKind::Var,
+            TokenKind::Val => DeclarationKind::Val,
+            _ => parse_error!(
+                self,
+                "expected var or val keyword in declaration",
+                start,
+                self.token_end()
+            ),
+        };
+        self.position += 1;
+
         let iterator = self.name();
 
         assert_token!(self, TokenKind::Of, start, self.token_end());
@@ -1345,6 +1358,7 @@ impl Parser {
 
         self.add_node(Node {
             kind: NodeKind::ForLoop {
+                declaration_kind,
                 iterator,
                 op,
                 from,
