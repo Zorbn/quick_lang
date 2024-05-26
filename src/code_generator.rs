@@ -970,20 +970,58 @@ impl CodeGenerator {
         self.body_emitters.pop_to_bottom();
     }
 
+    fn emit_destructor(&mut self, subject_name: &str, type_kind_id: usize, emitter_kind: EmitterKind, method_kind: MethodKind) {
+        let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
+
+        assert_matches!(TypeKind::Struct { namespace_id, .. }, self.type_kinds.get_by_id(dereferenced_type_kind_id));
+        self.emit_namespace(namespace_id, emitter_kind);
+        self.emit("Destroy(", emitter_kind);
+
+        match method_kind {
+            MethodKind::ByReference => self.emit("&", emitter_kind),
+            MethodKind::ByDereference => self.emit("*", emitter_kind),
+            _ => {}
+        }
+
+        self.emit(subject_name, emitter_kind);
+        self.emitln(");", emitter_kind);
+    }
+
     fn delete_statement(&mut self, expression: NodeIndex) {
-        let expression_type_kind_id = self.get_typer_node(expression).node_type.as_ref().unwrap().type_kind_id;
+        let expression_type = self.get_typer_node(expression).node_type.clone().unwrap();
+        let expression_type_kind_id = expression_type.type_kind_id;
 
         let void_id = self.type_kinds.add_or_get(TypeKind::Void);
 
-        let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
+        let free_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
             param_type_kind_ids: vec![expression_type_kind_id].into(),
             return_type_kind_id: void_id,
         });
 
-        self.emit_function_name_string("Free", function_type_kind_id, true, EmitterKind::Body);
-        self.emit("(", EmitterKind::Body);
-        self.gen_node(expression);
-        self.emit(")", EmitterKind::Body)
+        if let Some(method_kind) = self.type_kinds.is_destructor_call_valid(expression_type, &self.namespaces) {
+            // We don't want to re-evalutate the expression when we use it
+            // multiple times (when calling the destructor, and when freeing).
+            let free_subject = self.temp_variable_name("freeSubject");
+
+            self.emit_type_kind_left(expression_type_kind_id, EmitterKind::Top, false, true);
+            self.emit(&free_subject, EmitterKind::Top);
+            self.emit_type_kind_right(expression_type_kind_id, EmitterKind::Top, false);
+            self.emitln(" = ", EmitterKind::Top);
+            self.gen_node_with_emitter(expression, EmitterKind::Top);
+            self.emitln(";", EmitterKind::Top);
+
+            self.emit_destructor(&free_subject, expression_type_kind_id, EmitterKind::Body, method_kind);
+
+            self.emit_function_name_string("Free", free_type_kind_id, true, EmitterKind::Body);
+            self.emit("(", EmitterKind::Body);
+            self.emit(&free_subject, EmitterKind::Body);
+            self.emit(")", EmitterKind::Body);
+        } else {
+            self.emit_function_name_string("Free", free_type_kind_id, true, EmitterKind::Body);
+            self.emit("(", EmitterKind::Body);
+            self.gen_node(expression);
+            self.emit(")", EmitterKind::Body);
+        }
     }
 
     fn if_statement(
@@ -1264,44 +1302,38 @@ impl CodeGenerator {
                 self.emit("(", emitter_kind);
             }
             Op::Scope => {
-                let type_kind_id = node_type.unwrap().type_kind_id;
+                let node_type = node_type.unwrap();
+                let type_kind_id = node_type.type_kind_id;
+
+                let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
+                let dereferenced_node_type = Type {
+                    type_kind_id: dereferenced_type_kind_id,
+                    instance_kind: node_type.instance_kind,
+                };
+
+                let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
+                    param_type_kind_ids: vec![type_kind_id, dereferenced_type_kind_id].into(),
+                    return_type_kind_id: type_kind_id,
+                });
 
                 let scope_result = self.temp_variable_name("scopeResult");
 
-                self.emit_type_kind_left(type_kind_id, EmitterKind::Top, false, true);
+                self.emit_type_kind_left(dereferenced_type_kind_id, EmitterKind::Top, false, true);
                 self.emit(&scope_result, EmitterKind::Top);
-                self.emit_type_kind_right(type_kind_id, EmitterKind::Top, false);
+                self.emit_type_kind_right(dereferenced_type_kind_id, EmitterKind::Top, false);
                 self.emitln(";", EmitterKind::Top);
 
-                {
-                    let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
-
-                    let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
-                        param_type_kind_ids: vec![dereferenced_type_kind_id].into(),
-                        return_type_kind_id: type_kind_id,
-                    });
-
-                    self.emit("(", emitter_kind);
-                    self.emit(&scope_result, emitter_kind);
-                    self.emit(" = ", emitter_kind);
-                    self.emit_function_name_string("Alloc", function_type_kind_id, true, emitter_kind);
-                    self.emit("(", emitter_kind);
-                }
+                self.emit_function_name_string("AllocInto", function_type_kind_id, true, emitter_kind);
+                self.emit("(&", emitter_kind);
+                self.emit(&scope_result, emitter_kind);
+                self.emit(", ", emitter_kind);
 
                 self.body_emitters.push(0);
-                {
-                    let void_id = self.type_kinds.add_or_get(TypeKind::Void);
 
-                    let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
-                        param_type_kind_ids: vec![type_kind_id].into(),
-                        return_type_kind_id: void_id,
-                    });
-
-                    self.emit_function_name_string("Free", function_type_kind_id, true, emitter_kind);
-                    self.emit("(", emitter_kind);
-                    self.emit(&scope_result, emitter_kind);
-                    self.emitln(");", emitter_kind);
+                if let Some(method_kind) = self.type_kinds.is_destructor_call_valid(dereferenced_node_type, &self.namespaces) {
+                    self.emit_destructor(&scope_result, dereferenced_type_kind_id, EmitterKind::Body, method_kind);
                 }
+
                 self.body_emitters.pop_to_bottom();
             }
             _ => {
@@ -1322,7 +1354,7 @@ impl CodeGenerator {
 
         match op {
             Op::New => self.emit(")", emitter_kind),
-            Op::Scope => self.emit("))", emitter_kind),
+            Op::Scope => self.emit(")", emitter_kind),
             _ => {}
         }
     }
@@ -1364,8 +1396,10 @@ impl CodeGenerator {
                 self.get_typer_node(caller).node_kind
             );
 
-            if method_kind == MethodKind::ByReference {
-                self.emit("&", emitter_kind);
+            match method_kind {
+                MethodKind::ByReference => self.emit("&", emitter_kind),
+                MethodKind::ByDereference => self.emit("*", emitter_kind),
+                _ => {}
             }
 
             self.gen_node_with_emitter(left, emitter_kind);

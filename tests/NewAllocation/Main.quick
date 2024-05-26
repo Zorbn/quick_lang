@@ -1,8 +1,17 @@
+struct Destructable
+{
+    func Destroy(me *val Destructable) Void
+    {
+        Console.WriteLine("Destroyed!");
+    }
+}
+
 func Main() Int
 {
     var a = 5;
     var b = new 5;
     var c = scope 5;
+    var d = scope Destructable {};
 
     if (b.* == a && c.* == a)
     {
@@ -10,6 +19,12 @@ func Main() Int
     }
 
     delete b;
+
+    var string = scope String.Create();
+    string.PushSpan("Hello world! ");
+    string.PushFloat32(1.346);
+
+    Console.WriteLine(string.ToSpan());
 
     return 0;
 }

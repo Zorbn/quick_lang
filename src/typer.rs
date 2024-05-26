@@ -127,6 +127,7 @@ pub struct Typer {
     pub span_char_type_kind_id: usize,
     span_char_identifier: Option<Identifier>,
     alloc_name: Arc<str>,
+    alloc_into_name: Arc<str>,
     free_name: Arc<str>,
 
     scope_type_kind_environment: Environment<Identifier, usize>,
@@ -152,6 +153,7 @@ impl Typer {
             span_char_type_kind_id: 0,
             span_char_identifier: None,
             alloc_name: "Alloc".into(),
+            alloc_into_name: "AllocInto".into(),
             free_name: "Free".into(),
             main_function_declaration: None,
             error_count: 0,
@@ -1301,8 +1303,7 @@ impl Typer {
             if typed_expression.is_some() || declaration_kind == DeclarationKind::Const {
                 let expression_type = assert_typed!(self, typed_expression.unwrap());
 
-                if !self
-                    .is_assignment_valid(variable_type.type_kind_id, expression_type.type_kind_id)
+                if !self.type_kinds.is_assignment_valid(variable_type.type_kind_id, expression_type.type_kind_id)
                 {
                     type_error!(self, "mismatched types in variable declaration");
                 }
@@ -1684,7 +1685,7 @@ impl Typer {
                 type_error!(self, "only vars can be assigned to");
             }
 
-            if !self.is_assignment_valid(left_type.type_kind_id, right_type.type_kind_id) {
+            if !self.type_kinds.is_assignment_valid(left_type.type_kind_id, right_type.type_kind_id) {
                 type_error!(self, "type mismatch");
             }
         } else if left_type.type_kind_id != right_type.type_kind_id {
@@ -1911,15 +1912,7 @@ impl Typer {
             }
             Op::Scope => {
                 self.lookup_identifier(Identifier {
-                    name: self.alloc_name.clone(),
-                    generic_arg_type_kind_ids: Some(vec![right_type.type_kind_id].into()) },
-                    LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
-                    LookupKind::All,
-                    None,
-                );
-
-                self.lookup_identifier(Identifier {
-                    name: self.free_name.clone(),
+                    name: self.alloc_into_name.clone(),
                     generic_arg_type_kind_ids: Some(vec![right_type.type_kind_id].into()) },
                     LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
                     LookupKind::All,
@@ -2061,7 +2054,7 @@ impl Typer {
                 }
 
                 let Some(validated_method_kind) =
-                    self.is_method_call_valid(param_type_kind_ids[0], left_type)
+                    self.type_kinds.is_method_call_valid(param_type_kind_ids[0], left_type)
                 else {
                     type_error!(
                         self,
@@ -2089,7 +2082,7 @@ impl Typer {
 
             let arg_type = assert_typed!(self, typed_arg);
 
-            if !self.is_assignment_valid(*param_type_kind_id, arg_type.type_kind_id) {
+            if !self.type_kinds.is_assignment_valid(*param_type_kind_id, arg_type.type_kind_id) {
                 type_error_at_parser_node!(self, "incorrect argument type", *arg);
             }
         }
@@ -2707,7 +2700,7 @@ impl Typer {
 
                 let field_literal_type = assert_typed!(self, typed_field_literal);
 
-                if !self.is_assignment_valid(expected_type_kind_id, field_literal_type.type_kind_id)
+                if !self.type_kinds.is_assignment_valid(expected_type_kind_id, field_literal_type.type_kind_id)
                 {
                     type_error_at_parser_node!(self, "incorrect field type", field_literals[0]);
                 }
@@ -2748,7 +2741,7 @@ impl Typer {
                     type_error_at_parser_node!(self, "incorrect field name", *field);
                 }
 
-                if !self.is_assignment_valid(
+                if !self.type_kinds.is_assignment_valid(
                     expected_field.type_kind_id,
                     field_literal_type.type_kind_id,
                 ) {
@@ -3826,72 +3819,5 @@ impl Typer {
             self.get_parser_node(index).kind,
             NodeKind::IntLiteral { .. } | NodeKind::FloatLiteral { .. }
         )
-    }
-
-    fn is_assignment_valid(&self, to_type_kind_id: usize, from_type_kind_id: usize) -> bool {
-        if to_type_kind_id == from_type_kind_id {
-            return true;
-        }
-
-        match self.type_kinds.get_by_id(to_type_kind_id) {
-            TypeKind::Array {
-                element_type_kind_id: to_element_type_kind_id,
-                element_count: to_element_count,
-            } => {
-                let TypeKind::Array {
-                    element_type_kind_id: from_element_type_kind_id,
-                    element_count: from_element_count,
-                } = self.type_kinds.get_by_id(from_type_kind_id)
-                else {
-                    return false;
-                };
-
-                from_element_count == to_element_count
-                    && self.is_assignment_valid(to_element_type_kind_id, from_element_type_kind_id)
-            }
-            // It's possible to assign either a val or var pointer to a val pointer, because assigning a var pointer to a val pointer
-            // just reduces the number of things you can do with the type, it doesn't let you modify immutable values like going the other direction would.
-            TypeKind::Pointer {
-                inner_type_kind_id: to_inner_type_kind_id,
-                is_inner_mutable: false,
-            } => {
-                let TypeKind::Pointer {
-                    inner_type_kind_id: from_inner_type_kind_id,
-                    ..
-                } = self.type_kinds.get_by_id(from_type_kind_id)
-                else {
-                    return false;
-                };
-
-                from_inner_type_kind_id == to_inner_type_kind_id
-            }
-            _ => false,
-        }
-    }
-
-    fn is_method_call_valid(
-        &self,
-        param_type_kind_id: usize,
-        instance_type: Type,
-    ) -> Option<MethodKind> {
-        if self.is_assignment_valid(param_type_kind_id, instance_type.type_kind_id) {
-            return Some(MethodKind::ByValue);
-        }
-
-        if let TypeKind::Pointer {
-            inner_type_kind_id,
-            is_inner_mutable,
-        } = self.type_kinds.get_by_id(param_type_kind_id)
-        {
-            if is_inner_mutable && instance_type.instance_kind != InstanceKind::Var {
-                return None;
-            }
-
-            if self.is_assignment_valid(inner_type_kind_id, instance_type.type_kind_id) {
-                return Some(MethodKind::ByReference);
-            }
-        }
-
-        None
     }
 }

@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    assert_matches,
-    parser::{NodeIndex, NodeKind},
-    typer::TypedNode,
+    assert_matches, namespace::{Definition, Identifier, Namespace, NamespaceLookupResult}, parser::{MethodKind, NodeIndex, NodeKind}, typer::{InstanceKind, Type, TypedNode}
 };
 
 #[derive(Debug, PartialEq)]
@@ -120,12 +118,14 @@ impl TypeKind {
 #[derive(Clone)]
 pub struct TypeKinds {
     type_kinds: Vec<TypeKind>,
+    destructor_name: Arc<str>,
 }
 
 impl TypeKinds {
     pub fn new() -> Self {
         Self {
             type_kinds: Vec::new(),
+            destructor_name: "Destroy".into(),
         }
     }
 
@@ -170,5 +170,106 @@ impl TypeKinds {
         } else {
             (type_kind_id, false)
         }
+    }
+
+    pub fn is_assignment_valid(&self, to_type_kind_id: usize, from_type_kind_id: usize) -> bool {
+        if to_type_kind_id == from_type_kind_id {
+            return true;
+        }
+
+        match self.get_by_id(to_type_kind_id) {
+            TypeKind::Array {
+                element_type_kind_id: to_element_type_kind_id,
+                element_count: to_element_count,
+            } => {
+                let TypeKind::Array {
+                    element_type_kind_id: from_element_type_kind_id,
+                    element_count: from_element_count,
+                } = self.get_by_id(from_type_kind_id)
+                else {
+                    return false;
+                };
+
+                from_element_count == to_element_count
+                    && self.is_assignment_valid(to_element_type_kind_id, from_element_type_kind_id)
+            }
+            // It's possible to assign either a val or var pointer to a val pointer, because assigning a var pointer to a val pointer
+            // just reduces the number of things you can do with the type, it doesn't let you modify immutable values like going the other direction would.
+            TypeKind::Pointer {
+                inner_type_kind_id: to_inner_type_kind_id,
+                is_inner_mutable: false,
+            } => {
+                let TypeKind::Pointer {
+                    inner_type_kind_id: from_inner_type_kind_id,
+                    ..
+                } = self.get_by_id(from_type_kind_id)
+                else {
+                    return false;
+                };
+
+                from_inner_type_kind_id == to_inner_type_kind_id
+            }
+            _ => false,
+        }
+    }
+
+    pub fn is_method_call_valid(
+        &self,
+        param_type_kind_id: usize,
+        instance_type: Type,
+    ) -> Option<MethodKind> {
+        if self.is_assignment_valid(param_type_kind_id, instance_type.type_kind_id) {
+            return Some(MethodKind::ByValue);
+        }
+
+        if let TypeKind::Pointer {
+            inner_type_kind_id,
+            is_inner_mutable,
+        } = self.get_by_id(param_type_kind_id)
+        {
+            if is_inner_mutable && instance_type.instance_kind != InstanceKind::Var {
+                return None;
+            }
+
+            if self.is_assignment_valid(inner_type_kind_id, instance_type.type_kind_id) {
+                return Some(MethodKind::ByReference);
+            }
+        }
+
+        if let TypeKind::Pointer {
+            inner_type_kind_id,
+            ..
+        } = self.get_by_id(instance_type.type_kind_id)
+        {
+            if self.is_assignment_valid(param_type_kind_id, inner_type_kind_id) {
+                return Some(MethodKind::ByDereference);
+            }
+        }
+
+        None
+    }
+
+    pub fn is_destructor_call_valid(&mut self, instance_type: Type, namespaces: &[Namespace]) -> Option<MethodKind> {
+        let (dereferenced_type_kind_id, _) = self.dereference_type_kind_id(instance_type.type_kind_id);
+
+        let TypeKind::Struct { namespace_id, .. } = self.get_by_id(dereferenced_type_kind_id) else {
+            return None;
+        };
+
+        let namespace = &namespaces[namespace_id];
+
+        let NamespaceLookupResult::Definition(Definition::Function { type_kind_id, .. }) = namespace.lookup(&Identifier::new(self.destructor_name.clone())) else {
+            return None;
+        };
+
+        let TypeKind::Function { param_type_kind_ids, return_type_kind_id } = self.get_by_id(type_kind_id) else {
+            return None;
+        };
+
+        if param_type_kind_ids.len() != 1 || return_type_kind_id != self.add_or_get(TypeKind::Void) {
+            return None;
+        }
+
+        self.is_method_call_valid(param_type_kind_ids[0], instance_type)
     }
 }

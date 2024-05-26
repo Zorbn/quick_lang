@@ -1,0 +1,48 @@
+struct MyStruct
+{
+    func MethodByValue(me MyStruct) Void
+    {
+        Console.WriteLine("ByValue");
+    }
+
+    func MethodByReference(me *var MyStruct) Void
+    {
+        Console.WriteLine("ByReference");
+    }
+
+    func MethodByValReference(me *val MyStruct) Void
+    {
+        Console.WriteLine("ByValReference");
+    }
+}
+
+func Main() Int
+{
+    /*
+        Methods can be on instances of structs that have the correct level of mutability.
+        If an instance needs to be referenced/dereferenced, the method call will do this
+        automatically as long as no more than 1 reference/dereference is required.
+    */
+
+    {
+        var varStruct = MyStruct {};
+        varStruct.MethodByReference();
+        varStruct.MethodByValue();
+
+        var valStruct = MyStruct {};
+        valStruct.MethodByValReference();
+        valStruct.MethodByValue();
+    }
+
+    {
+        var varStruct = scope MyStruct {};
+        varStruct.MethodByReference();
+        varStruct.MethodByValue();
+
+        var valStruct = scope MyStruct {};
+        valStruct.MethodByValReference();
+        valStruct.MethodByValue();
+    }
+
+    return 0;
+}

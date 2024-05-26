@@ -6,6 +6,13 @@ func Alloc.<T>(value T) *var T
     return pointer;
 }
 
+func AllocInto.<T>(destination *var T, value T) *var T
+{
+    destination.* = value;
+
+    return destination;
+}
+
 func Free.<T>(value *var T) Void
 {
     Internal.free(value as *var Void);

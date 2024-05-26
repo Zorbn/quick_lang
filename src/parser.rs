@@ -59,6 +59,7 @@ pub enum MethodKind {
     None,
     ByValue,
     ByReference,
+    ByDereference,
 }
 
 #[derive(Clone, Debug)]

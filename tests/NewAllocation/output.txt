@@ -1,1 +1,3 @@
 Equal!
+Hello world! 1.346000
+Destroyed!
