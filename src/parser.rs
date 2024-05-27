@@ -157,6 +157,7 @@ pub enum NodeKind {
     ForOfLoop {
         declaration_kind: DeclarationKind,
         iterator: NodeIndex,
+        type_name: Option<NodeIndex>,
         op: Op,
         from: NodeIndex,
         to: NodeIndex,
@@ -166,6 +167,7 @@ pub enum NodeKind {
     ForInLoop {
         declaration_kind: DeclarationKind,
         iterator: NodeIndex,
+        type_name: Option<NodeIndex>,
         expression: NodeIndex,
         scoped_statement: NodeIndex,
     },
@@ -311,6 +313,7 @@ macro_rules! parse_error {
 pub struct NodeIndex {
     pub node_index: usize,
     pub file_index: usize,
+    pub is_typed: bool,
 }
 
 pub struct Parser {
@@ -336,6 +339,7 @@ impl Parser {
             start_index: NodeIndex {
                 node_index: 0,
                 file_index: 0,
+                is_typed: false,
             },
             position: 0,
             last_error_position: None,
@@ -427,6 +431,7 @@ impl Parser {
         NodeIndex {
             node_index,
             file_index: self.file_index,
+            is_typed: false,
         }
     }
 
@@ -1305,7 +1310,6 @@ impl Parser {
         })
     }
 
-    // TODO: It should be possible to specify type in for, eg. "for (var a Int of 0 < 10)"
     fn for_loop(&mut self) -> NodeIndex {
         let start = self.token_start();
         assert_token!(self, TokenKind::For, start, self.token_end());
@@ -1328,6 +1332,12 @@ impl Parser {
 
         let iterator = self.name();
 
+        let type_name = if *self.token_kind() != TokenKind::Of && *self.token_kind() != TokenKind::In {
+            Some(self.type_name())
+        } else {
+            None
+        };
+
         if *self.token_kind() == TokenKind::In {
             self.position += 1;
 
@@ -1344,6 +1354,7 @@ impl Parser {
                 kind: NodeKind::ForInLoop {
                     declaration_kind,
                     iterator,
+                    type_name,
                     expression: iterable_expression,
                     scoped_statement,
                 },
@@ -1389,6 +1400,7 @@ impl Parser {
                 kind: NodeKind::ForOfLoop {
                     declaration_kind,
                     iterator,
+                    type_name,
                     op,
                     from,
                     to,

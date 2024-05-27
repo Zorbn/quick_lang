@@ -34,6 +34,18 @@ struct Iterable
 
 func Main() Int
 {
+    var sum UInt = 0;
+
+    for (val i UInt of 0 < 10)
+    {
+        sum += i;
+    }
+
+    for (val i UInt in [6, 7, 32])
+    {
+        sum += i;
+    }
+
     for (val i of 0 < "hello".count)
     {
         Console.WriteChar("hello".Get(i));

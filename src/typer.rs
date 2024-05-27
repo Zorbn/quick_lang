@@ -480,6 +480,7 @@ impl Typer {
         NodeIndex {
             node_index,
             file_index: parser_node_index.file_index,
+            is_typed: true,
         }
     }
 
@@ -491,6 +492,7 @@ impl Typer {
         NodeIndex {
             node_index,
             file_index,
+            is_typed: false,
         }
     }
 
@@ -732,6 +734,10 @@ impl Typer {
     }
 
     fn check_node(&mut self, index: NodeIndex) -> NodeIndex {
+        if index.is_typed {
+            return index;
+        }
+
         self.node_index_stack.push(index);
         let file_index = index.file_index;
         let file_namespace_id = self.file_namespace_ids[file_index];
@@ -792,6 +798,7 @@ impl Typer {
             NodeKind::ForOfLoop {
                 declaration_kind,
                 iterator,
+                type_name,
                 op,
                 from,
                 to,
@@ -800,6 +807,7 @@ impl Typer {
             } => self.for_of_loop(
                 declaration_kind,
                 iterator,
+                type_name,
                 op,
                 from,
                 to,
@@ -809,9 +817,10 @@ impl Typer {
             NodeKind::ForInLoop {
                 declaration_kind,
                 iterator,
+                type_name,
                 expression,
                 scoped_statement,
-            } => self.for_in_loop(declaration_kind, iterator, expression, scoped_statement),
+            } => self.for_in_loop(declaration_kind, iterator, type_name, expression, scoped_statement),
             NodeKind::ConstExpression { inner } => self.const_expression(inner, None),
             NodeKind::Binary { left, op, right } => self.binary(left, op, right, None),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, None),
@@ -830,7 +839,7 @@ impl Typer {
             NodeKind::ArrayLiteral {
                 elements,
                 repeat_count_const_expression,
-            } => self.array_literal(elements, repeat_count_const_expression),
+            } => self.array_literal(elements, repeat_count_const_expression, None),
             NodeKind::StructLiteral {
                 left,
                 field_literals,
@@ -926,6 +935,10 @@ impl Typer {
         generic_arg_type_kind_ids: Option<Arc<Vec<usize>>>,
         namespace_id: usize,
     ) -> Option<NodeIndex> {
+        if index.is_typed {
+            return Some(index);
+        }
+
         self.node_index_stack.push(index);
         let file_index = index.file_index;
 
@@ -972,6 +985,10 @@ impl Typer {
     }
 
     fn check_node_with_hint(&mut self, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+        if index.is_typed {
+            return index;
+        }
+
         self.node_index_stack.push(index);
 
         let typed_index = match self.get_parser_node(index).kind.clone() {
@@ -982,6 +999,10 @@ impl Typer {
             NodeKind::FieldLiteral { name, expression } => {
                 self.field_literal(name, expression, hint)
             }
+            NodeKind::ArrayLiteral {
+                elements,
+                repeat_count_const_expression,
+            } => self.array_literal(elements, repeat_count_const_expression, hint),
             NodeKind::TypeSize { type_name } => self.type_size(type_name, hint),
             NodeKind::Block { statements } => self.block(statements, hint),
             NodeKind::Statement { inner } => self.statement(inner, hint),
@@ -996,6 +1017,10 @@ impl Typer {
     }
 
     fn check_node_with_namespace(&mut self, index: NodeIndex, namespace_id: usize) -> NodeIndex {
+        if index.is_typed {
+            return index;
+        }
+
         self.node_index_stack.push(index);
         let file_index = index.file_index;
 
@@ -1050,6 +1075,10 @@ impl Typer {
     }
 
     fn check_const_node(&mut self, index: NodeIndex, hint: Option<usize>) -> NodeIndex {
+        if index.is_typed {
+            return index;
+        }
+
         self.node_index_stack.push(index);
 
         let typed_index = match self.get_parser_node(index).kind.clone() {
@@ -1595,6 +1624,7 @@ impl Typer {
         &mut self,
         declaration_kind: DeclarationKind,
         iterator: NodeIndex,
+        type_name: Option<NodeIndex>,
         op: Op,
         from: NodeIndex,
         to: NodeIndex,
@@ -1603,7 +1633,17 @@ impl Typer {
     ) -> NodeIndex {
         let typed_iterator = self.check_node(iterator);
 
-        let (typed_from, typed_to, typed_by) = if self.is_node_numeric_literal(from)
+        let (typed_type_name, typed_from, typed_to, typed_by) = if let Some(type_name) = type_name {
+            // The user specified a type name, so work off of that one.
+            let typed_type_name = self.check_node(type_name);
+            let type_name_type = assert_typed!(self, typed_type_name);
+
+            let typed_from = self.check_node_with_hint(from, Some(type_name_type.type_kind_id));
+            let typed_to = self.check_node_with_hint(to, Some(type_name_type.type_kind_id));
+            let typed_by = self.check_optional_node(by, Some(type_name_type.type_kind_id));
+
+            (Some(typed_type_name), typed_from, typed_to, typed_by)
+        } else if self.is_node_numeric_literal(from)
             && self.is_node_numeric_literal(to)
             && by.is_some()
         {
@@ -1614,7 +1654,7 @@ impl Typer {
             let typed_from = self.check_node_with_hint(from, Some(by_type.type_kind_id));
             let typed_to = self.check_node_with_hint(to, Some(by_type.type_kind_id));
 
-            (typed_from, typed_to, Some(typed_by))
+            (None, typed_from, typed_to, Some(typed_by))
         } else if self.is_node_numeric_literal(from) {
             // "from" is a literal, so we will hint "to" in an attempt to get a hint to pass to "from"
             let typed_to = self.check_node(to);
@@ -1623,7 +1663,7 @@ impl Typer {
             let typed_from = self.check_node_with_hint(from, Some(to_type.type_kind_id));
             let typed_by = self.check_optional_node(by, Some(to_type.type_kind_id));
 
-            (typed_from, typed_to, typed_by)
+            (None, typed_from, typed_to, typed_by)
         } else {
             // Check "from" first, and use it's type as a hint for the others.
             let typed_from = self.check_node(from);
@@ -1632,7 +1672,7 @@ impl Typer {
             let typed_to = self.check_node_with_hint(to, Some(from_type.type_kind_id));
             let typed_by = self.check_optional_node(by, Some(from_type.type_kind_id));
 
-            (typed_from, typed_to, typed_by)
+            (None, typed_from, typed_to, typed_by)
         };
 
         let from_type = assert_typed!(self, typed_from);
@@ -1647,6 +1687,14 @@ impl Typer {
 
             if by_type.type_kind_id != from_type.type_kind_id {
                 type_error!(self, "type mismatch between for loop increment and bounds");
+            }
+        }
+
+        if let Some(typed_type_name) = typed_type_name {
+            let type_name_type = assert_typed!(self, typed_type_name);
+
+            if type_name_type.type_kind_id != from_type.type_kind_id {
+                type_error!(self, "type mismatch between for loop iterator and bounds");
             }
         }
 
@@ -1689,6 +1737,7 @@ impl Typer {
             NodeKind::ForOfLoop {
                 declaration_kind,
                 iterator: typed_iterator,
+                type_name: typed_type_name,
                 op,
                 from: typed_from,
                 to: typed_to,
@@ -1704,7 +1753,7 @@ impl Typer {
         &mut self,
         declaration_kind: DeclarationKind,
         iterator: NodeIndex,
-        expression: NodeIndex,
+        typed_expression: NodeIndex,
         scoped_statement: NodeIndex,
     ) -> NodeIndex {
         // var iterable = ...
@@ -1746,7 +1795,7 @@ impl Typer {
                 declaration_kind: DeclarationKind::Var,
                 name: iterable_name,
                 type_name: None,
-                expression: Some(expression),
+                expression: Some(typed_expression),
                 is_shallow: false,
             },
             start,
@@ -1840,6 +1889,7 @@ impl Typer {
             kind: NodeKind::ForOfLoop {
                 declaration_kind: DeclarationKind::Val,
                 iterator: i_name,
+                type_name: None,
                 op: Op::Less,
                 from,
                 to,
@@ -1873,9 +1923,10 @@ impl Typer {
         &mut self,
         declaration_kind: DeclarationKind,
         iterator: NodeIndex,
+        type_name_type_kind_id: Option<usize>,
         expression: NodeIndex,
+        typed_expression: NodeIndex,
         scoped_statement: NodeIndex,
-        expression_type: Type,
     ) -> NodeIndex {
         // var iterable = ...
         // while (iterable.Next())
@@ -1883,6 +1934,11 @@ impl Typer {
         //     _ iterator = iterable.GetCurrent();
         //     *scoped statement goes here*
         // }
+
+        let mut expression_type = assert_typed!(self, typed_expression);
+
+        // The expression will always be stored in iterable_declaration, which is a var.
+        expression_type.instance_kind = InstanceKind::Var;
 
         let Node { start, end, .. } = *self.get_current_parser_node();
 
@@ -1916,7 +1972,7 @@ impl Typer {
                 declaration_kind: DeclarationKind::Var,
                 name: iterable_name,
                 type_name: None,
-                expression: Some(expression),
+                expression: Some(typed_expression),
                 is_shallow: false,
             },
             start,
@@ -1981,7 +2037,11 @@ impl Typer {
             type_error_at_parser_node!(self, "expression is not iterable, GetCurrent method must take the iterable as its only argument", expression);
         }
 
-        // TODO: Once for loop iterator variables can have an explicit type, make sure the type matches the return type of GetCurrent.
+        if let Some(type_name_type_kind_id) = type_name_type_kind_id {
+            if type_name_type_kind_id != get_current_return_type_kind_id {
+                type_error_at_parser_node!(self, "expression's type does not match the iterator's type", expression);
+            }
+        }
 
         let next_text = self.name_generator.reuse("Next");
         let next = self.lower_node(Node {
@@ -2097,11 +2157,20 @@ impl Typer {
         &mut self,
         declaration_kind: DeclarationKind,
         iterator: NodeIndex,
+        type_name: Option<NodeIndex>,
         mut expression: NodeIndex,
         scoped_statement: NodeIndex,
     ) -> NodeIndex {
-        let mut typed_expression = self.check_node(expression);
-        let mut expression_type = assert_typed!(self, typed_expression);
+        let type_name_type_kind_id = if let Some(typed_type_name) = self.check_optional_node(type_name, None) {
+            let type_name_type = assert_typed!(self, typed_type_name);
+
+            Some(type_name_type.type_kind_id)
+        } else {
+            None
+        };
+
+        let mut typed_expression = self.check_node_with_hint(expression, type_name_type_kind_id);
+        let expression_type = assert_typed!(self, typed_expression);
 
         if expression_type.instance_kind == InstanceKind::Name {
             type_error_at_parser_node!(self, "type names are not iterable", expression);
@@ -2112,11 +2181,16 @@ impl Typer {
             ..
         } = self.type_kinds.get_by_id(expression_type.type_kind_id)
         {
-            // TODO: Once for loop iterator variables can have an explicit type, make sure the type matches element_type_kind_id.
+            if let Some(type_name_type_kind_id) = type_name_type_kind_id {
+                if type_name_type_kind_id != element_type_kind_id {
+                    type_error_at_parser_node!(self, "array's element type does not match the iterator's type", expression);
+                }
+            }
+
             return self.for_in_loop_lower_array(
                 declaration_kind,
                 iterator,
-                expression,
+                typed_expression,
                 scoped_statement,
             );
         }
@@ -2167,19 +2241,16 @@ impl Typer {
 
                 expression = get_iterable_call;
                 typed_expression = self.check_node(get_iterable_call);
-                expression_type = assert_typed!(self, typed_expression);
             }
         }
-
-        // The expression will always be stored in iterable_declaration, which is a var.
-        expression_type.instance_kind = InstanceKind::Var;
 
         self.for_in_loop_lower_iterable(
             declaration_kind,
             iterator,
+            type_name_type_kind_id,
             expression,
+            typed_expression,
             scoped_statement,
-            expression_type,
         )
     }
 
@@ -3157,10 +3228,24 @@ impl Typer {
         &mut self,
         elements: Arc<Vec<NodeIndex>>,
         repeat_count_const_expression: Option<NodeIndex>,
+        hint: Option<usize>,
     ) -> NodeIndex {
         let mut typed_elements = Vec::new();
+        let mut element_type: Option<Type> = None;
+
         for element in elements.iter() {
-            typed_elements.push(self.check_node(*element));
+            let typed_element = self.check_node_with_hint(*element, hint);
+            let current_element_type = assert_typed!(self, typed_element);
+
+            if let Some(element_type) = &element_type {
+                if element_type.type_kind_id != current_element_type.type_kind_id {
+                    type_error!(self, "element type mismatch");
+                }
+            } else {
+                element_type = Some(current_element_type);
+            }
+
+            typed_elements.push(typed_element);
         }
 
         let repeat_count = if let Some(const_expression) = repeat_count_const_expression {
@@ -3176,9 +3261,7 @@ impl Typer {
             1
         };
 
-        let node_type = if let Some(first_element) = elements.first() {
-            let typed_element = self.check_node(*first_element);
-            let element_type = assert_typed!(self, typed_element).clone();
+        let node_type = if let Some(element_type) = element_type {
             let type_kind_id = self.type_kinds.add_or_get(TypeKind::Array {
                 element_type_kind_id: element_type.type_kind_id,
                 element_count: elements.len() * repeat_count,
@@ -3194,6 +3277,7 @@ impl Typer {
 
         let typed_repeat_count_const_expression =
             self.check_optional_node(repeat_count_const_expression, None);
+
         self.add_node(
             NodeKind::ArrayLiteral {
                 elements: Arc::new(typed_elements),
@@ -3542,6 +3626,7 @@ impl Typer {
         self.typed_definitions.push(NodeIndex {
             node_index: 0,
             file_index: 0,
+            is_typed: true,
         });
 
         self.scope_type_kind_environment.pop();

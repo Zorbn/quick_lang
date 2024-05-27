@@ -19,7 +19,6 @@
 
 #### Features
 - Default parameters.
-- `for (val elem in array) {}`
 - Possibly generic type inference, so specifiers aren't required?
 - Conditional compilation (#if DEBUG, #if UNSAFE, etc)
 
