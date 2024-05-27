@@ -1,0 +1,2 @@
+Type error at Main.quick:10:5: mismatched types between switch value and case statement
+Type error at Main.quick:25:5: only numeric types and union tags can be used in a switch statement

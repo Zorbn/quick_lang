@@ -1,0 +1,32 @@
+func Main() Int
+{
+    val a = 5;
+
+    switch (a)
+    case (1)
+    {
+        Console.WriteLine("1");
+    }
+    case (3.0)
+    {
+        Console.WriteLine("3");
+    }
+    case (5)
+    {
+        Console.WriteLine("5");
+    }
+    else
+    {
+        Console.WriteLine("else");
+    }
+
+    val b = "b";
+
+    switch (b)
+    case ("hi")
+    {
+
+    }
+
+    return 0;
+}

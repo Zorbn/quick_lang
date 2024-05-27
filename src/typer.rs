@@ -1560,11 +1560,22 @@ impl Typer {
         )
     }
 
-    // TODO: Make sure the type of the expression is switchable.
-    // TODO: Make sure the expression and all case statement expressions have the same type.
     fn switch_statement(&mut self, expression: NodeIndex, case_statement: NodeIndex) -> NodeIndex {
         let typed_expression = self.check_node(expression);
+        let expression_type = assert_typed!(self, typed_expression);
+        let expression_type_kind = self.type_kinds.get_by_id(expression_type.type_kind_id);
+
         let typed_case_statement = self.check_node(case_statement);
+
+        if !expression_type_kind.is_numeric() && expression_type_kind != TypeKind::Tag {
+            type_error!(self, "only numeric types and union tags can be used in a switch statement");
+        }
+
+        if let Some(case_statement_type) = &self.get_typer_node(typed_case_statement).node_type {
+            if case_statement_type.type_kind_id != expression_type.type_kind_id {
+                type_error!(self, "mismatched types between switch value and case statement");
+            }
+        }
 
         self.add_node(
             NodeKind::SwitchStatement {
@@ -1583,8 +1594,18 @@ impl Typer {
         next: Option<NodeIndex>,
     ) -> NodeIndex {
         let typed_expression = self.check_node(expression);
+        let expression_type = assert_typed!(self, typed_expression);
+
         let typed_scoped_statement = self.check_node(scoped_statement);
         let typed_next = self.check_optional_node(next, None);
+
+        if let Some(typed_next) = typed_next {
+            if let Some(next_type) = &self.get_typer_node(typed_next).node_type {
+                if next_type.type_kind_id != expression_type.type_kind_id {
+                    type_error!(self, "mismatched types between switch value and case statement");
+                }
+            }
+        }
 
         self.add_node(
             NodeKind::CaseStatement {
@@ -1592,7 +1613,7 @@ impl Typer {
                 scoped_statement: typed_scoped_statement,
                 next: typed_next,
             },
-            None,
+            Some(expression_type),
             None,
         )
     }
