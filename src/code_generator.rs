@@ -20,6 +20,7 @@ use crate::{
 enum EmitterKind {
     Header,
     TypePrototype,
+    TypeDefinition,
     FunctionPrototype,
     GlobalVariable,
     Top,
@@ -115,6 +116,7 @@ pub struct CodeGenerator {
 
     pub header_emitter: Emitter,
     pub type_prototype_emitter: Emitter,
+    pub type_definition_emitter: Emitter,
     pub function_prototype_emitter: Emitter,
     pub global_variable_emitter: Emitter,
     pub body_emitters: EmitterStack,
@@ -151,6 +153,7 @@ impl CodeGenerator {
             files,
             header_emitter: Emitter::new(0),
             type_prototype_emitter: Emitter::new(0),
+            type_definition_emitter: Emitter::new(0),
             function_prototype_emitter: Emitter::new(0),
             global_variable_emitter: Emitter::new(0),
             body_emitters: EmitterStack::new(),
@@ -165,6 +168,7 @@ impl CodeGenerator {
 
         code_generator.emitln("#include <stdint.h>", EmitterKind::Header);
         code_generator.emitln("#include <stdbool.h>", EmitterKind::Header);
+        code_generator.newline(EmitterKind::Header);
         code_generator.emitln(
             "void Internal__ErrorTrace(char const *message, intptr_t skipCount);",
             EmitterKind::Header,
@@ -500,73 +504,83 @@ impl CodeGenerator {
 
         self.emit("struct ", EmitterKind::TypePrototype);
         self.emit_struct_name(type_kind_id, EmitterKind::TypePrototype);
+        self.emitln(";", EmitterKind::TypePrototype);
+        self.newline(EmitterKind::TypePrototype);
 
-        self.emit(" ", EmitterKind::TypePrototype);
+        self.emit("struct ", EmitterKind::TypeDefinition);
+        self.emit_struct_name(type_kind_id, EmitterKind::TypeDefinition);
+
+        self.emit(" ", EmitterKind::TypeDefinition);
 
         if is_union {
-            self.emitln("{", EmitterKind::TypePrototype);
-            self.indent(EmitterKind::TypePrototype);
-            self.emitln("intptr_t tag;", EmitterKind::TypePrototype);
-            self.emit("union ", EmitterKind::TypePrototype);
+            self.emitln("{", EmitterKind::TypeDefinition);
+            self.indent(EmitterKind::TypeDefinition);
+            self.emitln("intptr_t tag;", EmitterKind::TypeDefinition);
+            self.emit("union ", EmitterKind::TypeDefinition);
         }
 
-        self.emitln("{", EmitterKind::TypePrototype);
-        self.indent(EmitterKind::TypePrototype);
+        self.emitln("{", EmitterKind::TypeDefinition);
+        self.indent(EmitterKind::TypeDefinition);
 
         if fields.is_empty() {
             // C doesn't allow empty structs.
-            self.emitln("bool placeholder;", EmitterKind::TypePrototype);
+            self.emitln("bool placeholder;", EmitterKind::TypeDefinition);
         }
 
         for field in fields.iter() {
             self.gen_node(*field);
         }
 
-        self.unindent(EmitterKind::TypePrototype);
-        self.emit("}", EmitterKind::TypePrototype);
+        self.unindent(EmitterKind::TypeDefinition);
+        self.emit("}", EmitterKind::TypeDefinition);
 
         if is_union {
-            self.emitln(" variant;", EmitterKind::TypePrototype);
-            self.unindent(EmitterKind::TypePrototype);
-            self.emit("}", EmitterKind::TypePrototype);
+            self.emitln(" variant;", EmitterKind::TypeDefinition);
+            self.unindent(EmitterKind::TypeDefinition);
+            self.emit("}", EmitterKind::TypeDefinition);
         }
 
-        self.emitln(";", EmitterKind::TypePrototype);
-        self.newline(EmitterKind::TypePrototype);
+        self.emitln(";", EmitterKind::TypeDefinition);
+        self.newline(EmitterKind::TypeDefinition);
     }
 
     fn enum_definition(&mut self, name: NodeIndex, variant_names: Arc<Vec<NodeIndex>>) {
         self.emit("enum ", EmitterKind::TypePrototype);
         self.gen_node_with_emitter(name, EmitterKind::TypePrototype);
-        self.emitln(" {", EmitterKind::TypePrototype);
-        self.indent(EmitterKind::TypePrototype);
+        self.emitln(";", EmitterKind::TypePrototype);
+        self.newline(EmitterKind::TypePrototype);
+
+        self.emit("enum ", EmitterKind::TypeDefinition);
+        self.gen_node_with_emitter(name, EmitterKind::TypeDefinition);
+        self.emitln(" {", EmitterKind::TypeDefinition);
+        self.indent(EmitterKind::TypeDefinition);
 
         for variant_name in variant_names.iter() {
-            self.emit("__", EmitterKind::TypePrototype);
-            self.gen_node_with_emitter(name, EmitterKind::TypePrototype);
-            self.gen_node_with_emitter(*variant_name, EmitterKind::TypePrototype);
-            self.emitln(",", EmitterKind::TypePrototype);
+            self.emit("__", EmitterKind::TypeDefinition);
+            self.gen_node_with_emitter(name, EmitterKind::TypeDefinition);
+            self.gen_node_with_emitter(*variant_name, EmitterKind::TypeDefinition);
+            self.emitln(",", EmitterKind::TypeDefinition);
         }
 
-        self.unindent(EmitterKind::TypePrototype);
-        self.emitln("};", EmitterKind::TypePrototype);
-        self.newline(EmitterKind::TypePrototype);
+        self.unindent(EmitterKind::TypeDefinition);
+        self.emitln("};", EmitterKind::TypeDefinition);
+        self.newline(EmitterKind::TypeDefinition);
     }
 
     fn field(&mut self, name: NodeIndex, node_type: Option<Type>) {
         self.emit_type_kind_left(
             node_type.clone().unwrap().type_kind_id,
-            EmitterKind::TypePrototype,
+            EmitterKind::TypeDefinition,
             false,
             true,
         );
-        self.gen_node_with_emitter(name, EmitterKind::TypePrototype);
+        self.gen_node_with_emitter(name, EmitterKind::TypeDefinition);
         self.emit_type_kind_right(
             node_type.unwrap().type_kind_id,
-            EmitterKind::TypePrototype,
+            EmitterKind::TypeDefinition,
             false,
         );
-        self.emitln(";", EmitterKind::TypePrototype);
+        self.emitln(";", EmitterKind::TypeDefinition);
     }
 
     fn function(
@@ -2435,6 +2449,7 @@ impl CodeGenerator {
         match emitter_kind {
             EmitterKind::Header => &mut self.header_emitter,
             EmitterKind::TypePrototype => &mut self.type_prototype_emitter,
+            EmitterKind::TypeDefinition => &mut self.type_definition_emitter,
             EmitterKind::FunctionPrototype => &mut self.function_prototype_emitter,
             EmitterKind::GlobalVariable => &mut self.global_variable_emitter,
             EmitterKind::Top => &mut self.body_emitters.top().top,

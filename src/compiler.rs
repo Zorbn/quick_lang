@@ -214,6 +214,9 @@ fn gen(
             .type_prototype_emitter
             .write(&mut output_file);
         code_generator
+            .type_definition_emitter
+            .write(&mut output_file);
+        code_generator
             .function_prototype_emitter
             .write(&mut output_file);
         code_generator

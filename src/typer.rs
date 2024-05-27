@@ -1703,7 +1703,7 @@ impl Typer {
         &mut self,
         declaration_kind: DeclarationKind,
         iterator: NodeIndex,
-        expression: NodeIndex,
+        mut expression: NodeIndex,
         scoped_statement: NodeIndex,
     ) -> NodeIndex {
         let parser_node = self.get_current_parser_node();
@@ -1711,8 +1711,8 @@ impl Typer {
         let start = parser_node.start;
         let end = parser_node.end;
 
-        let typed_expression = self.check_node(expression);
-        let expression_type = assert_typed!(self, typed_expression);
+        let mut typed_expression = self.check_node(expression);
+        let mut expression_type = assert_typed!(self, typed_expression);
 
         if expression_type.instance_kind == InstanceKind::Name {
             type_error_at_parser_node!(self, "type names are not iterable", expression);
@@ -1725,34 +1725,6 @@ impl Typer {
         let iterable_name = self.lower_node(Node {
             kind: NodeKind::Name {
                 text: "__iterable".into(),
-            },
-            start,
-            end,
-        });
-
-        let iterable = self.lower_node(Node {
-            kind: NodeKind::Identifier {
-                name: iterable_name,
-            },
-            start,
-            end,
-        });
-
-        let iterable_declaration = self.lower_node(Node {
-            kind: NodeKind::VariableDeclaration {
-                declaration_kind: DeclarationKind::Var,
-                name: iterable_name,
-                type_name: None,
-                expression: Some(expression),
-                is_shallow: false,
-            },
-            start,
-            end,
-        });
-
-        let iterable_declaration_statement = self.lower_node(Node {
-            kind: NodeKind::Statement {
-                inner: Some(iterable_declaration),
             },
             start,
             end,
@@ -1771,6 +1743,41 @@ impl Typer {
             ..
         } = self.type_kinds.get_by_id(expression_type.type_kind_id)
         {
+            // var iterable = ...
+            // for (val i of 0 < iterable.count)
+            // {
+            //     _ iterator = iterable[i];
+            //     *scoped statement goes here*
+            // }
+
+            let iterable = self.lower_node(Node {
+                kind: NodeKind::Identifier {
+                    name: iterable_name,
+                },
+                start,
+                end,
+            });
+
+            let iterable_declaration = self.lower_node(Node {
+                kind: NodeKind::VariableDeclaration {
+                    declaration_kind: DeclarationKind::Var,
+                    name: iterable_name,
+                    type_name: None,
+                    expression: Some(expression),
+                    is_shallow: false,
+                },
+                start,
+                end,
+            });
+
+            let iterable_declaration_statement = self.lower_node(Node {
+                kind: NodeKind::Statement {
+                    inner: Some(iterable_declaration),
+                },
+                start,
+                end,
+            });
+
             // TODO: Once for loop iterator variables can have an explicit type, make sure the type matches element_type_kind_id.
 
             // TODO: Make sure iterable name doesn't collide. Use similar method to code_generator.
@@ -1879,7 +1886,69 @@ impl Typer {
             return self.check_node(lowered_for);
         }
 
-        // _ iterable = ...
+        if let Some(TypeKind::Function { param_type_kind_ids, .. }) = self.type_kinds.get_method("GetIterable".into(), expression_type.type_kind_id, &self.namespaces) {
+            if param_type_kind_ids.len() == 1
+                && self
+                    .type_kinds
+                    .is_method_call_valid(param_type_kind_ids[0], &expression_type)
+                    .is_some()
+            {
+                let get_iterable_name = self.lower_node(Node {
+                    kind: NodeKind::Name { text: "GetIterable".into() },
+                    start,
+                    end,
+                });
+
+                let get_iterable_access = self.lower_node(Node {
+                    kind: NodeKind::FieldAccess { left: expression, name: get_iterable_name },
+                    start,
+                    end,
+                });
+
+                let get_iterable_call = self.lower_node(Node {
+                    kind: NodeKind::Call { left: get_iterable_access, args: vec![].into(), method_kind: MethodKind::Unknown },
+                    start,
+                    end,
+                });
+
+                expression = get_iterable_call;
+                typed_expression = self.check_node(get_iterable_call);
+                expression_type = assert_typed!(self, typed_expression);
+            }
+        }
+
+        let iterable = self.lower_node(Node {
+            kind: NodeKind::Identifier {
+                name: iterable_name,
+            },
+            start,
+            end,
+        });
+
+        let iterable_declaration = self.lower_node(Node {
+            kind: NodeKind::VariableDeclaration {
+                declaration_kind: DeclarationKind::Var,
+                name: iterable_name,
+                type_name: None,
+                expression: Some(expression),
+                is_shallow: false,
+            },
+            start,
+            end,
+        });
+
+        let iterable_declaration_statement = self.lower_node(Node {
+            kind: NodeKind::Statement {
+                inner: Some(iterable_declaration),
+            },
+            start,
+            end,
+        });
+
+        // The expression will always be stored in iterable_declaration, which is a var.
+        expression_type.instance_kind = InstanceKind::Var;
+
+        // var iterable = ...
         // while (iterable.Next())
         // {
         //     _ iterator = iterable.GetCurrent();
@@ -1940,8 +2009,6 @@ impl Typer {
         // TODO: Once for loop iterator variables can have an explicit type, make sure the type matches the return type of GetCurrent.
 
         // TODO: Make some functions to ease desugaring.
-        // TODO: Maybe move desugaring to be part of type checking to allow new/delete/scope to be desugared,
-        // and for for-in to support calling on certain non-iterables (Arrays and things with .GetIterable())
 
         // TODO: Reuse arcs that are always the same. eg, the one for this name.
         let next = self.lower_node(Node {
@@ -3401,6 +3468,14 @@ impl Typer {
             })
         }
 
+        // Add a placeholder to typed_definitions and replace it later.
+        // This makes sure structs in the typed_definition list are ordered
+        // in the way they will need to be generated so that struct types will be
+        // defined before they are used as fields. If we do this step after checking
+        // the struct's methods the ordering will be messed up.
+        let typed_definition_index = self.typed_definitions.len();
+        self.typed_definitions.push(NodeIndex { node_index: 0, file_index: 0 });
+
         self.scope_type_kind_environment.pop();
 
         let namespace_id = self.namespaces.len();
@@ -3443,7 +3518,7 @@ impl Typer {
             Some(self.file_namespace_ids[file_index]),
         );
 
-        self.typed_definitions.push(index);
+        self.typed_definitions[typed_definition_index] = index;
 
         index
     }

@@ -27,4 +27,36 @@ struct Span.<T>
 
         return true;
     }
+
+    func GetIterable(me Span.<T>) SpanIterable.<T>
+    {
+        return SpanIterable.<T>.Create(me);
+    }
+}
+
+struct SpanIterable.<T>
+{
+    span Span.<T>;
+    index Int;
+
+    func Create(span Span.<T>) SpanIterable.<T>
+    {
+        return SpanIterable.<T>
+        {
+            span = span,
+            index = -1,
+        };
+    }
+
+    func Next(me *var SpanIterable.<T>) Bool
+    {
+        me.index += 1;
+
+        return me.index < me.span.count;
+    }
+
+    func GetCurrent(me *val SpanIterable.<T>) T
+    {
+        return me.span.Get(me.index);
+    }
 }

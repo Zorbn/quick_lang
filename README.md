@@ -26,6 +26,7 @@
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.
 - D language creator talked about "poisoning" nodes that have errors, basically ignore errors from nodes that have children with errors to prevent error cascades. Maybe look into this?
+- Code used by multiple files (eg. any of the files in Core) will have duplicate errors reported. Maybe instead of immediately reporting, they should be aggregated and printed after all typers have finished, that way duplicates can be removed before printing (eg. if one file has reported an error at a node/location, ignore any future errors for that node/location).
 
 #### Cleanup
 - Refer to TODOs in source files.
