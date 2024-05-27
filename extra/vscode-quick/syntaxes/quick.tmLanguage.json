@@ -51,6 +51,9 @@
 			"include": "#round-brackets"
 		},
 		{
+			"include": "#square-brackets"
+		},
+		{
 			"include": "#punctuation"
 		}
 	],
@@ -207,7 +210,7 @@
 		},
 		"operator": {
 			"name": "keyword.operator.quick",
-			"match": "(!=|==|<=|>=|\\+=|-=|\\*=|\\/=|&&|\\|\\||\\.\\*|\\.<|<<|>>|<<=|>>=|%=|&=|\\^=|\\|=|\\.|\\+|-|\\*|&|\\/|=|<|>|!|\\^|~|%|\\||\\?|\\[|\\])"
+			"match": "(!=|==|<=|>=|\\+=|-=|\\*=|\\/=|&&|\\|\\||\\.\\*|\\.<|<<|>>|<<=|>>=|%=|&=|\\^=|\\|=|\\+|-|\\*|&|\\/|=|<|>|!|\\^|~|%|\\||\\?)"
 		},
 		"curly-brackets": {
 			"name": "punctuation.brackets.curly.quick",
@@ -221,9 +224,9 @@
 			"name": "punctuation.quick",
 			"match": "[;,]"
 		},
-		"angle-brackets": {
-			"name": "punctuation.brackets.angle.quick",
-			"match": "[<>]"
+		"square-brackets": {
+			"name": "punctuation.brackets.square.quick",
+			"match": "[\\[\\]]"
 		}
 	},
 	"scopeName": "source.quick"
