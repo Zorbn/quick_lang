@@ -1,32 +1,32 @@
-struct Iterator
+struct Iterable
 {
     index Int;
 
-    func Next(me *var Iterator) Bool
+    func Next(me *var Iterable) Bool
     {
         me.index += 1;
 
         return me.index <= 10;
     }
 
-    func GetCurrent(me *val Iterator) Int
+    func GetCurrent(me *val Iterable) Int
     {
         return me.index;
     }
 }
 
-// struct NonIterator
+// struct NonIterable
 // {
 //     index Int;
 //
-//     func Next(me *var NonIterator, a Int) Bool
+//     func Next(me *var NonIterable, a Int) Bool
 //     {
 //         me.index += 1;
 //
 //         return me.index <= 10;
 //     }
 //
-//     func GetCurrent(me *val NonIterator) Int
+//     func GetCurrent(me *val NonIterable) Int
 //     {
 //         return me.index;
 //     }
@@ -34,27 +34,34 @@ struct Iterator
 
 func Main() Int
 {
-    var iterator1 = Iterator { index = 0 };
+    for (val string in ["hello", "world", "hi", "ok", "bye"])
+    {
+        Console.WriteLine(string);
+    }
 
-    for (var a in iterator1)
+    Console.WriteLine("");
+
+    var iterable1 = Iterable { index = 0 };
+
+    for (var a in iterable1)
     {
         val string = scope String.Create();
-        string.PushSpan("Iterator1: ");
+        string.PushSpan("Iterable1: ");
         string.PushInt(a);
 
         Console.WriteLine(string.ToSpan());
     }
 
-    var iterator2 = Iterator { index = 0 };
+    var iterable2 = Iterable { index = 0 };
 
     Console.WriteLine("");
 
-    while (iterator2.Next())
+    while (iterable2.Next())
     {
-        val a = iterator2.GetCurrent();
+        val a = iterable2.GetCurrent();
 
         val string = scope String.Create();
-        string.PushSpan("Iterator2: ");
+        string.PushSpan("Iterable2: ");
         string.PushInt(a);
 
         Console.WriteLine(string.ToSpan());

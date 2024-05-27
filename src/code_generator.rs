@@ -346,7 +346,7 @@ impl CodeGenerator {
                 expression,
                 scoped_statement,
             } => self.while_loop(expression, scoped_statement, index),
-            NodeKind::ForLoop {
+            NodeKind::ForOfLoop {
                 iterator,
                 op,
                 from,
@@ -355,6 +355,7 @@ impl CodeGenerator {
                 scoped_statement,
                 ..
             } => self.for_loop(iterator, op, from, to, by, scoped_statement, index),
+            NodeKind::ForInLoop { .. } => panic!("cannot generate for-in loop"),
             NodeKind::ConstExpression { .. } => self.const_expression(node_type, EmitterKind::Body),
             NodeKind::Binary { left, op, right } => {
                 self.binary(left, op, right, node_type, EmitterKind::Body)
@@ -774,7 +775,7 @@ impl CodeGenerator {
                 node_kind: NodeKind::WhileLoop { .. },
                 ..
             } | TypedNode {
-                node_kind: NodeKind::ForLoop { .. },
+                node_kind: NodeKind::ForOfLoop { .. },
                 ..
             } | TypedNode {
                 node_kind: NodeKind::Block { .. },
@@ -1013,7 +1014,7 @@ impl CodeGenerator {
 
         if let Some(method_kind) = self
             .type_kinds
-            .is_destructor_call_valid(expression_type, &self.namespaces)
+            .is_destructor_call_valid(&expression_type, &self.namespaces)
         {
             // We don't want to re-evalutate the expression when we use it
             // multiple times (when calling the destructor, and when freeing).
@@ -1375,7 +1376,7 @@ impl CodeGenerator {
 
                 if let Some(method_kind) = self
                     .type_kinds
-                    .is_destructor_call_valid(dereferenced_node_type, &self.namespaces)
+                    .is_destructor_call_valid(&dereferenced_node_type, &self.namespaces)
                 {
                     self.emit_destructor(
                         &scope_result,

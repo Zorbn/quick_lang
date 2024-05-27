@@ -219,8 +219,12 @@ impl TypeKinds {
     pub fn is_method_call_valid(
         &self,
         param_type_kind_id: usize,
-        instance_type: Type,
+        instance_type: &Type,
     ) -> Option<MethodKind> {
+        if instance_type.instance_kind == InstanceKind::Name {
+            return None;
+        }
+
         if self.is_assignment_valid(param_type_kind_id, instance_type.type_kind_id) {
             return Some(MethodKind::ByValue);
         }
@@ -251,13 +255,8 @@ impl TypeKinds {
         None
     }
 
-    pub fn is_destructor_call_valid(
-        &mut self,
-        instance_type: Type,
-        namespaces: &[Namespace],
-    ) -> Option<MethodKind> {
-        let (dereferenced_type_kind_id, _) =
-            self.dereference_type_kind_id(instance_type.type_kind_id);
+    pub fn get_method(&self, method_name: Arc<str>, type_kind_id: usize, namespaces: &[Namespace]) -> Option<TypeKind> {
+        let (dereferenced_type_kind_id, _) = self.dereference_type_kind_id(type_kind_id);
 
         let TypeKind::Struct { namespace_id, .. } = self.get_by_id(dereferenced_type_kind_id)
         else {
@@ -267,21 +266,34 @@ impl TypeKinds {
         let namespace = &namespaces[namespace_id];
 
         let NamespaceLookupResult::Definition(Definition::Function { type_kind_id, .. }) =
-            namespace.lookup(&Identifier::new(self.destructor_name.clone()))
+            namespace.lookup(&Identifier::new(method_name))
         else {
             return None;
         };
 
-        let TypeKind::Function {
+        let method = self.get_by_id(type_kind_id);
+
+        let TypeKind::Function { .. } = &method else {
+            return None;
+        };
+
+        Some(method)
+    }
+
+    pub fn is_destructor_call_valid(
+        &self,
+        instance_type: &Type,
+        namespaces: &[Namespace],
+    ) -> Option<MethodKind> {
+        let Some(TypeKind::Function {
             param_type_kind_ids,
             return_type_kind_id,
-        } = self.get_by_id(type_kind_id)
+        }) = self.get_method(self.destructor_name.clone(), instance_type.type_kind_id, namespaces)
         else {
             return None;
         };
 
-        if param_type_kind_ids.len() != 1 || return_type_kind_id != self.add_or_get(TypeKind::Void)
-        {
+        if param_type_kind_ids.len() != 1 || self.get_by_id(return_type_kind_id) != TypeKind::Void {
             return None;
         }
 
