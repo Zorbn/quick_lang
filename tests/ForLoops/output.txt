@@ -1,0 +1,35 @@
+hello
+
+h
+e
+l
+l
+o
+
+hello
+world
+hi
+ok
+bye
+
+Iterable1: 1
+Iterable1: 2
+Iterable1: 3
+Iterable1: 4
+Iterable1: 5
+Iterable1: 6
+Iterable1: 7
+Iterable1: 8
+Iterable1: 9
+Iterable1: 10
+
+Iterable2: 1
+Iterable2: 2
+Iterable2: 3
+Iterable2: 4
+Iterable2: 5
+Iterable2: 6
+Iterable2: 7
+Iterable2: 8
+Iterable2: 9
+Iterable2: 10

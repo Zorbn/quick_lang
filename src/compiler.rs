@@ -199,6 +199,7 @@ fn gen(
             typer.span_char_type_kind_id,
             typer.main_function_declaration,
             typer.typed_definitions,
+            typer.name_generator,
             files.clone(),
             is_debug_mode,
             is_unsafe_mode,

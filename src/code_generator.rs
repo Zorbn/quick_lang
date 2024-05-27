@@ -10,6 +10,7 @@ use crate::{
     emitter::Emitter,
     emitter_stack::EmitterStack,
     file_data::FileData,
+    name_generator::NameGenerator,
     namespace::Namespace,
     parser::{DeclarationKind, MethodKind, NodeIndex, NodeKind, Op},
     type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
@@ -112,6 +113,7 @@ pub struct CodeGenerator {
     span_char_type_kind_id: usize,
     main_function_declaration: Option<NodeIndex>,
     typed_definitions: Vec<NodeIndex>,
+    name_generator: NameGenerator,
     files: Arc<Vec<FileData>>,
 
     pub header_emitter: Emitter,
@@ -122,7 +124,6 @@ pub struct CodeGenerator {
     pub body_emitters: EmitterStack,
 
     function_declaration_needing_init: Option<NodeIndex>,
-    temp_variable_count: usize,
     loop_depth_stack: Vec<LoopDepth>,
     switch_depth_stack: Vec<usize>,
     node_index_stack: Vec<NodeIndex>,
@@ -139,6 +140,7 @@ impl CodeGenerator {
         span_char_type_kind_id: usize,
         main_function_declaration: Option<NodeIndex>,
         typed_definitions: Vec<NodeIndex>,
+        name_generator: NameGenerator,
         files: Arc<Vec<FileData>>,
         is_debug_mode: bool,
         is_unsafe_mode: bool,
@@ -150,6 +152,7 @@ impl CodeGenerator {
             span_char_type_kind_id,
             main_function_declaration,
             typed_definitions,
+            name_generator,
             files,
             header_emitter: Emitter::new(0),
             type_prototype_emitter: Emitter::new(0),
@@ -158,7 +161,6 @@ impl CodeGenerator {
             global_variable_emitter: Emitter::new(0),
             body_emitters: EmitterStack::new(),
             function_declaration_needing_init: None,
-            temp_variable_count: 0,
             loop_depth_stack: Vec::new(),
             switch_depth_stack: Vec::new(),
             node_index_stack: Vec::new(),
@@ -922,7 +924,7 @@ impl CodeGenerator {
             TypeKind::Array { .. }
         ) {
             if self.is_typed_expression_array_literal(expression) {
-                let temp_name = self.temp_variable_name("temp");
+                let temp_name = self.name_generator.temp_name("temp");
 
                 self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, true);
                 self.emit(&temp_name, EmitterKind::Body);
@@ -1032,7 +1034,7 @@ impl CodeGenerator {
         {
             // We don't want to re-evalutate the expression when we use it
             // multiple times (when calling the destructor, and when freeing).
-            let free_subject = self.temp_variable_name("freeSubject");
+            let free_subject = self.name_generator.temp_name("freeSubject");
 
             self.emit_type_kind_left(expression_type_kind_id, EmitterKind::Top, false, true);
             self.emit(&free_subject, EmitterKind::Top);
@@ -1369,7 +1371,7 @@ impl CodeGenerator {
                     return_type_kind_id: type_kind_id,
                 });
 
-                let scope_result = self.temp_variable_name("scopeResult");
+                let scope_result = self.name_generator.temp_name("scopeResult");
 
                 self.emit_type_kind_left(dereferenced_type_kind_id, EmitterKind::Top, false, true);
                 self.emit(&scope_result, EmitterKind::Top);
@@ -1492,7 +1494,7 @@ impl CodeGenerator {
                 self.emit(", ", emitter_kind);
             }
 
-            let return_array_name = self.temp_variable_name("returnArray");
+            let return_array_name = self.name_generator.temp_name("returnArray");
 
             self.emit_type_kind_left(type_kind_id, EmitterKind::Top, false, true);
             self.emit(&return_array_name, EmitterKind::Top);
@@ -2455,13 +2457,6 @@ impl CodeGenerator {
             EmitterKind::Top => &mut self.body_emitters.top().top,
             EmitterKind::Body => &mut self.body_emitters.top().body,
         }
-    }
-
-    fn temp_variable_name(&mut self, prefix: &str) -> String {
-        let temp_variable_index = self.temp_variable_count;
-        self.temp_variable_count += 1;
-
-        format!("__{}{}", prefix, temp_variable_index)
     }
 
     fn emit_union_check_tag(&mut self, type_kind_id: usize) {

@@ -234,7 +234,10 @@ impl TypeKinds {
             is_inner_mutable,
         } = self.get_by_id(param_type_kind_id)
         {
-            if is_inner_mutable && instance_type.instance_kind != InstanceKind::Var {
+            if is_inner_mutable
+                && (instance_type.instance_kind != InstanceKind::Var
+                    || instance_type.instance_kind == InstanceKind::Literal)
+            {
                 return None;
             }
 
@@ -255,7 +258,12 @@ impl TypeKinds {
         None
     }
 
-    pub fn get_method(&self, method_name: Arc<str>, type_kind_id: usize, namespaces: &[Namespace]) -> Option<TypeKind> {
+    pub fn get_method(
+        &self,
+        method_name: Arc<str>,
+        type_kind_id: usize,
+        namespaces: &[Namespace],
+    ) -> Option<TypeKind> {
         let (dereferenced_type_kind_id, _) = self.dereference_type_kind_id(type_kind_id);
 
         let TypeKind::Struct { namespace_id, .. } = self.get_by_id(dereferenced_type_kind_id)
@@ -288,7 +296,11 @@ impl TypeKinds {
         let Some(TypeKind::Function {
             param_type_kind_ids,
             return_type_kind_id,
-        }) = self.get_method(self.destructor_name.clone(), instance_type.type_kind_id, namespaces)
+        }) = self.get_method(
+            self.destructor_name.clone(),
+            instance_type.type_kind_id,
+            namespaces,
+        )
         else {
             return None;
         };

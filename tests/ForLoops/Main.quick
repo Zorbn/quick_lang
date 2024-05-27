@@ -34,6 +34,13 @@ struct Iterable
 
 func Main() Int
 {
+    for (val i of 0 < "hello".count)
+    {
+        Console.WriteChar("hello".Get(i));
+    }
+
+    Console.WriteLine("\n");
+
     for (val char in "hello")
     {
         Console.WriteChar(char);
@@ -44,7 +51,12 @@ func Main() Int
 
     for (val string in ["hello", "world", "hi", "ok", "bye"])
     {
-        Console.WriteLine(string);
+        for (val char in string)
+        {
+            Console.WriteChar(char);
+        }
+
+        Console.WriteLine("");
     }
 
     Console.WriteLine("");

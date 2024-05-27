@@ -1340,12 +1340,16 @@ impl Parser {
             let scoped_statement = self.scoped_statement();
             let end = self.node_end(scoped_statement);
 
-            self.add_node(Node { kind: NodeKind::ForInLoop {
-                declaration_kind,
-                iterator,
-                expression: iterable_expression,
-                scoped_statement,
-            }, start, end })
+            self.add_node(Node {
+                kind: NodeKind::ForInLoop {
+                    declaration_kind,
+                    iterator,
+                    expression: iterable_expression,
+                    scoped_statement,
+                },
+                start,
+                end,
+            })
         } else if *self.token_kind() == TokenKind::Of {
             self.position += 1;
 
@@ -1395,7 +1399,12 @@ impl Parser {
                 end,
             })
         } else {
-            parse_error!(self, "expected of or in keyword in for loop", start, self.token_end());
+            parse_error!(
+                self,
+                "expected of or in keyword in for loop",
+                start,
+                self.token_end()
+            );
         }
     }
 

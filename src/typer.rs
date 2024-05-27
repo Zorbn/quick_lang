@@ -5,6 +5,7 @@ use crate::{
     const_value::ConstValue,
     environment::Environment,
     file_data::FileData,
+    name_generator::NameGenerator,
     namespace::{
         Definition, DefinitionIndexError, DefinitionIndices, Identifier, Namespace,
         NamespaceGenericArg, NamespaceLookupResult, DEFINITION_ERROR,
@@ -117,6 +118,7 @@ pub struct Typer {
     pub typed_definitions: Vec<NodeIndex>,
     pub type_kinds: TypeKinds,
     pub main_function_declaration: Option<NodeIndex>,
+    pub name_generator: NameGenerator,
     pub error_count: usize,
 
     file_index: Option<usize>,
@@ -127,9 +129,6 @@ pub struct Typer {
     file_used_namespace_ids: Vec<Vec<usize>>,
     pub span_char_type_kind_id: usize,
     span_char_identifier: Option<Identifier>,
-    alloc_name: Arc<str>,
-    alloc_into_name: Arc<str>,
-    free_name: Arc<str>,
 
     scope_type_kind_environment: Environment<Identifier, usize>,
     scope_environment: Environment<Arc<str>, Type>,
@@ -154,10 +153,8 @@ impl Typer {
             namespaces: Vec::with_capacity(file_count),
             span_char_type_kind_id: 0,
             span_char_identifier: None,
-            alloc_name: "Alloc".into(),
-            alloc_into_name: "AllocInto".into(),
-            free_name: "Free".into(),
             main_function_declaration: None,
+            name_generator: NameGenerator::new(),
             error_count: 0,
 
             file_index: None,
@@ -190,8 +187,12 @@ impl Typer {
     ) {
         let mut file_used_namespace_ids = Vec::new();
 
-        self.namespaces
-            .push(Namespace::new("".into(), None, Vec::new(), None));
+        self.namespaces.push(Namespace::new(
+            self.name_generator.reuse(""),
+            None,
+            Vec::new(),
+            None,
+        ));
 
         self.define_global_primitives();
 
@@ -442,7 +443,7 @@ impl Typer {
         );
 
         self.span_char_identifier = Some(Identifier {
-            name: "Span".into(),
+            name: self.name_generator.reuse("Span"),
             generic_arg_type_kind_ids: Some(Arc::new(vec![char_id])),
         });
     }
@@ -1482,9 +1483,11 @@ impl Typer {
             type_error!(self, "only pointers to vars can be deleted");
         }
 
+        let free_text = self.name_generator.reuse("Free");
+
         self.lookup_identifier(
             Identifier {
-                name: self.free_name.clone(),
+                name: free_text,
                 generic_arg_type_kind_ids: Some(vec![dereferenced_type_kind_id].into()),
             },
             LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
@@ -1697,34 +1700,26 @@ impl Typer {
         )
     }
 
-    // TODO: Split into multiple functions for each lowering.
-    #[allow(clippy::too_many_arguments)]
-    fn for_in_loop(
+    fn for_in_loop_lower_array(
         &mut self,
         declaration_kind: DeclarationKind,
         iterator: NodeIndex,
-        mut expression: NodeIndex,
+        expression: NodeIndex,
         scoped_statement: NodeIndex,
     ) -> NodeIndex {
-        let parser_node = self.get_current_parser_node();
+        // var iterable = ...
+        // for (val i of 0 < iterable.count)
+        // {
+        //     _ iterator = iterable[i];
+        //     *scoped statement goes here*
+        // }
 
-        let start = parser_node.start;
-        let end = parser_node.end;
+        let Node { start, end, .. } = *self.get_current_parser_node();
 
-        let mut typed_expression = self.check_node(expression);
-        let mut expression_type = assert_typed!(self, typed_expression);
-
-        if expression_type.instance_kind == InstanceKind::Name {
-            type_error_at_parser_node!(self, "type names are not iterable", expression);
-        }
-
-        // TODO: Support arrays and structs with .GetIterable().
-        // TODO: Make sure iterable is valid (has functions with correct name and args).
-
-        // TODO: Make sure iterable name doesn't collide. Use similar method to code_generator.
+        let iterable_temp_name = self.name_generator.temp_name("iterable");
         let iterable_name = self.lower_node(Node {
             kind: NodeKind::Name {
-                text: "__iterable".into(),
+                text: iterable_temp_name.into(),
             },
             start,
             end,
@@ -1737,185 +1732,6 @@ impl Typer {
             start,
             end,
         });
-
-        if let TypeKind::Array {
-            element_type_kind_id,
-            ..
-        } = self.type_kinds.get_by_id(expression_type.type_kind_id)
-        {
-            // var iterable = ...
-            // for (val i of 0 < iterable.count)
-            // {
-            //     _ iterator = iterable[i];
-            //     *scoped statement goes here*
-            // }
-
-            let iterable = self.lower_node(Node {
-                kind: NodeKind::Identifier {
-                    name: iterable_name,
-                },
-                start,
-                end,
-            });
-
-            let iterable_declaration = self.lower_node(Node {
-                kind: NodeKind::VariableDeclaration {
-                    declaration_kind: DeclarationKind::Var,
-                    name: iterable_name,
-                    type_name: None,
-                    expression: Some(expression),
-                    is_shallow: false,
-                },
-                start,
-                end,
-            });
-
-            let iterable_declaration_statement = self.lower_node(Node {
-                kind: NodeKind::Statement {
-                    inner: Some(iterable_declaration),
-                },
-                start,
-                end,
-            });
-
-            // TODO: Once for loop iterator variables can have an explicit type, make sure the type matches element_type_kind_id.
-
-            // TODO: Make sure iterable name doesn't collide. Use similar method to code_generator.
-            let i_name = self.lower_node(Node {
-                kind: NodeKind::Name {
-                    text: "__i".into(),
-                },
-                start,
-                end,
-            });
-
-            let i = self.lower_node(Node {
-                kind: NodeKind::Identifier {
-                    name: i_name,
-                },
-                start,
-                end,
-            });
-
-            let array_index_access = self.lower_node(Node {
-                kind: NodeKind::IndexAccess { left: iterable, expression: i },
-                start,
-                end,
-            });
-
-            let from = self.lower_node(Node {
-                kind: NodeKind::IntLiteral {
-                    text: "0".into(),
-                },
-                start,
-                end,
-            });
-
-            let count_name = self.lower_node(Node {
-                kind: NodeKind::Name {
-                    text: "count".into(),
-                },
-                start,
-                end
-            });
-
-            let to = self.lower_node(Node {
-                kind: NodeKind::FieldAccess { left: iterable, name: count_name },
-                start,
-                end,
-            });
-
-            let iterator_declaration = self.lower_node(Node {
-                kind: NodeKind::VariableDeclaration {
-                    declaration_kind,
-                    name: iterator,
-                    type_name: None,
-                    expression: Some(array_index_access),
-                    is_shallow: false,
-                },
-                start,
-                end,
-            });
-
-            let iterator_declaration_statement = self.lower_node(Node {
-                kind: NodeKind::Statement {
-                    inner: Some(iterator_declaration),
-                },
-                start,
-                end,
-            });
-
-            let inner_loop_block = self.lower_node(Node {
-                kind: NodeKind::Block {
-                    statements: vec![iterator_declaration_statement, scoped_statement_statement].into(),
-                },
-                start,
-                end,
-            });
-
-            let for_loop = self.lower_node(Node {
-                kind: NodeKind::ForOfLoop {
-                    declaration_kind: DeclarationKind::Val,
-                    iterator: i_name,
-                    op: Op::Less,
-                    from,
-                    to,
-                    by: None,
-                    scoped_statement: inner_loop_block,
-                },
-                start,
-                end,
-            });
-
-            let for_loop_statement = self.lower_node(Node {
-                kind: NodeKind::Statement {
-                    inner: Some(for_loop),
-                },
-                start,
-                end,
-            });
-
-            let lowered_for = self.lower_node(Node {
-                kind: NodeKind::Block {
-                    statements: vec![iterable_declaration_statement, for_loop_statement].into(),
-                },
-                start,
-                end,
-            });
-
-            return self.check_node(lowered_for);
-        }
-
-        if let Some(TypeKind::Function { param_type_kind_ids, .. }) = self.type_kinds.get_method("GetIterable".into(), expression_type.type_kind_id, &self.namespaces) {
-            if param_type_kind_ids.len() == 1
-                && self
-                    .type_kinds
-                    .is_method_call_valid(param_type_kind_ids[0], &expression_type)
-                    .is_some()
-            {
-                let get_iterable_name = self.lower_node(Node {
-                    kind: NodeKind::Name { text: "GetIterable".into() },
-                    start,
-                    end,
-                });
-
-                let get_iterable_access = self.lower_node(Node {
-                    kind: NodeKind::FieldAccess { left: expression, name: get_iterable_name },
-                    start,
-                    end,
-                });
-
-                let get_iterable_call = self.lower_node(Node {
-                    kind: NodeKind::Call { left: get_iterable_access, args: vec![].into(), method_kind: MethodKind::Unknown },
-                    start,
-                    end,
-                });
-
-                expression = get_iterable_call;
-                typed_expression = self.check_node(get_iterable_call);
-                expression_type = assert_typed!(self, typed_expression);
-            }
-        }
 
         let iterable = self.lower_node(Node {
             kind: NodeKind::Identifier {
@@ -1945,9 +1761,122 @@ impl Typer {
             end,
         });
 
-        // The expression will always be stored in iterable_declaration, which is a var.
-        expression_type.instance_kind = InstanceKind::Var;
+        let i_temp_name = self.name_generator.temp_name("i");
+        let i_name = self.lower_node(Node {
+            kind: NodeKind::Name {
+                text: i_temp_name.into(),
+            },
+            start,
+            end,
+        });
 
+        let i = self.lower_node(Node {
+            kind: NodeKind::Identifier { name: i_name },
+            start,
+            end,
+        });
+
+        let array_index_access = self.lower_node(Node {
+            kind: NodeKind::IndexAccess {
+                left: iterable,
+                expression: i,
+            },
+            start,
+            end,
+        });
+
+        let from_text = self.name_generator.reuse("0");
+        let from = self.lower_node(Node {
+            kind: NodeKind::IntLiteral { text: from_text },
+            start,
+            end,
+        });
+
+        let count_text = self.name_generator.reuse("count");
+        let count_name = self.lower_node(Node {
+            kind: NodeKind::Name { text: count_text },
+            start,
+            end,
+        });
+
+        let to = self.lower_node(Node {
+            kind: NodeKind::FieldAccess {
+                left: iterable,
+                name: count_name,
+            },
+            start,
+            end,
+        });
+
+        let iterator_declaration = self.lower_node(Node {
+            kind: NodeKind::VariableDeclaration {
+                declaration_kind,
+                name: iterator,
+                type_name: None,
+                expression: Some(array_index_access),
+                is_shallow: false,
+            },
+            start,
+            end,
+        });
+
+        let iterator_declaration_statement = self.lower_node(Node {
+            kind: NodeKind::Statement {
+                inner: Some(iterator_declaration),
+            },
+            start,
+            end,
+        });
+
+        let inner_loop_block = self.lower_node(Node {
+            kind: NodeKind::Block {
+                statements: vec![iterator_declaration_statement, scoped_statement_statement].into(),
+            },
+            start,
+            end,
+        });
+
+        let for_loop = self.lower_node(Node {
+            kind: NodeKind::ForOfLoop {
+                declaration_kind: DeclarationKind::Val,
+                iterator: i_name,
+                op: Op::Less,
+                from,
+                to,
+                by: None,
+                scoped_statement: inner_loop_block,
+            },
+            start,
+            end,
+        });
+
+        let for_loop_statement = self.lower_node(Node {
+            kind: NodeKind::Statement {
+                inner: Some(for_loop),
+            },
+            start,
+            end,
+        });
+
+        let lowered_for = self.lower_node(Node {
+            kind: NodeKind::Block {
+                statements: vec![iterable_declaration_statement, for_loop_statement].into(),
+            },
+            start,
+            end,
+        });
+
+        self.check_node(lowered_for)
+    }
+
+    fn for_in_loop_lower_iterable(
+        &mut self,
+        declaration_kind: DeclarationKind,
+        iterator: NodeIndex,
+        expression: NodeIndex,
+        scoped_statement: NodeIndex,
+        expression_type: Type,
+    ) -> NodeIndex {
         // var iterable = ...
         // while (iterable.Next())
         // {
@@ -1955,12 +1884,58 @@ impl Typer {
         //     *scoped statement goes here*
         // }
 
-        // TODO: Reuse arcs that are always the same. eg, the one for this name.
+        let Node { start, end, .. } = *self.get_current_parser_node();
+
+        let iterable_temp_name = self.name_generator.temp_name("iterable");
+        let iterable_name = self.lower_node(Node {
+            kind: NodeKind::Name {
+                text: iterable_temp_name.into(),
+            },
+            start,
+            end,
+        });
+
+        let scoped_statement_statement = self.lower_node(Node {
+            kind: NodeKind::Statement {
+                inner: Some(scoped_statement),
+            },
+            start,
+            end,
+        });
+
+        let iterable = self.lower_node(Node {
+            kind: NodeKind::Identifier {
+                name: iterable_name,
+            },
+            start,
+            end,
+        });
+
+        let iterable_declaration = self.lower_node(Node {
+            kind: NodeKind::VariableDeclaration {
+                declaration_kind: DeclarationKind::Var,
+                name: iterable_name,
+                type_name: None,
+                expression: Some(expression),
+                is_shallow: false,
+            },
+            start,
+            end,
+        });
+
+        let iterable_declaration_statement = self.lower_node(Node {
+            kind: NodeKind::Statement {
+                inner: Some(iterable_declaration),
+            },
+            start,
+            end,
+        });
+
         let Some(TypeKind::Function {
             param_type_kind_ids: next_param_type_kind_ids,
             return_type_kind_id: next_return_type_kind_id,
         }) = self.type_kinds.get_method(
-            "Next".into(),
+            self.name_generator.reuse("Next"),
             expression_type.type_kind_id,
             &self.namespaces,
         )
@@ -1972,7 +1947,7 @@ impl Typer {
             param_type_kind_ids: get_current_param_type_kind_ids,
             return_type_kind_id: get_current_return_type_kind_id,
         }) = self.type_kinds.get_method(
-            "GetCurrent".into(),
+            self.name_generator.reuse("GetCurrent"),
             expression_type.type_kind_id,
             &self.namespaces,
         )
@@ -2008,13 +1983,9 @@ impl Typer {
 
         // TODO: Once for loop iterator variables can have an explicit type, make sure the type matches the return type of GetCurrent.
 
-        // TODO: Make some functions to ease desugaring.
-
-        // TODO: Reuse arcs that are always the same. eg, the one for this name.
+        let next_text = self.name_generator.reuse("Next");
         let next = self.lower_node(Node {
-            kind: NodeKind::Name {
-                text: "Next".into(),
-            },
+            kind: NodeKind::Name { text: next_text },
             start,
             end,
         });
@@ -2038,10 +2009,10 @@ impl Typer {
             end,
         });
 
-        // TODO: Reuse arcs that are always the same. eg, the one for this name.
+        let get_current_text = self.name_generator.reuse("GetCurrent");
         let get_current = self.lower_node(Node {
             kind: NodeKind::Name {
-                text: "GetCurrent".into(),
+                text: get_current_text,
             },
             start,
             end,
@@ -2120,6 +2091,96 @@ impl Typer {
         });
 
         self.check_node(lowered_for)
+    }
+
+    fn for_in_loop(
+        &mut self,
+        declaration_kind: DeclarationKind,
+        iterator: NodeIndex,
+        mut expression: NodeIndex,
+        scoped_statement: NodeIndex,
+    ) -> NodeIndex {
+        let mut typed_expression = self.check_node(expression);
+        let mut expression_type = assert_typed!(self, typed_expression);
+
+        if expression_type.instance_kind == InstanceKind::Name {
+            type_error_at_parser_node!(self, "type names are not iterable", expression);
+        }
+
+        if let TypeKind::Array {
+            element_type_kind_id,
+            ..
+        } = self.type_kinds.get_by_id(expression_type.type_kind_id)
+        {
+            // TODO: Once for loop iterator variables can have an explicit type, make sure the type matches element_type_kind_id.
+            return self.for_in_loop_lower_array(
+                declaration_kind,
+                iterator,
+                expression,
+                scoped_statement,
+            );
+        }
+
+        if let Some(TypeKind::Function {
+            param_type_kind_ids,
+            ..
+        }) = self.type_kinds.get_method(
+            self.name_generator.reuse("GetIterable"),
+            expression_type.type_kind_id,
+            &self.namespaces,
+        ) {
+            if param_type_kind_ids.len() == 1
+                && self
+                    .type_kinds
+                    .is_method_call_valid(param_type_kind_ids[0], &expression_type)
+                    .is_some()
+            {
+                let Node { start, end, .. } = *self.get_current_parser_node();
+
+                let get_iterable_text = self.name_generator.reuse("GetIterable");
+                let get_iterable_name = self.lower_node(Node {
+                    kind: NodeKind::Name {
+                        text: get_iterable_text,
+                    },
+                    start,
+                    end,
+                });
+
+                let get_iterable_access = self.lower_node(Node {
+                    kind: NodeKind::FieldAccess {
+                        left: expression,
+                        name: get_iterable_name,
+                    },
+                    start,
+                    end,
+                });
+
+                let get_iterable_call = self.lower_node(Node {
+                    kind: NodeKind::Call {
+                        left: get_iterable_access,
+                        args: vec![].into(),
+                        method_kind: MethodKind::Unknown,
+                    },
+                    start,
+                    end,
+                });
+
+                expression = get_iterable_call;
+                typed_expression = self.check_node(get_iterable_call);
+                expression_type = assert_typed!(self, typed_expression);
+            }
+        }
+
+        // The expression will always be stored in iterable_declaration, which is a var.
+        expression_type.instance_kind = InstanceKind::Var;
+
+        self.for_in_loop_lower_iterable(
+            declaration_kind,
+            iterator,
+            expression,
+            scoped_statement,
+            expression_type,
+        )
     }
 
     fn const_expression(&mut self, inner: NodeIndex, hint: Option<usize>) -> NodeIndex {
@@ -2387,9 +2448,11 @@ impl Typer {
                 )
             }
             Op::New => {
+                let alloc_text = self.name_generator.reuse("Alloc");
+
                 self.lookup_identifier(
                     Identifier {
-                        name: self.alloc_name.clone(),
+                        name: alloc_text,
                         generic_arg_type_kind_ids: Some(vec![right_type.type_kind_id].into()),
                     },
                     LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
@@ -2412,9 +2475,11 @@ impl Typer {
                 )
             }
             Op::Scope => {
+                let alloc_into_text = self.name_generator.reuse("AllocInto");
+
                 self.lookup_identifier(
                     Identifier {
-                        name: self.alloc_into_name.clone(),
+                        name: alloc_into_text,
                         generic_arg_type_kind_ids: Some(vec![right_type.type_kind_id].into()),
                     },
                     LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
@@ -3474,7 +3539,10 @@ impl Typer {
         // defined before they are used as fields. If we do this step after checking
         // the struct's methods the ordering will be messed up.
         let typed_definition_index = self.typed_definitions.len();
-        self.typed_definitions.push(NodeIndex { node_index: 0, file_index: 0 });
+        self.typed_definitions.push(NodeIndex {
+            node_index: 0,
+            file_index: 0,
+        });
 
         self.scope_type_kind_environment.pop();
 

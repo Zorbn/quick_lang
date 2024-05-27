@@ -8,6 +8,7 @@ mod emitter_stack;
 mod environment;
 mod file_data;
 mod lexer;
+mod name_generator;
 mod namespace;
 mod parser;
 mod position;
