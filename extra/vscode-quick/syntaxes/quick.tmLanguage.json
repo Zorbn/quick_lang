@@ -59,7 +59,7 @@
 	],
 	"repository": {
 		"function-declaration": {
-			"match": "\\b(func)\\b\\s*(\\w+)(\\.<[\\w,\\s]*>)?",
+			"match": "\\b(func)\\b\\s*(\\w+)(\\.<[\\w\\s\\.,<>]*>)?",
 			"captures": {
 				"1": {
 					"name": "keyword.quick"
@@ -80,7 +80,7 @@
 			}
 		},
 		"struct-declaration": {
-			"match": "\\b(struct|union)\\b\\s*(\\w+)(\\.<[\\w,\\s]*>)?",
+			"match": "\\b(struct|union)\\b\\s*(\\w+)(\\.<[\\w\\s\\.,<>]*>)?",
 			"captures": {
 				"1": {
 					"name": "keyword.quick"
@@ -176,7 +176,7 @@
 			"match": "\\b\\d\\d*(\\.\\d*)?\\b"
 		},
 		"function-call": {
-			"match": "(\\w+)\\s*(\\.<[\\w\\.,\\s]*>)?(\\()",
+			"match": "(\\w+)\\s*(\\.<[\\w\\s\\.,<>]*>)?(\\()",
 			"captures": {
 				"1": {
 					"name": "entity.name.function.quick"
