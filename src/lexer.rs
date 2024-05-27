@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use crate::{file_data::FileData, position::Position};
+use crate::{error_bucket::ErrorBucket, file_data::FileData, position::Position};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokenKind {
@@ -253,7 +253,7 @@ fn two_char_ops() -> &'static HashMap<String, TokenKind> {
 
 pub struct Lexer {
     pub tokens: Vec<Token>,
-    pub had_error: bool,
+    pub error_bucket: ErrorBucket,
     position: Position,
     files: Arc<Vec<FileData>>,
 }
@@ -263,7 +263,7 @@ impl Lexer {
         Self {
             files,
             tokens: Vec::new(),
-            had_error: false,
+            error_bucket: ErrorBucket::new(),
             position: Position::new(file_index),
         }
     }
@@ -409,8 +409,7 @@ impl Lexer {
     }
 
     fn error(&mut self, message: &str) {
-        self.had_error = true;
-        self.position.error("Syntax", message, &self.files);
+        self.error_bucket.error(self.position, "Syntax", message, &self.files);
     }
 
     fn collect_chars(&self, start: Position, end: Position) -> Arc<str> {

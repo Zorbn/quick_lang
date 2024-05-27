@@ -1,18 +1,10 @@
 use std::{collections::HashSet, ffi::OsString, mem, sync::Arc};
 
 use crate::{
-    assert_matches,
-    const_value::ConstValue,
-    environment::Environment,
-    file_data::FileData,
-    name_generator::NameGenerator,
-    namespace::{
+    assert_matches, const_value::ConstValue, environment::Environment, error_bucket::ErrorBucket, file_data::FileData, name_generator::NameGenerator, namespace::{
         Definition, DefinitionIndexError, DefinitionIndices, Identifier, Namespace,
         NamespaceGenericArg, NamespaceLookupResult, DEFINITION_ERROR,
-    },
-    parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
-    position::Position,
-    type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds},
+    }, parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op}, position::Position, type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds}
 };
 
 #[derive(Clone, Debug)]
@@ -119,7 +111,7 @@ pub struct Typer {
     pub type_kinds: TypeKinds,
     pub main_function_declaration: Option<NodeIndex>,
     pub name_generator: NameGenerator,
-    pub error_count: usize,
+    pub error_bucket: ErrorBucket,
 
     file_index: Option<usize>,
     files: Arc<Vec<FileData>>,
@@ -155,7 +147,7 @@ impl Typer {
             span_char_identifier: None,
             main_function_declaration: None,
             name_generator: NameGenerator::new(),
-            error_count: 0,
+            error_bucket: ErrorBucket::new(),
 
             file_index: None,
             files,
@@ -705,10 +697,9 @@ impl Typer {
     }
 
     fn error(&mut self, message: &str, node_index: NodeIndex) {
-        self.error_count += 1;
-        self.get_parser_node(node_index)
-            .start
-            .error("Type", message, &self.files);
+        let position = self.get_parser_node(node_index).start;
+
+        self.error_bucket.error(position, "Type", message, &self.files);
     }
 
     fn type_error(&mut self, message: &str) -> NodeIndex {
@@ -3897,7 +3888,7 @@ impl Typer {
         namespace_id: usize,
         file_index: usize,
     ) -> NodeIndex {
-        let pre_error_count = self.error_count;
+        let pre_error_count = self.error_bucket.len();
 
         let is_generic = generic_arg_type_kind_ids.is_some();
 
@@ -3910,15 +3901,14 @@ impl Typer {
             file_index,
         );
 
-        if self.error_count <= pre_error_count || !is_generic {
+        if self.error_bucket.len() <= pre_error_count || !is_generic {
             return index;
         }
 
         // The place this node was used must have been the node before it in the stack.
         if let Some(usage_index) = self.node_index_stack.get(self.node_index_stack.len() - 2) {
-            self.get_parser_node(*usage_index)
-                .start
-                .usage_error(&self.files);
+            let position = self.get_parser_node(*usage_index).start;
+            self.error_bucket.usage_error(position, &self.files);
         }
 
         index

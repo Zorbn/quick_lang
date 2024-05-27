@@ -1,6 +1,4 @@
-use crate::file_data::FileData;
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Position {
     pub index: usize,
     pub line: usize,
@@ -31,25 +29,5 @@ impl Position {
     pub fn advance_by(&mut self, count: usize) {
         self.index += count;
         self.column += count;
-    }
-
-    pub fn error(&self, tag: &str, message: &str, files: &[FileData]) {
-        println!(
-            "{} error at {}:{}:{}: {}",
-            tag,
-            files[self.file_index].path.to_str().unwrap_or("?"),
-            self.line,
-            self.column,
-            message,
-        );
-    }
-
-    pub fn usage_error(&self, files: &[FileData]) {
-        println!(
-            "^ From usage at {}:{}:{}",
-            files[self.file_index].path.to_str().unwrap_or("?"),
-            self.line,
-            self.column,
-        );
     }
 }

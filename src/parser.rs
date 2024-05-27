@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    file_data::FileData,
-    lexer::{Token, TokenKind},
-    namespace::{DefinitionIndices, DEFINITION_ERROR},
-    position::Position,
+    error_bucket::ErrorBucket, file_data::FileData, lexer::{Token, TokenKind}, namespace::{DefinitionIndices, DEFINITION_ERROR}, position::Position
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -321,7 +318,7 @@ pub struct Parser {
 
     pub nodes: Vec<Node>,
     pub start_index: NodeIndex,
-    pub error_count: usize,
+    pub error_bucket: ErrorBucket,
 
     files: Arc<Vec<FileData>>,
     position: usize,
@@ -335,7 +332,7 @@ impl Parser {
             files,
             tokens: None,
             nodes: Vec::new(),
-            error_count: 0,
+            error_bucket: ErrorBucket::new(),
             start_index: NodeIndex {
                 node_index: 0,
                 file_index: 0,
@@ -451,8 +448,7 @@ impl Parser {
         if error_position == self.last_error_position {
             self.position += 1;
         } else {
-            self.error_count += 1;
-            position.error("Syntax", message, &self.files);
+            self.error_bucket.error(position, "Syntax", message, &self.files);
         }
 
         self.last_error_position = error_position;

@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    code_generator::CodeGenerator, file_data::FileData, lexer::Lexer, parser::Parser, typer::Typer,
+    code_generator::CodeGenerator, error_bucket::ErrorBucket, file_data::FileData, lexer::Lexer, parser::Parser, typer::Typer
 };
 
 pub fn compile(
@@ -115,16 +115,22 @@ pub fn compile(
 
 fn lex(files: &Arc<Vec<FileData>>) -> Option<Vec<Lexer>> {
     let mut lexers = Vec::with_capacity(files.len());
-    let mut had_lexing_error = false;
 
     for i in 0..files.len() {
         let mut lexer = Lexer::new(i, files.clone());
         lexer.lex();
-        had_lexing_error = had_lexing_error || lexer.had_error;
         lexers.push(lexer);
     }
 
-    if had_lexing_error {
+    let mut error_bucket = ErrorBucket::new();
+
+    for lexer in &lexers {
+        error_bucket.extend(&lexer.error_bucket);
+    }
+
+    if error_bucket.len() > 0 {
+        error_bucket.print();
+
         None
     } else {
         Some(lexers)
@@ -133,16 +139,22 @@ fn lex(files: &Arc<Vec<FileData>>) -> Option<Vec<Lexer>> {
 
 fn parse(lexers: Vec<Lexer>, files: &Arc<Vec<FileData>>) -> Option<Vec<Parser>> {
     let mut parsers = Vec::with_capacity(lexers.len());
-    let mut had_parsing_error = false;
 
     for (i, lexer) in lexers.into_iter().enumerate() {
         let mut parser = Parser::new(i, files.clone());
         parser.parse(lexer.tokens);
-        had_parsing_error = had_parsing_error || parser.error_count > 0;
         parsers.push(parser);
     }
 
-    if had_parsing_error {
+    let mut error_bucket = ErrorBucket::new();
+
+    for parser in &parsers {
+        error_bucket.extend(&parser.error_bucket);
+    }
+
+    if error_bucket.len() > 0 {
+        error_bucket.print();
+
         None
     } else {
         Some(parsers)
@@ -155,7 +167,6 @@ fn check(
     file_path_components: &[Vec<OsString>],
 ) -> Option<Vec<Typer>> {
     let mut typers = Vec::with_capacity(parsers.len());
-    let mut had_typing_error = false;
 
     let mut all_nodes = Vec::with_capacity(parsers.len());
     let mut all_start_indices = Vec::with_capacity(parsers.len());
@@ -173,11 +184,18 @@ fn check(
     for (i, start_index) in all_start_indices.iter().enumerate() {
         let mut typer = Typer::new_for_file(&base_typer, i);
         typer.check(*start_index);
-        had_typing_error = had_typing_error || typer.error_count > 0;
         typers.push(typer);
     }
 
-    if had_typing_error {
+    let mut error_bucket = ErrorBucket::new();
+
+    for typer in &typers {
+        error_bucket.extend(&typer.error_bucket);
+    }
+
+    if error_bucket.len() > 0 {
+        error_bucket.print();
+
         None
     } else {
         Some(typers)

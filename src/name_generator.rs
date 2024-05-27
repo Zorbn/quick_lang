@@ -7,8 +7,8 @@ pub struct NameGenerator {
 }
 
 impl NameGenerator {
-    pub fn new() -> NameGenerator {
-        NameGenerator {
+    pub fn new() -> Self {
+        Self {
             temp_count: 0,
             reusable_strings: HashSet::new(),
         }
