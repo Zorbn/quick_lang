@@ -1,0 +1,16 @@
+func Main() Int
+{
+    {
+        val a = -3;
+        val b UInt = -3;
+        val c UInt = 3;
+    }
+
+    {
+        val a = -0x3;
+        val b UInt = -0x3;
+        val c UInt = 0x3;
+    }
+
+    return 0;
+}

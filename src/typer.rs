@@ -2490,20 +2490,24 @@ impl Typer {
             right: typed_right,
         };
 
+        let right_type_kind = self
+            .type_kinds
+            .get_by_id(right_type.type_kind_id);
+
         match op {
             Op::Plus | Op::Minus => {
-                if !self
-                    .type_kinds
-                    .get_by_id(right_type.type_kind_id)
-                    .is_numeric()
-                {
+                if !right_type_kind.is_numeric() {
                     type_error!(self, "expected numeric type");
+                }
+
+                if op == Op::Minus && right_type_kind.is_unsigned() {
+                    type_error!(self, "cannot negate an unsigned number");
                 }
 
                 self.add_node(node_kind, Some(right_type), None)
             }
             Op::Not => {
-                if self.type_kinds.get_by_id(right_type.type_kind_id) != TypeKind::Bool {
+                if right_type_kind != TypeKind::Bool {
                     type_error!(self, "expected Bool");
                 }
 
@@ -3089,12 +3093,28 @@ impl Typer {
     ) -> NodeIndex {
         let typed_const = self.check_node_with_hint(index, hint);
         let const_type = assert_typed!(self, typed_const);
-
-        let value = if self
+        let is_unsigned = self
             .type_kinds
             .get_by_id(const_type.type_kind_id)
-            .is_unsigned()
-        {
+            .is_unsigned();
+
+        let value = if text.starts_with("0x") {
+            let trimmed_text = text.trim_start_matches("0x");
+
+            if is_unsigned {
+                let Ok(value) = u64::from_str_radix(trimmed_text, 16) else {
+                    type_error!(self, "invalid value of unsigned integer literal");
+                };
+
+                ConstValue::UInt { value }
+            } else {
+                let Ok(value) = i64::from_str_radix(trimmed_text, 16) else {
+                    type_error!(self, "invalid value of integer literal");
+                };
+
+                ConstValue::Int { value }
+            }
+        } else if is_unsigned {
             let Ok(value) = text.parse::<u64>() else {
                 type_error!(self, "invalid value of unsigned integer literal");
             };

@@ -1,0 +1,2 @@
+Type error at Main.quick:5:22: cannot negate an unsigned number
+Type error at Main.quick:11:22: cannot negate an unsigned number

@@ -508,18 +508,38 @@ impl Lexer {
 
             if self.char().is_numeric() {
                 let mut c = self.char();
-                let mut has_decimal_point = false;
 
-                while c.is_numeric() || (c == '.' && !has_decimal_point) {
-                    if c == '.' {
-                        has_decimal_point = true;
+                let mut has_decimal_point = false;
+                let mut did_start_with_zero = false;
+                let mut is_hex = false;
+
+                let mut i = 0;
+
+                while c.is_numeric() || (c == '.' && !has_decimal_point) || (c == 'x' && i == 1 && did_start_with_zero) {
+                    match c {
+                        'x' => is_hex = true,
+                        '.' => has_decimal_point = true,
+                        '0' if i == 0 => did_start_with_zero = true,
+                        _ => {}
                     }
 
                     self.position.advance();
                     c = self.char();
+                    i += 1;
                 }
 
                 let end = self.position;
+
+                if i < 3 && is_hex {
+                    self.error("malformed hex literal");
+                    self.tokens.push(Token {
+                        kind: TokenKind::Error,
+                        start,
+                        end: self.position,
+                    });
+                    continue;
+                }
+
                 let text = self.collect_chars(start, end);
 
                 if has_decimal_point {

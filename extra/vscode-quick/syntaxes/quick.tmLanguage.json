@@ -33,6 +33,9 @@
 			"include": "#decimal-literal"
 		},
 		{
+			"include": "#hexadecimal-literal"
+		},
+		{
 			"include": "#function-call"
 		},
 		{
@@ -174,6 +177,10 @@
 		"decimal-literal": {
 			"name": "constant.numeric.decimal.quick",
 			"match": "\\b\\d\\d*(\\.\\d*)?\\b"
+		},
+		"hexadecimal-literal": {
+			"name": "constant.numeric.hexadecimal.quick",
+			"match": "\\b0x\\d*\\b"
 		},
 		"function-call": {
 			"match": "(\\w+)\\s*(\\.<[\\w\\s\\.,<>]*>)?(\\()",
