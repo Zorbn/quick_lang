@@ -506,31 +506,26 @@ impl Lexer {
                 continue;
             }
 
-            if self.char().is_numeric() {
-                let mut c = self.char();
+            if self.char() == '0' && self.peek_char() == 'x' {
+                self.position.advance_by(2);
 
-                let mut has_decimal_point = false;
-                let mut did_start_with_zero = false;
-                let mut is_hex = false;
+                let mut has_contents = false;
 
-                let mut i = 0;
-
-                while c.is_numeric() || (c == '.' && !has_decimal_point) || (c == 'x' && i == 1 && did_start_with_zero) {
-                    match c {
-                        'x' => is_hex = true,
-                        '.' => has_decimal_point = true,
-                        '0' if i == 0 => did_start_with_zero = true,
-                        _ => {}
+                loop {
+                    match self.char() {
+                        'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' => {}
+                        _ => if !self.char().is_numeric() {
+                            break;
+                        },
                     }
 
+                    has_contents = true;
                     self.position.advance();
-                    c = self.char();
-                    i += 1;
                 }
 
                 let end = self.position;
 
-                if i < 3 && is_hex {
+                if !has_contents {
                     self.error("malformed hex literal");
                     self.tokens.push(Token {
                         kind: TokenKind::Error,
@@ -540,6 +535,29 @@ impl Lexer {
                     continue;
                 }
 
+                let text = self.collect_chars(start, end);
+
+                self.tokens.push(Token {
+                    kind: TokenKind::IntLiteral { text },
+                    start,
+                    end,
+                });
+            }
+
+            if self.char().is_numeric() {
+                let mut c = self.char();
+                let mut has_decimal_point = false;
+
+                while c.is_numeric() || (c == '.' && !has_decimal_point) {
+                    if c == '.' {
+                        has_decimal_point = true;
+                    }
+
+                    self.position.advance();
+                    c = self.char();
+                }
+
+                let end = self.position;
                 let text = self.collect_chars(start, end);
 
                 if has_decimal_point {

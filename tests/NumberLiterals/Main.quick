@@ -7,9 +7,9 @@ func Main() Int
     }
 
     {
-        val a = -0x3;
-        val b UInt = -0x3;
-        val c UInt = 0x3;
+        val a = -0xA;
+        val b UInt = -0xA;
+        val c UInt = 0xA;
     }
 
     return 0;

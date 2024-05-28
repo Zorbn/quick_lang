@@ -180,7 +180,7 @@
 		},
 		"hexadecimal-literal": {
 			"name": "constant.numeric.hexadecimal.quick",
-			"match": "\\b0x\\d*\\b"
+			"match": "\\b0x[\\dabcdefABCDEF]*\\b"
 		},
 		"function-call": {
 			"match": "(\\w+)\\s*(\\.<[\\w\\s\\.,<>]*>)?(\\()",
