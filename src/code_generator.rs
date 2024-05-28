@@ -13,7 +13,13 @@ use crate::{
     name_generator::NameGenerator,
     namespace::Namespace,
     parser::{DeclarationKind, MethodKind, NodeIndex, NodeKind, Op},
-    type_kinds::{get_field_index_by_name, TypeKind, TypeKinds},
+    type_kinds::{
+        get_field_index_by_name, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID,
+        CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID,
+        INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID,
+        UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID, UINT8_TYPE_KIND_ID,
+        UINT_TYPE_KIND_ID,
+    },
     typer::{InstanceKind, Type, TypedNode, GLOBAL_NAMESPACE_ID},
 };
 
@@ -496,6 +502,16 @@ impl CodeGenerator {
         node_type: Option<Type>,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
+
+        if !matches!(
+            self.type_kinds.get_by_id(type_kind_id),
+            TypeKind::Struct {
+                primitive_type: PrimitiveType::None,
+                ..
+            }
+        ) {
+            return;
+        };
 
         self.emit_struct_equals(type_kind_id);
 
@@ -1739,7 +1755,7 @@ impl CodeGenerator {
         self.emit(&text, emitter_kind);
 
         let type_kind_id = node_type.unwrap().type_kind_id;
-        if self.type_kinds.get_by_id(type_kind_id) == TypeKind::Float32 {
+        if type_kind_id == FLOAT32_TYPE_KIND_ID {
             self.emit("f", emitter_kind);
         }
     }
@@ -1998,81 +2014,84 @@ impl CodeGenerator {
                 TypeKind::Array { .. } | TypeKind::Pointer { .. } | TypeKind::Function { .. }
             );
 
-        match type_kind.clone() {
-            TypeKind::Int | TypeKind::Tag { .. } => self.emit("intptr_t", emitter_kind),
-            TypeKind::Bool => self.emit("bool", emitter_kind),
-            TypeKind::Char => self.emit("char", emitter_kind),
-            TypeKind::Void => self.emit("void", emitter_kind),
-            TypeKind::UInt => self.emit("uintptr_t", emitter_kind),
-            TypeKind::Int8 => self.emit("int8_t", emitter_kind),
-            TypeKind::UInt8 => self.emit("uint8_t", emitter_kind),
-            TypeKind::Int16 => self.emit("int16_t", emitter_kind),
-            TypeKind::UInt16 => self.emit("uint16_t", emitter_kind),
-            TypeKind::Int32 => self.emit("int32_t", emitter_kind),
-            TypeKind::UInt32 => self.emit("uint32_t", emitter_kind),
-            TypeKind::Int64 => self.emit("int64_t", emitter_kind),
-            TypeKind::UInt64 => self.emit("uint64_t", emitter_kind),
-            TypeKind::Float32 => self.emit("float", emitter_kind),
-            TypeKind::Float64 => self.emit("double", emitter_kind),
-            TypeKind::Struct { .. } => {
-                self.emit("struct ", emitter_kind);
-                self.emit_struct_name(type_kind_id, emitter_kind);
-            }
-            TypeKind::Enum { name, .. } => {
-                self.emit("enum ", emitter_kind);
-                self.gen_node_with_emitter(name, emitter_kind);
-            }
-            TypeKind::Array {
-                element_type_kind_id,
-                ..
-            } => {
-                self.emit_type_kind_left(
+        match type_kind_id {
+            INT_TYPE_KIND_ID => self.emit("intptr_t", emitter_kind),
+            UINT_TYPE_KIND_ID => self.emit("uintptr_t", emitter_kind),
+            INT8_TYPE_KIND_ID => self.emit("int8_t", emitter_kind),
+            UINT8_TYPE_KIND_ID => self.emit("uint8_t", emitter_kind),
+            INT16_TYPE_KIND_ID => self.emit("int16_t", emitter_kind),
+            UINT16_TYPE_KIND_ID => self.emit("uint16_t", emitter_kind),
+            INT32_TYPE_KIND_ID => self.emit("int32_t", emitter_kind),
+            UINT32_TYPE_KIND_ID => self.emit("uint32_t", emitter_kind),
+            INT64_TYPE_KIND_ID => self.emit("int64_t", emitter_kind),
+            UINT64_TYPE_KIND_ID => self.emit("uint64_t", emitter_kind),
+            FLOAT32_TYPE_KIND_ID => self.emit("float", emitter_kind),
+            FLOAT64_TYPE_KIND_ID => self.emit("double", emitter_kind),
+            CHAR_TYPE_KIND_ID => self.emit("char", emitter_kind),
+            BOOL_TYPE_KIND_ID => self.emit("bool", emitter_kind),
+            _ => match type_kind.clone() {
+                TypeKind::Tag { .. } => self.emit("intptr_t", emitter_kind),
+                TypeKind::Void => self.emit("void", emitter_kind),
+                TypeKind::Struct { .. } => {
+                    self.emit("struct ", emitter_kind);
+                    self.emit_struct_name(type_kind_id, emitter_kind);
+                }
+                TypeKind::Enum { name, .. } => {
+                    self.emit("enum ", emitter_kind);
+                    self.gen_node_with_emitter(name, emitter_kind);
+                }
+                TypeKind::Array {
                     element_type_kind_id,
-                    emitter_kind,
-                    do_arrays_as_pointers,
-                    true,
-                );
-                if do_arrays_as_pointers {
+                    ..
+                } => {
+                    self.emit_type_kind_left(
+                        element_type_kind_id,
+                        emitter_kind,
+                        do_arrays_as_pointers,
+                        true,
+                    );
+                    if do_arrays_as_pointers {
+                        self.emit("*", emitter_kind);
+                    }
+                }
+                TypeKind::Pointer {
+                    inner_type_kind_id,
+                    is_inner_mutable,
+                } => {
+                    self.emit_type_kind_left(
+                        inner_type_kind_id,
+                        emitter_kind,
+                        do_arrays_as_pointers,
+                        true,
+                    );
+
+                    // If the pointer points to an immutable value, then add a const to the generated code.
+                    // Except for functions, because a const function has no meaning in C.
+                    if !is_inner_mutable
+                        && !matches!(
+                            self.type_kinds.get_by_id(inner_type_kind_id),
+                            TypeKind::Function { .. }
+                        )
+                    {
+                        self.emit("const ", emitter_kind);
+                    }
+
                     self.emit("*", emitter_kind);
                 }
-            }
-            TypeKind::Pointer {
-                inner_type_kind_id,
-                is_inner_mutable,
-            } => {
-                self.emit_type_kind_left(
-                    inner_type_kind_id,
-                    emitter_kind,
-                    do_arrays_as_pointers,
-                    true,
-                );
-
-                // If the pointer points to an immutable value, then add a const to the generated code.
-                // Except for functions, because a const function has no meaning in C.
-                if !is_inner_mutable
-                    && !matches!(
-                        self.type_kinds.get_by_id(inner_type_kind_id),
-                        TypeKind::Function { .. }
-                    )
-                {
-                    self.emit("const ", emitter_kind);
+                TypeKind::Placeholder { .. } => {
+                    panic!("can't emit placeholder type: {:?}", type_kind)
                 }
-
-                self.emit("*", emitter_kind);
-            }
-            TypeKind::Placeholder { .. } => {
-                panic!("can't emit placeholder type: {:?}", type_kind)
-            }
-            TypeKind::Function {
-                return_type_kind_id,
-                ..
-            } => {
-                self.emit_type_kind_left(return_type_kind_id, emitter_kind, true, true);
-                self.emit_type_kind_right(return_type_kind_id, emitter_kind, true);
-                self.emit("(", emitter_kind);
-            }
-            TypeKind::Namespace { .. } => panic!("cannot emit namespace types"),
-        };
+                TypeKind::Function {
+                    return_type_kind_id,
+                    ..
+                } => {
+                    self.emit_type_kind_left(return_type_kind_id, emitter_kind, true, true);
+                    self.emit_type_kind_right(return_type_kind_id, emitter_kind, true);
+                    self.emit("(", emitter_kind);
+                }
+                TypeKind::Namespace { .. } => panic!("cannot emit namespace types"),
+            },
+        }
 
         if needs_trailing_space {
             self.emit(" ", emitter_kind);
@@ -2624,7 +2643,10 @@ impl CodeGenerator {
         emitter_kind: EmitterKind,
     ) {
         match self.type_kinds.get_by_id(type_kind_id) {
-            TypeKind::Struct { .. } => {
+            TypeKind::Struct {
+                primitive_type: PrimitiveType::None,
+                ..
+            } => {
                 if !is_equal {
                     self.emit("!", emitter_kind);
                 }

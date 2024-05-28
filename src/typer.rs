@@ -1,10 +1,25 @@
 use std::{collections::HashSet, ffi::OsString, mem, sync::Arc};
 
 use crate::{
-    assert_matches, const_value::ConstValue, environment::Environment, error_bucket::ErrorBucket, file_data::FileData, name_generator::NameGenerator, namespace::{
+    assert_matches,
+    const_value::ConstValue,
+    environment::Environment,
+    error_bucket::ErrorBucket,
+    file_data::FileData,
+    name_generator::NameGenerator,
+    namespace::{
         Definition, DefinitionIndexError, DefinitionIndices, Identifier, Namespace,
         NamespaceGenericArg, NamespaceLookupResult, DEFINITION_ERROR,
-    }, parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op}, position::Position, type_kinds::{get_field_index_by_name, Field, TypeKind, TypeKinds}
+    },
+    parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
+    position::Position,
+    type_kinds::{
+        get_field_index_by_name, Field, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID,
+        CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID,
+        INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID,
+        UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID, UINT8_TYPE_KIND_ID,
+        UINT_TYPE_KIND_ID,
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -321,27 +336,6 @@ impl Typer {
     fn define_global_primitives(&mut self) {
         let global_namespace = &mut self.namespaces[GLOBAL_NAMESPACE_ID];
 
-        let int_id = self.type_kinds.add_or_get(TypeKind::Int);
-        global_namespace.define(
-            Identifier::new("Int"),
-            Definition::TypeKind {
-                type_kind_id: int_id,
-            },
-        );
-        let bool_id = self.type_kinds.add_or_get(TypeKind::Bool);
-        global_namespace.define(
-            Identifier::new("Bool"),
-            Definition::TypeKind {
-                type_kind_id: bool_id,
-            },
-        );
-        let char_id = self.type_kinds.add_or_get(TypeKind::Char);
-        global_namespace.define(
-            Identifier::new("Char"),
-            Definition::TypeKind {
-                type_kind_id: char_id,
-            },
-        );
         let void_id = self.type_kinds.add_or_get(TypeKind::Void);
         global_namespace.define(
             Identifier::new("Void"),
@@ -349,83 +343,7 @@ impl Typer {
                 type_kind_id: void_id,
             },
         );
-        let uint_id = self.type_kinds.add_or_get(TypeKind::UInt);
-        global_namespace.define(
-            Identifier::new("UInt"),
-            Definition::TypeKind {
-                type_kind_id: uint_id,
-            },
-        );
-        let int8_id = self.type_kinds.add_or_get(TypeKind::Int8);
-        global_namespace.define(
-            Identifier::new("Int8"),
-            Definition::TypeKind {
-                type_kind_id: int8_id,
-            },
-        );
-        let uint8_id = self.type_kinds.add_or_get(TypeKind::UInt8);
-        global_namespace.define(
-            Identifier::new("UInt8"),
-            Definition::TypeKind {
-                type_kind_id: uint8_id,
-            },
-        );
-        let int16_id = self.type_kinds.add_or_get(TypeKind::Int16);
-        global_namespace.define(
-            Identifier::new("Int16"),
-            Definition::TypeKind {
-                type_kind_id: int16_id,
-            },
-        );
-        let uint16_id = self.type_kinds.add_or_get(TypeKind::UInt16);
-        global_namespace.define(
-            Identifier::new("UInt16"),
-            Definition::TypeKind {
-                type_kind_id: uint16_id,
-            },
-        );
-        let int32_id = self.type_kinds.add_or_get(TypeKind::Int32);
-        global_namespace.define(
-            Identifier::new("Int32"),
-            Definition::TypeKind {
-                type_kind_id: int32_id,
-            },
-        );
-        let uint32_id = self.type_kinds.add_or_get(TypeKind::UInt32);
-        global_namespace.define(
-            Identifier::new("UInt32"),
-            Definition::TypeKind {
-                type_kind_id: uint32_id,
-            },
-        );
-        let int64_id = self.type_kinds.add_or_get(TypeKind::Int64);
-        global_namespace.define(
-            Identifier::new("Int64"),
-            Definition::TypeKind {
-                type_kind_id: int64_id,
-            },
-        );
-        let uint64_id = self.type_kinds.add_or_get(TypeKind::UInt64);
-        global_namespace.define(
-            Identifier::new("UInt64"),
-            Definition::TypeKind {
-                type_kind_id: uint64_id,
-            },
-        );
-        let float32_id = self.type_kinds.add_or_get(TypeKind::Float32);
-        global_namespace.define(
-            Identifier::new("Float32"),
-            Definition::TypeKind {
-                type_kind_id: float32_id,
-            },
-        );
-        let float64_id = self.type_kinds.add_or_get(TypeKind::Float64);
-        global_namespace.define(
-            Identifier::new("Float64"),
-            Definition::TypeKind {
-                type_kind_id: float64_id,
-            },
-        );
+
         let tag_id = self.type_kinds.add_or_get(TypeKind::Tag);
         global_namespace.define(
             Identifier::new("Tag"),
@@ -433,14 +351,40 @@ impl Typer {
                 type_kind_id: tag_id,
             },
         );
+    }
 
-        self.span_char_identifier = Some(Identifier {
-            name: self.name_generator.reuse("Span"),
-            generic_arg_type_kind_ids: Some(Arc::new(vec![char_id])),
-        });
+    fn lookup_primitive_type(&mut self, name: &str) {
+        let IdentifierLookupResult::Some(_, _) = self.lookup_identifier(
+            Identifier::new(name),
+            LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
+            LookupKind::Types,
+            None,
+        ) else {
+            panic!("{} type not found", name);
+        };
     }
 
     fn find_span_char(&mut self) {
+        self.span_char_identifier = Some(Identifier {
+            name: self.name_generator.reuse("Span"),
+            generic_arg_type_kind_ids: Some(Arc::new(vec![CHAR_TYPE_KIND_ID])),
+        });
+
+        self.lookup_primitive_type("Int");
+        self.lookup_primitive_type("UInt");
+        self.lookup_primitive_type("Int8");
+        self.lookup_primitive_type("UInt8");
+        self.lookup_primitive_type("Int16");
+        self.lookup_primitive_type("UInt16");
+        self.lookup_primitive_type("Int32");
+        self.lookup_primitive_type("UInt32");
+        self.lookup_primitive_type("Int64");
+        self.lookup_primitive_type("UInt64");
+        self.lookup_primitive_type("Float32");
+        self.lookup_primitive_type("Float64");
+        self.lookup_primitive_type("Char");
+        self.lookup_primitive_type("Bool");
+
         let IdentifierLookupResult::Some(_, _) = self.lookup_identifier(
             self.span_char_identifier.clone().unwrap(),
             LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
@@ -699,7 +643,8 @@ impl Typer {
     fn error(&mut self, message: &str, node_index: NodeIndex) {
         let position = self.get_parser_node(node_index).start;
 
-        self.error_bucket.error(position, "Type", message, &self.files);
+        self.error_bucket
+            .error(position, "Type", message, &self.files);
     }
 
     fn type_error(&mut self, message: &str) -> NodeIndex {
@@ -811,7 +756,13 @@ impl Typer {
                 type_name,
                 expression,
                 scoped_statement,
-            } => self.for_in_loop(declaration_kind, iterator, type_name, expression, scoped_statement),
+            } => self.for_in_loop(
+                declaration_kind,
+                iterator,
+                type_name,
+                expression,
+                scoped_statement,
+            ),
             NodeKind::ConstExpression { inner } => self.const_expression(inner, None),
             NodeKind::Binary { left, op, right } => self.binary(left, op, right, None),
             NodeKind::UnaryPrefix { op, right } => self.unary_prefix(op, right, None),
@@ -1533,7 +1484,7 @@ impl Typer {
         let typed_expression = self.check_node(expression);
         let expression_type = assert_typed!(self, typed_expression);
 
-        if self.type_kinds.get_by_id(expression_type.type_kind_id) != TypeKind::Bool {
+        if expression_type.type_kind_id != BOOL_TYPE_KIND_ID {
             type_error!(self, "if statement expression must be of type Bool");
         }
 
@@ -1559,12 +1510,18 @@ impl Typer {
         let typed_case_statement = self.check_node(case_statement);
 
         if !expression_type_kind.is_numeric() && expression_type_kind != TypeKind::Tag {
-            type_error!(self, "only numeric types and union tags can be used in a switch statement");
+            type_error!(
+                self,
+                "only numeric types and union tags can be used in a switch statement"
+            );
         }
 
         if let Some(case_statement_type) = &self.get_typer_node(typed_case_statement).node_type {
             if case_statement_type.type_kind_id != expression_type.type_kind_id {
-                type_error!(self, "mismatched types between switch value and case statement");
+                type_error!(
+                    self,
+                    "mismatched types between switch value and case statement"
+                );
             }
         }
 
@@ -1593,7 +1550,10 @@ impl Typer {
         if let Some(typed_next) = typed_next {
             if let Some(next_type) = &self.get_typer_node(typed_next).node_type {
                 if next_type.type_kind_id != expression_type.type_kind_id {
-                    type_error!(self, "mismatched types between switch value and case statement");
+                    type_error!(
+                        self,
+                        "mismatched types between switch value and case statement"
+                    );
                 }
             }
         }
@@ -1613,7 +1573,7 @@ impl Typer {
         let typed_expression = self.check_node(expression);
         let expression_type = assert_typed!(self, typed_expression);
 
-        if self.type_kinds.get_by_id(expression_type.type_kind_id) != TypeKind::Bool {
+        if expression_type.type_kind_id != BOOL_TYPE_KIND_ID {
             type_error!(self, "while loop expression must be of type Bool");
         }
 
@@ -2032,7 +1992,7 @@ impl Typer {
             type_error_at_parser_node!(self, "expression is not iterable, Next method must take the iterable as its only argument", expression);
         }
 
-        if self.type_kinds.get_by_id(next_return_type_kind_id) != TypeKind::Bool {
+        if next_return_type_kind_id != BOOL_TYPE_KIND_ID {
             type_error_at_parser_node!(
                 self,
                 "expression is not iterable, Next method must return a Bool",
@@ -2051,7 +2011,11 @@ impl Typer {
 
         if let Some(type_name_type_kind_id) = type_name_type_kind_id {
             if type_name_type_kind_id != get_current_return_type_kind_id {
-                type_error_at_parser_node!(self, "expression's type does not match the iterator's type", expression);
+                type_error_at_parser_node!(
+                    self,
+                    "expression's type does not match the iterator's type",
+                    expression
+                );
             }
         }
 
@@ -2173,13 +2137,14 @@ impl Typer {
         mut expression: NodeIndex,
         scoped_statement: NodeIndex,
     ) -> NodeIndex {
-        let type_name_type_kind_id = if let Some(typed_type_name) = self.check_optional_node(type_name, None) {
-            let type_name_type = assert_typed!(self, typed_type_name);
+        let type_name_type_kind_id =
+            if let Some(typed_type_name) = self.check_optional_node(type_name, None) {
+                let type_name_type = assert_typed!(self, typed_type_name);
 
-            Some(type_name_type.type_kind_id)
-        } else {
-            None
-        };
+                Some(type_name_type.type_kind_id)
+            } else {
+                None
+            };
 
         let mut typed_expression = self.check_node_with_hint(expression, type_name_type_kind_id);
         let expression_type = assert_typed!(self, typed_expression);
@@ -2195,7 +2160,11 @@ impl Typer {
         {
             if let Some(type_name_type_kind_id) = type_name_type_kind_id {
                 if type_name_type_kind_id != element_type_kind_id {
-                    type_error_at_parser_node!(self, "array's element type does not match the iterator's type", expression);
+                    type_error_at_parser_node!(
+                        self,
+                        "array's element type does not match the iterator's type",
+                        expression
+                    );
                 }
             }
 
@@ -2374,29 +2343,27 @@ impl Typer {
                     type_error!(self, "expected comparable types");
                 }
 
-                let type_kind_id = self.type_kinds.add_or_get(TypeKind::Bool);
                 return self.add_node(
                     node_kind,
                     Some(Type {
-                        type_kind_id,
+                        type_kind_id: BOOL_TYPE_KIND_ID,
                         instance_kind: InstanceKind::Literal,
                     }),
                     None,
                 );
             }
             Op::Equal | Op::NotEqual => {
-                let type_kind_id = self.type_kinds.add_or_get(TypeKind::Bool);
                 return self.add_node(
                     node_kind,
                     Some(Type {
-                        type_kind_id,
+                        type_kind_id: BOOL_TYPE_KIND_ID,
                         instance_kind: InstanceKind::Literal,
                     }),
                     None,
                 );
             }
             Op::And | Op::Or => {
-                if self.type_kinds.get_by_id(left_type.type_kind_id) != TypeKind::Bool {
+                if left_type.type_kind_id != BOOL_TYPE_KIND_ID {
                     type_error!(self, "expected Bool");
                 }
             }
@@ -2490,9 +2457,7 @@ impl Typer {
             right: typed_right,
         };
 
-        let right_type_kind = self
-            .type_kinds
-            .get_by_id(right_type.type_kind_id);
+        let right_type_kind = self.type_kinds.get_by_id(right_type.type_kind_id);
 
         match op {
             Op::Plus | Op::Minus => {
@@ -2507,7 +2472,7 @@ impl Typer {
                 self.add_node(node_kind, Some(right_type), None)
             }
             Op::Not => {
-                if right_type_kind != TypeKind::Bool {
+                if right_type.type_kind_id != BOOL_TYPE_KIND_ID {
                     type_error!(self, "expected Bool");
                 }
 
@@ -2869,11 +2834,10 @@ impl Typer {
                     type_error!(self, "field not found on array");
                 }
 
-                let type_kind_id = self.type_kinds.add_or_get(TypeKind::UInt);
                 return self.add_node(
                     node_kind,
                     Some(Type {
-                        type_kind_id,
+                        type_kind_id: UINT_TYPE_KIND_ID,
                         instance_kind: InstanceKind::Literal,
                     }),
                     None,
@@ -2997,20 +2961,14 @@ impl Typer {
             type_error!(self, "cannot cast non const in const expression");
         };
 
-        let result_value = match &self.type_kinds.get_by_id(const_type.type_kind_id) {
-            TypeKind::Int
-            | TypeKind::Int8
-            | TypeKind::Int16
-            | TypeKind::Int32
-            | TypeKind::Int64 => left_const_value.cast_to_int(),
-            TypeKind::UInt
-            | TypeKind::UInt8
-            | TypeKind::UInt16
-            | TypeKind::UInt32
-            | TypeKind::UInt64 => left_const_value.cast_to_uint(),
-            TypeKind::Float32 | TypeKind::Float64 => left_const_value.cast_to_float(),
-            TypeKind::Bool => left_const_value.cast_to_bool(),
-            TypeKind::Char => left_const_value.cast_to_char(),
+        let result_value = match const_type.type_kind_id {
+            INT_TYPE_KIND_ID | INT8_TYPE_KIND_ID | INT16_TYPE_KIND_ID | INT32_TYPE_KIND_ID
+            | INT64_TYPE_KIND_ID => left_const_value.cast_to_int(),
+            UINT_TYPE_KIND_ID | UINT8_TYPE_KIND_ID | UINT16_TYPE_KIND_ID | UINT32_TYPE_KIND_ID
+            | UINT64_TYPE_KIND_ID => left_const_value.cast_to_uint(),
+            FLOAT32_TYPE_KIND_ID | FLOAT64_TYPE_KIND_ID => left_const_value.cast_to_float(),
+            BOOL_TYPE_KIND_ID => left_const_value.cast_to_bool(),
+            CHAR_TYPE_KIND_ID => left_const_value.cast_to_char(),
             _ => type_error!(self, "compile time casts to this type are not allowed"),
         };
 
@@ -3067,7 +3025,7 @@ impl Typer {
     }
 
     fn int_literal(&mut self, text: Arc<str>, hint: Option<usize>) -> NodeIndex {
-        let mut type_kind_id = self.type_kinds.add_or_get(TypeKind::Int);
+        let mut type_kind_id = INT_TYPE_KIND_ID;
 
         if let Some(hint) = hint {
             if self.type_kinds.get_by_id(hint).is_int() {
@@ -3139,7 +3097,7 @@ impl Typer {
     }
 
     fn float_literal(&mut self, text: Arc<str>, hint: Option<usize>) -> NodeIndex {
-        let mut type_kind_id = self.type_kinds.add_or_get(TypeKind::Float32);
+        let mut type_kind_id = FLOAT32_TYPE_KIND_ID;
 
         if let Some(hint) = hint {
             if self.type_kinds.get_by_id(hint).is_float() {
@@ -3205,11 +3163,10 @@ impl Typer {
     }
 
     fn bool_literal(&mut self, value: bool) -> NodeIndex {
-        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Bool);
         self.add_node(
             NodeKind::BoolLiteral { value },
             Some(Type {
-                type_kind_id,
+                type_kind_id: BOOL_TYPE_KIND_ID,
                 instance_kind: InstanceKind::Literal,
             }),
             None,
@@ -3231,11 +3188,10 @@ impl Typer {
     }
 
     fn char_literal(&mut self, value: char) -> NodeIndex {
-        let type_kind_id = self.type_kinds.add_or_get(TypeKind::Char);
         self.add_node(
             NodeKind::CharLiteral { value },
             Some(Type {
-                type_kind_id,
+                type_kind_id: CHAR_TYPE_KIND_ID,
                 instance_kind: InstanceKind::Literal,
             }),
             None,
@@ -3475,7 +3431,7 @@ impl Typer {
 
     fn type_size(&mut self, type_name: NodeIndex, hint: Option<usize>) -> NodeIndex {
         let typed_type_name = self.check_node(type_name);
-        let mut type_kind_id = self.type_kinds.add_or_get(TypeKind::UInt);
+        let mut type_kind_id = UINT_TYPE_KIND_ID;
 
         if let Some(hint) = hint {
             if self.type_kinds.get_by_id(hint).is_int() {
@@ -3508,25 +3464,27 @@ impl Typer {
 
         let native_size = mem::size_of::<NodeIndex>() as u64;
 
-        let value = match self.type_kinds.get_by_id(type_name_type.type_kind_id) {
-            TypeKind::Int => native_size,
-            TypeKind::Bool => 1,
-            TypeKind::Char => 1,
-            TypeKind::Void => 0,
-            TypeKind::UInt => native_size,
-            TypeKind::Int8 => 1,
-            TypeKind::UInt8 => 1,
-            TypeKind::Int16 => 2,
-            TypeKind::UInt16 => 2,
-            TypeKind::Int32 => 4,
-            TypeKind::UInt32 => 4,
-            TypeKind::Int64 => 8,
-            TypeKind::UInt64 => 8,
-            TypeKind::Float32 => 4,
-            TypeKind::Float64 => 8,
-            TypeKind::Tag => native_size,
-            TypeKind::Pointer { .. } => native_size,
-            _ => type_error!(self, "size unknown at compile time"),
+        let value = match type_name_type.type_kind_id {
+            INT_TYPE_KIND_ID => native_size,
+            BOOL_TYPE_KIND_ID => 1,
+            CHAR_TYPE_KIND_ID => 1,
+            UINT_TYPE_KIND_ID => native_size,
+            INT8_TYPE_KIND_ID => 1,
+            UINT8_TYPE_KIND_ID => 1,
+            INT16_TYPE_KIND_ID => 2,
+            UINT16_TYPE_KIND_ID => 2,
+            INT32_TYPE_KIND_ID => 4,
+            UINT32_TYPE_KIND_ID => 4,
+            INT64_TYPE_KIND_ID => 8,
+            UINT64_TYPE_KIND_ID => 8,
+            FLOAT32_TYPE_KIND_ID => 4,
+            FLOAT64_TYPE_KIND_ID => 8,
+            _ => match self.type_kinds.get_by_id(type_name_type.type_kind_id) {
+                TypeKind::Void => 0,
+                TypeKind::Tag => native_size,
+                TypeKind::Pointer { .. } => native_size,
+                _ => type_error!(self, "size unknown at compile time"),
+            },
         };
 
         let const_value = if self
@@ -3585,7 +3543,23 @@ impl Typer {
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
         };
 
-        let type_kind_id = self.type_kinds.add_placeholder();
+        let (type_kind_id, primitive_type) = match name_text.as_ref() {
+            "Int" => (INT_TYPE_KIND_ID, PrimitiveType::Int),
+            "UInt" => (UINT_TYPE_KIND_ID, PrimitiveType::UInt),
+            "Int8" => (INT8_TYPE_KIND_ID, PrimitiveType::Int8),
+            "UInt8" => (UINT8_TYPE_KIND_ID, PrimitiveType::UInt8),
+            "Int16" => (INT16_TYPE_KIND_ID, PrimitiveType::Int16),
+            "UInt16" => (UINT16_TYPE_KIND_ID, PrimitiveType::UInt16),
+            "Int32" => (INT32_TYPE_KIND_ID, PrimitiveType::Int32),
+            "UInt32" => (UINT32_TYPE_KIND_ID, PrimitiveType::UInt32),
+            "Int64" => (INT64_TYPE_KIND_ID, PrimitiveType::Int64),
+            "UInt64" => (UINT64_TYPE_KIND_ID, PrimitiveType::UInt64),
+            "Float32" => (FLOAT32_TYPE_KIND_ID, PrimitiveType::Float32),
+            "Float64" => (FLOAT64_TYPE_KIND_ID, PrimitiveType::Float64),
+            "Char" => (CHAR_TYPE_KIND_ID, PrimitiveType::Char),
+            "Bool" => (BOOL_TYPE_KIND_ID, PrimitiveType::Bool),
+            _ => (self.type_kinds.add_placeholder(), PrimitiveType::None),
+        };
 
         if Some(&identifier) == self.span_char_identifier.as_ref() {
             self.span_char_type_kind_id = type_kind_id;
@@ -3680,6 +3654,7 @@ impl Typer {
                 fields: Arc::new(type_kind_fields),
                 is_union,
                 namespace_id,
+                primitive_type,
             },
         );
 
@@ -3851,7 +3826,7 @@ impl Typer {
                 self.main_function_declaration = Some(index);
             }
 
-            if self.type_kinds.get_by_id(return_type.type_kind_id) != TypeKind::Int {
+            if return_type.type_kind_id != INT_TYPE_KIND_ID {
                 type_error!(self, "expected Main to return an Int");
             }
 
@@ -3860,8 +3835,7 @@ impl Typer {
                     type_error!(self, "invalid parameters for Main function");
                 }
 
-                let first_type_kind = self.type_kinds.get_by_id(param_type_kind_ids[0]);
-                if first_type_kind != TypeKind::Int {
+                if param_type_kind_ids[0] != INT_TYPE_KIND_ID {
                     type_error!(self, "expected first argument of Main to be an Int");
                 }
 
@@ -3887,7 +3861,7 @@ impl Typer {
                     );
                 };
 
-                if self.type_kinds.get_by_id(inner_type_kind_id) != TypeKind::Char {
+                if inner_type_kind_id != CHAR_TYPE_KIND_ID {
                     type_error!(
                         self,
                         "expected second argument of Main to be *val *val Char"
@@ -4204,15 +4178,14 @@ impl Typer {
     ) -> NodeIndex {
         let typed_inner = self.check_node(inner);
         let inner_type = assert_typed!(self, typed_inner);
+
         if inner_type.instance_kind != InstanceKind::Name {
             type_error!(self, "expected type name");
         }
 
-        let expected_element_count_type_kind_id = self.type_kinds.add_or_get(TypeKind::Int);
-        let typed_element_count_const_expression = self.check_node_with_hint(
-            element_count_const_expression,
-            Some(expected_element_count_type_kind_id),
-        );
+        let typed_element_count_const_expression =
+            self.check_node_with_hint(element_count_const_expression, Some(INT_TYPE_KIND_ID));
+
         let element_count_const_type = assert_typed!(self, typed_element_count_const_expression);
 
         let InstanceKind::Const(ConstValue::Int {

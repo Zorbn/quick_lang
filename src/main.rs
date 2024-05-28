@@ -6,6 +6,7 @@ mod const_value;
 mod emitter;
 mod emitter_stack;
 mod environment;
+mod error_bucket;
 mod file_data;
 mod lexer;
 mod name_generator;
@@ -15,7 +16,6 @@ mod position;
 mod tester;
 mod type_kinds;
 mod typer;
-mod error_bucket;
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().collect();

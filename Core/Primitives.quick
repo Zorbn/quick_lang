@@ -1,0 +1,63 @@
+struct Int
+{
+    func Hello(me Int) Void
+    {
+        var string = scope String.Create();
+        string.PushSpan("Hello! ");
+        string.PushInt(me);
+
+        Console.WriteLine(string.ToSpan());
+    }
+}
+
+struct UInt
+{
+}
+
+struct Int8
+{
+}
+
+struct UInt8
+{
+}
+
+struct Int16
+{
+}
+
+struct UInt16
+{
+}
+
+struct Int32
+{
+}
+
+struct UInt32
+{
+}
+
+struct Int64
+{
+}
+
+struct UInt64
+{
+}
+
+struct Float32
+{
+}
+
+struct Float64
+{
+}
+
+struct Char
+{
+}
+
+struct Bool
+{
+}

@@ -1,0 +1,7 @@
+func Main() Int
+{
+    val a = 6;
+    a.Hello();
+
+    return 0;
+}

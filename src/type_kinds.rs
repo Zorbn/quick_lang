@@ -36,11 +36,9 @@ pub fn get_field_index_by_name(
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TypeKind {
+pub enum PrimitiveType {
+    None,
     Int,
-    Bool,
-    Char,
-    Void,
     UInt,
     Int8,
     UInt8,
@@ -52,6 +50,28 @@ pub enum TypeKind {
     UInt64,
     Float32,
     Float64,
+    Char,
+    Bool,
+}
+
+pub const INT_TYPE_KIND_ID: usize = 0;
+pub const UINT_TYPE_KIND_ID: usize = 1;
+pub const INT8_TYPE_KIND_ID: usize = 2;
+pub const UINT8_TYPE_KIND_ID: usize = 3;
+pub const INT16_TYPE_KIND_ID: usize = 4;
+pub const UINT16_TYPE_KIND_ID: usize = 5;
+pub const INT32_TYPE_KIND_ID: usize = 6;
+pub const UINT32_TYPE_KIND_ID: usize = 7;
+pub const INT64_TYPE_KIND_ID: usize = 8;
+pub const UINT64_TYPE_KIND_ID: usize = 9;
+pub const FLOAT32_TYPE_KIND_ID: usize = 10;
+pub const FLOAT64_TYPE_KIND_ID: usize = 11;
+pub const CHAR_TYPE_KIND_ID: usize = 12;
+pub const BOOL_TYPE_KIND_ID: usize = 13;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeKind {
+    Void,
     Tag,
     Pointer {
         inner_type_kind_id: usize,
@@ -66,6 +86,7 @@ pub enum TypeKind {
         fields: Arc<Vec<Field>>,
         is_union: bool,
         namespace_id: usize,
+        primitive_type: PrimitiveType,
     },
     Placeholder,
     Function {
@@ -83,34 +104,49 @@ pub enum TypeKind {
 
 impl TypeKind {
     pub fn is_int(&self) -> bool {
-        matches!(
-            self,
-            TypeKind::Int
-                | TypeKind::UInt
-                | TypeKind::Int8
-                | TypeKind::UInt8
-                | TypeKind::Int16
-                | TypeKind::UInt16
-                | TypeKind::Int32
-                | TypeKind::UInt32
-                | TypeKind::Int64
-                | TypeKind::UInt64
-        )
+        if let TypeKind::Struct { primitive_type, .. } = self {
+            return matches!(
+                primitive_type,
+                PrimitiveType::Int
+                    | PrimitiveType::UInt
+                    | PrimitiveType::Int8
+                    | PrimitiveType::UInt8
+                    | PrimitiveType::Int16
+                    | PrimitiveType::UInt16
+                    | PrimitiveType::Int32
+                    | PrimitiveType::UInt32
+                    | PrimitiveType::Int64
+                    | PrimitiveType::UInt64
+            );
+        };
+
+        false
     }
 
     pub fn is_unsigned(&self) -> bool {
-        matches!(
-            self,
-            TypeKind::UInt
-                | TypeKind::UInt8
-                | TypeKind::UInt16
-                | TypeKind::UInt32
-                | TypeKind::UInt64
-        )
+        if let TypeKind::Struct { primitive_type, .. } = self {
+            return matches!(
+                primitive_type,
+                PrimitiveType::UInt
+                    | PrimitiveType::UInt8
+                    | PrimitiveType::UInt16
+                    | PrimitiveType::UInt32
+                    | PrimitiveType::UInt64
+            );
+        };
+
+        false
     }
 
     pub fn is_float(&self) -> bool {
-        matches!(self, TypeKind::Float32 | TypeKind::Float64)
+        if let TypeKind::Struct { primitive_type, .. } = self {
+            return matches!(
+                primitive_type,
+                PrimitiveType::Float32 | PrimitiveType::Float64
+            );
+        };
+
+        false
     }
 
     pub fn is_numeric(&self) -> bool {
@@ -126,10 +162,27 @@ pub struct TypeKinds {
 
 impl TypeKinds {
     pub fn new() -> Self {
-        Self {
+        let mut type_kinds = Self {
             type_kinds: Vec::new(),
             destructor_name: "Destroy".into(),
-        }
+        };
+
+        type_kinds.add_placeholder(); // Int
+        type_kinds.add_placeholder(); // UInt
+        type_kinds.add_placeholder(); // Int8
+        type_kinds.add_placeholder(); // UInt32
+        type_kinds.add_placeholder(); // Int16
+        type_kinds.add_placeholder(); // UInt16
+        type_kinds.add_placeholder(); // Int32
+        type_kinds.add_placeholder(); // UInt32
+        type_kinds.add_placeholder(); // Int64
+        type_kinds.add_placeholder(); // UInt64
+        type_kinds.add_placeholder(); // Float32
+        type_kinds.add_placeholder(); // Float64
+        type_kinds.add_placeholder(); // Char
+        type_kinds.add_placeholder(); // Bool
+
+        type_kinds
     }
 
     pub fn add_or_get(&mut self, type_kind: TypeKind) -> usize {

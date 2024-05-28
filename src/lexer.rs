@@ -409,7 +409,8 @@ impl Lexer {
     }
 
     fn error(&mut self, message: &str) {
-        self.error_bucket.error(self.position, "Syntax", message, &self.files);
+        self.error_bucket
+            .error(self.position, "Syntax", message, &self.files);
     }
 
     fn collect_chars(&self, start: Position, end: Position) -> Arc<str> {
@@ -514,9 +515,11 @@ impl Lexer {
                 loop {
                     match self.char() {
                         'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' => {}
-                        _ => if !self.char().is_numeric() {
-                            break;
-                        },
+                        _ => {
+                            if !self.char().is_numeric() {
+                                break;
+                            }
+                        }
                     }
 
                     has_contents = true;

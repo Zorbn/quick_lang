@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
-    error_bucket::ErrorBucket, file_data::FileData, lexer::{Token, TokenKind}, namespace::{DefinitionIndices, DEFINITION_ERROR}, position::Position
+    error_bucket::ErrorBucket,
+    file_data::FileData,
+    lexer::{Token, TokenKind},
+    namespace::{DefinitionIndices, DEFINITION_ERROR},
+    position::Position,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -448,7 +452,8 @@ impl Parser {
         if error_position == self.last_error_position {
             self.position += 1;
         } else {
-            self.error_bucket.error(position, "Syntax", message, &self.files);
+            self.error_bucket
+                .error(position, "Syntax", message, &self.files);
         }
 
         self.last_error_position = error_position;
@@ -1328,11 +1333,12 @@ impl Parser {
 
         let iterator = self.name();
 
-        let type_name = if *self.token_kind() != TokenKind::Of && *self.token_kind() != TokenKind::In {
-            Some(self.type_name())
-        } else {
-            None
-        };
+        let type_name =
+            if *self.token_kind() != TokenKind::Of && *self.token_kind() != TokenKind::In {
+                Some(self.type_name())
+            } else {
+                None
+            };
 
         if *self.token_kind() == TokenKind::In {
             self.position += 1;

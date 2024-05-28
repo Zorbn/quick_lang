@@ -9,7 +9,8 @@ use std::{
 };
 
 use crate::{
-    code_generator::CodeGenerator, error_bucket::ErrorBucket, file_data::FileData, lexer::Lexer, parser::Parser, typer::Typer
+    code_generator::CodeGenerator, error_bucket::ErrorBucket, file_data::FileData, lexer::Lexer,
+    parser::Parser, typer::Typer,
 };
 
 pub fn compile(
