@@ -5,19 +5,19 @@ func Main() Int
     switch (a)
     case (1)
     {
-        Console.WriteLine("1");
+        Console.WriteLn("1");
     }
     case (3.0)
     {
-        Console.WriteLine("3");
+        Console.WriteLn("3");
     }
     case (5)
     {
-        Console.WriteLine("5");
+        Console.WriteLn("5");
     }
     else
     {
-        Console.WriteLine("else");
+        Console.WriteLn("else");
     }
 
     val b = "b";

@@ -2,17 +2,17 @@ struct MyStruct
 {
     func MethodByValue(me MyStruct) Void
     {
-        Console.WriteLine("ByValue");
+        Console.WriteLn("ByValue");
     }
 
     func MethodByReference(me *var MyStruct) Void
     {
-        Console.WriteLine("ByReference");
+        Console.WriteLn("ByReference");
     }
 
     func MethodByValReference(me *val MyStruct) Void
     {
-        Console.WriteLine("ByValReference");
+        Console.WriteLn("ByValReference");
     }
 }
 

@@ -58,7 +58,7 @@ func StackTrace(skipCount Int) Void
         lineString.PushSpan(":");
         lineString.PushUInt32(line.lineNumber);
 
-        Console.WriteLine(lineString.ToSpan());
+        Console.WriteLn(lineString.ToSpan());
     }
 
     delete symbol;

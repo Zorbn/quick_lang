@@ -21,11 +21,18 @@
 - Default parameters.
 - Possibly generic type inference, so specifiers aren't required?
 - Conditional compilation (#if DEBUG, #if UNSAFE, etc)
-- String interpolation $"Hello! {myInt}" -> String.Create().PushSpan("Hello! ").PushInt(myInt)
-- Make `scope` and `new` come before unary suffix operators, so you can do:
-    Console.WriteStringLine(scope String.Create().PushSpan("Hello").PushSpan(" Again"));
-  instead of:
-    Console.WriteStringLine((scope String.Create()).PushSpan("Hello").PushSpan(" Again"));
+
+- String interpolation $"Hello! {myInt}" ->
+    /* Defined at the top of the scope: */
+    val stringInterpolation = String.Create().PushSpan("Hello! ").PushInt(myInt);
+    /* At usage: */
+    stringInterpolation
+    /* Eg. */
+    Console.WriteStrLn(scope $"Hello! {myInt}");
+
+  Maybe strings should have a Push.<T> method that works on any struct with a ToString(me, *var string) method?
+  Then we could get rid of all of the PushInt, PushFloat64, etc and string interpolation would work on anything?
+
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.

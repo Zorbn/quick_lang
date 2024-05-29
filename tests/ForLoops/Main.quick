@@ -52,15 +52,15 @@ func Main() Int
         Console.WriteChar(hello.Get(i));
     }
 
-    Console.WriteLine("\n");
+    Console.WriteLn("\n");
 
     for (val char in "hello")
     {
         Console.WriteChar(char);
-        Console.WriteLine("");
+        Console.WriteLn("");
     }
 
-    Console.WriteLine("");
+    Console.WriteLn("");
 
     for (val string in ["hello", "world", "hi", "ok", "bye"])
     {
@@ -69,10 +69,10 @@ func Main() Int
             Console.WriteChar(char);
         }
 
-        Console.WriteLine("");
+        Console.WriteLn("");
     }
 
-    Console.WriteLine("");
+    Console.WriteLn("");
 
     var iterable1 = Iterable { index = 0 };
 
@@ -82,12 +82,12 @@ func Main() Int
         string.PushSpan("Iterable1: ");
         string.PushInt(a);
 
-        Console.WriteLine(string.ToSpan());
+        Console.WriteLn(string.ToSpan());
     }
 
     var iterable2 = Iterable { index = 0 };
 
-    Console.WriteLine("");
+    Console.WriteLn("");
 
     while (iterable2.Next())
     {
@@ -97,7 +97,7 @@ func Main() Int
         string.PushSpan("Iterable2: ");
         string.PushInt(a);
 
-        Console.WriteLine(string.ToSpan());
+        Console.WriteLn(string.ToSpan());
     }
 
     return 0;

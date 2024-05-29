@@ -3,14 +3,30 @@ func Write(span Span.<Char>) Void
     Internal.CoreSystemConsoleWrite(span.data);
 }
 
-func WriteLine(span Span.<Char>) Void
+func WriteLn(span Span.<Char>) Void
 {
     Internal.puts(span.data);
+}
+
+func WriteStr(string *val String) Void
+{
+    Console.Write(string.ToSpan());
+}
+
+func WriteStrLn(string *val String) Void
+{
+    Console.WriteLn(string.ToSpan());
 }
 
 func WriteChar(char Char) Void
 {
     Internal.CoreSystemConsoleWriteChar(char as Int32);
+}
+
+func WriteCharLn(char Char) Void
+{
+    Console.WriteChar(char);
+    Console.WriteChar('\n');
 }
 
 func Flush() Void

@@ -20,7 +20,7 @@ func Main() Int
     var string = String.Create();
     string.PushUInt8(explicitInt);
 
-    Console.WriteLine(string.ToSpan());
+    Console.WriteLn(string.ToSpan());
 
     return 0;
 }

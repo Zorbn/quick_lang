@@ -1,6 +1,6 @@
 func Main() Int
 {
-    Console.WriteLine("Hello world!");
+    Console.WriteLn("Hello world!");
 
     return 0;
 }

@@ -28,7 +28,7 @@ struct Span.<T>
         return true;
     }
 
-    func GetIterable(me Span.<T>) SpanIterable.<T>
+    func ToIterable(me Span.<T>) SpanIterable.<T>
     {
         return SpanIterable.<T>.Create(me);
     }

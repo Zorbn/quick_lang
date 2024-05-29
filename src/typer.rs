@@ -2180,7 +2180,7 @@ impl Typer {
             param_type_kind_ids,
             ..
         }) = self.type_kinds.get_method(
-            self.name_generator.reuse("GetIterable"),
+            self.name_generator.reuse("ToIterable"),
             expression_type.type_kind_id,
             &self.namespaces,
         ) {
@@ -2192,7 +2192,7 @@ impl Typer {
             {
                 let Node { start, end, .. } = *self.get_current_parser_node();
 
-                let get_iterable_text = self.name_generator.reuse("GetIterable");
+                let get_iterable_text = self.name_generator.reuse("ToIterable");
                 let get_iterable_name = self.lower_node(Node {
                     kind: NodeKind::Name {
                         text: get_iterable_text,

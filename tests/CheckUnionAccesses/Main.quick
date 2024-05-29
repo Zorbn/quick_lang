@@ -12,7 +12,7 @@ func Main() Int
         cookedData = "Ready to eat",
     };
 
-    Console.WriteLine(onion.cookedData);
+    Console.WriteLn(onion.cookedData);
 
     val rawData = onion.rawData;
 
