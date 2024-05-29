@@ -1,0 +1,12 @@
+extern func isalnum(c Int32) Int32;
+extern func isalpha(c Int32) Int32;
+extern func isblank(c Int32) Int32;
+extern func iscntrl(c Int32) Int32;
+extern func isdigit(c Int32) Int32;
+extern func isgraph(c Int32) Int32;
+extern func islower(c Int32) Int32;
+extern func isprint(c Int32) Int32;
+extern func ispunct(c Int32) Int32;
+extern func isspace(c Int32) Int32;
+extern func isupper(c Int32) Int32;
+extern func isxdigit(c Int32) Int32;

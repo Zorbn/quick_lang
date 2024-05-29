@@ -287,10 +287,11 @@ impl TypeKinds {
             is_inner_mutable,
         } = self.get_by_id(param_type_kind_id)
         {
-            if is_inner_mutable
-                && (instance_type.instance_kind != InstanceKind::Var
-                    || instance_type.instance_kind == InstanceKind::Literal)
-            {
+            if instance_type.instance_kind == InstanceKind::Literal {
+                return None;
+            }
+
+            if is_inner_mutable && instance_type.instance_kind != InstanceKind::Var {
                 return None;
             }
 

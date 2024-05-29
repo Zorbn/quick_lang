@@ -36,7 +36,7 @@ struct String
         return string;
     }
 
-    func ToSpan(me *var String) Span.<Char>
+    func ToSpan(me *val String) Span.<Char>
     {
         return Span.<Char>
         {

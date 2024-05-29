@@ -1,7 +1,16 @@
 func Main() Int
 {
-    val a = 6;
-    a.Hello();
+    val string = scope String.Create();
+
+    val a = -6;
+
+    string.PushInt(a.Abs());
+    string.PushChar(' ');
+
+    val b Float64 = -7.8;
+
+    string.PushFloat64(b.Abs().Ceil());
+    string.PushChar(' ');
 
     return 0;
 }

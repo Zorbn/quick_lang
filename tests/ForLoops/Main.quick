@@ -46,9 +46,10 @@ func Main() Int
         sum += i;
     }
 
-    for (val i of 0 < "hello".count)
+    val hello = "hello";
+    for (val i of 0 < hello.count)
     {
-        Console.WriteChar("hello".Get(i));
+        Console.WriteChar(hello.Get(i));
     }
 
     Console.WriteLine("\n");

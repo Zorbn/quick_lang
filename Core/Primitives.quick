@@ -1,61 +1,307 @@
 struct Int
 {
-    func Hello(me Int) Void
-    {
-        var string = scope String.Create();
-        string.PushSpan("Hello! ");
-        string.PushInt(me);
+    func Abs(x Int) Int
+        return Internal.llabs(x as Int64) as Int;
 
-        Console.WriteLine(string.ToSpan());
-    }
+    func Min(x Int, y Int) Int
+        return (x <= y) as Int * x + (y < x) as Int * y;
+
+    func Max(x Int, y Int) Int
+        return (x >= y) as Int * x + (y > x) as Int * y;
 }
 
 struct UInt
 {
+    func Min(x UInt, y UInt) UInt
+        return (x <= y) as UInt * x + (y < x) as UInt * y;
+
+    func Max(x UInt, y UInt) UInt
+        return (x >= y) as UInt * x + (y > x) as UInt * y;
 }
 
 struct Int8
 {
+    func Abs(x Int8) Int8
+        return Internal.abs(x as Int32) as Int8;
+
+    func Min(x Int8, y Int8) Int8
+        return (x <= y) as Int8 * x + (y < x) as Int8 * y;
+
+    func Max(x Int8, y Int8) Int8
+        return (x >= y) as Int8 * x + (y > x) as Int8 * y;
 }
 
 struct UInt8
 {
+    func Min(x UInt8, y UInt8) UInt8
+        return (x <= y) as UInt8 * x + (y < x) as UInt8 * y;
+
+    func Max(x UInt8, y UInt8) UInt8
+        return (x >= y) as UInt8 * x + (y > x) as UInt8 * y;
 }
 
 struct Int16
 {
+    func Abs(x Int16) Int16
+        return Internal.abs(x as Int32) as Int16;
+
+    func Min(x Int16, y Int16) Int16
+        return (x <= y) as Int16 * x + (y < x) as Int16 * y;
+
+    func Max(x Int16, y Int16) Int16
+        return (x >= y) as Int16 * x + (y > x) as Int16 * y;
 }
 
 struct UInt16
 {
+    func Min(x UInt16, y UInt16) UInt16
+        return (x <= y) as UInt16 * x + (y < x) as UInt16 * y;
+
+    func Max(x UInt16, y UInt16) UInt16
+        return (x >= y) as UInt16 * x + (y > x) as UInt16 * y;
 }
 
 struct Int32
 {
+    func Abs(x Int32) Int32
+        return Internal.abs(x) as Int32;
+
+    func Min(x Int32, y Int32) Int32
+        return (x <= y) as Int32 * x + (y < x) as Int32 * y;
+
+    func Max(x Int32, y Int32) Int32
+        return (x >= y) as Int32 * x + (y > x) as Int32 * y;
 }
 
 struct UInt32
 {
+    func Min(x UInt32, y UInt32) UInt32
+        return (x <= y) as UInt32 * x + (y < x) as UInt32 * y;
+
+    func Max(x UInt32, y UInt32) UInt32
+        return (x >= y) as UInt32 * x + (y > x) as UInt32 * y;
 }
 
 struct Int64
 {
+    func Abs(x Int64) Int64
+        return Internal.llabs(x) as Int64;
+
+    func Min(x Int64, y Int64) Int64
+        return (x <= y) as Int64 * x + (y < x) as Int64 * y;
+
+    func Max(x Int64, y Int64) Int64
+        return (x >= y) as Int64 * x + (y > x) as Int64 * y;
 }
 
 struct UInt64
 {
+    func Min(x UInt64, y UInt64) UInt64
+        return (x <= y) as UInt64 * x + (y < x) as UInt64 * y;
+
+    func Max(x UInt64, y UInt64) UInt64
+        return (x >= y) as UInt64 * x + (y > x) as UInt64 * y;
 }
 
 struct Float32
 {
+    func Abs(x Float32) Float32
+        return Internal.fabsf(x);
+
+    func Ceil(x Float32) Float32
+        return Internal.ceilf(x);
+
+    func Floor(x Float32) Float32
+        return Internal.floorf(x);
+
+    func Round(x Float32) Float32
+        return Internal.roundf(x);
+
+    func Acos(x Float32) Float32
+        return Internal.acosf(x);
+
+    func Asin(x Float32) Float32
+        return Internal.asinf(x);
+
+    func Asinh(x Float32) Float32
+        return Internal.asinhf(x);
+
+    func Tan(x Float32) Float32
+        return Internal.tanf(x);
+
+    func Tanh(x Float32) Float32
+        return Internal.tanhf(x);
+
+    func Atan(x Float32) Float32
+        return Internal.atanf(x);
+
+    func Atan2(y Float32, x Float32) Float32
+        return Internal.atan2f(y, x);
+
+    func Atanh(x Float32) Float32
+        return Internal.atanhf(x);
+
+    func Cos(x Float32) Float32
+        return Internal.cosf(x);
+
+    func Cosh(x Float32) Float32
+        return Internal.coshf(x);
+
+    func Sin(x Float32) Float32
+        return Internal.sinf(x);
+
+    func Sinh(x Float32) Float32
+        return Internal.sinhf(x);
+
+    func Exp(x Float32) Float32
+        return Internal.expf(x);
+
+    func Exp2(x Float32) Float32
+        return Internal.exp2f(x);
+
+    func Max(x Float32, y Float32) Float32
+        return Internal.fmaxf(x, y);
+
+    func Min(x Float32, y Float32) Float32
+        return Internal.fminf(x, y);
+
+    func Log(x Float32) Float32
+        return Internal.logf(x);
+
+    func Log10(x Float32) Float32
+        return Internal.log10f(x);
+
+    func Log2(x Float32) Float32
+        return Internal.log2f(x);
+
+    func Pow(x Float32, y Float32) Float32
+        return Internal.powf(x, y);
+
+    func Sqrt(x Float32) Float32
+        return Internal.sqrtf(x);
+
+    func Trunc(x Float32) Float32
+        return Internal.truncf(x);
 }
 
 struct Float64
 {
+    func Abs(x Float64) Float64
+        return Internal.fabs(x);
+
+    func Ceil(x Float64) Float64
+        return Internal.ceil(x);
+
+    func Floor(x Float64) Float64
+        return Internal.floor(x);
+
+    func Round(x Float64) Float64
+        return Internal.round(x);
+
+    func Acos(x Float64) Float64
+        return Internal.acos(x);
+
+    func Asin(x Float64) Float64
+        return Internal.asin(x);
+
+    func Asinh(x Float64) Float64
+        return Internal.asinh(x);
+
+    func Tan(x Float64) Float64
+        return Internal.tan(x);
+
+    func Tanh(x Float64) Float64
+        return Internal.tanh(x);
+
+    func Atan(x Float64) Float64
+        return Internal.atan(x);
+
+    func Atan2(y Float64, x Float64) Float64
+        return Internal.atan2(y, x);
+
+    func Atanh(x Float64) Float64
+        return Internal.atanh(x);
+
+    func Cos(x Float64) Float64
+        return Internal.cos(x);
+
+    func Cosh(x Float64) Float64
+        return Internal.cosh(x);
+
+    func Sin(x Float64) Float64
+        return Internal.sin(x);
+
+    func Sinh(x Float64) Float64
+        return Internal.sinh(x);
+
+    func Exp(x Float64) Float64
+        return Internal.exp(x);
+
+    func Exp2(x Float64) Float64
+        return Internal.exp2(x);
+
+    func Max(x Float64, y Float64) Float64
+        return Internal.fmax(x, y);
+
+    func Min(x Float64, y Float64) Float64
+        return Internal.fmin(x, y);
+
+    func Log(x Float64) Float64
+        return Internal.log(x);
+
+    func Log10(x Float64) Float64
+        return Internal.log10(x);
+
+    func Log2(x Float64) Float64
+        return Internal.log2(x);
+
+    func Pow(x Float64, y Float64) Float64
+        return Internal.pow(x, y);
+
+    func Sqrt(x Float64) Float64
+        return Internal.sqrt(x);
+
+    func Trunc(x Float64) Float64
+        return Internal.trunc(x);
 }
 
 struct Char
 {
+    func IsAlphaNumeric(me Char) Bool
+        return Internal.isalnum(me as Int32) as Bool;
+
+    func IsAlpha(me Char) Bool
+        return Internal.isalpha(me as Int32) as Bool;
+
+    func IsBlank(me Char) Bool
+        return Internal.isblank(me as Int32) as Bool;
+
+    func IsControl(me Char) Bool
+        return Internal.iscntrl(me as Int32) as Bool;
+
+    func IsDigit(me Char) Bool
+        return Internal.isdigit(me as Int32) as Bool;
+
+    func IsGraphical(me Char) Bool
+        return Internal.isgraph(me as Int32) as Bool;
+
+    func IsLower(me Char) Bool
+        return Internal.islower(me as Int32) as Bool;
+
+    func IsPrintable(me Char) Bool
+        return Internal.isprint(me as Int32) as Bool;
+
+    func IsPunctuation(me Char) Bool
+        return Internal.ispunct(me as Int32) as Bool;
+
+    func IsWhiteSpace(me Char) Bool
+        return Internal.isspace(me as Int32) as Bool;
+
+    func IsUpper(me Char) Bool
+        return Internal.isupper(me as Int32) as Bool;
+
+    func IsHexDigit(me Char) Bool
+        return Internal.isxdigit(me as Int32) as Bool;
 }
 
 struct Bool

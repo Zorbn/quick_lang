@@ -21,6 +21,11 @@
 - Default parameters.
 - Possibly generic type inference, so specifiers aren't required?
 - Conditional compilation (#if DEBUG, #if UNSAFE, etc)
+- String interpolation $"Hello! {myInt}" -> String.Create().PushSpan("Hello! ").PushInt(myInt)
+- Make `scope` and `new` come before unary suffix operators, so you can do:
+    Console.WriteStringLine(scope String.Create().PushSpan("Hello").PushSpan(" Again"));
+  instead of:
+    Console.WriteStringLine((scope String.Create()).PushSpan("Hello").PushSpan(" Again"));
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.

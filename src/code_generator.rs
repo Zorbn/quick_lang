@@ -1044,9 +1044,15 @@ impl CodeGenerator {
             return_type_kind_id: void_id,
         });
 
+        // The expression will always be assigned to a var before the destructor is called on it.
+        let expression_type_for_destructor = Type {
+            type_kind_id: expression_type_kind_id,
+            instance_kind: InstanceKind::Var,
+        };
+
         if let Some(method_kind) = self
             .type_kinds
-            .is_destructor_call_valid(&expression_type, &self.namespaces)
+            .is_destructor_call_valid(&expression_type_for_destructor, &self.namespaces)
         {
             // We don't want to re-evalutate the expression when we use it
             // multiple times (when calling the destructor, and when freeing).
@@ -1377,9 +1383,11 @@ impl CodeGenerator {
 
                 let (dereferenced_type_kind_id, _) =
                     self.type_kinds.dereference_type_kind_id(type_kind_id);
+
                 let dereferenced_node_type = Type {
                     type_kind_id: dereferenced_type_kind_id,
-                    instance_kind: node_type.instance_kind,
+                    // The expression will always be assigned to scopeResult, a var.
+                    instance_kind: InstanceKind::Var,
                 };
 
                 let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
