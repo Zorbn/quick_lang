@@ -2353,11 +2353,19 @@ impl Typer {
             | Op::Minus
             | Op::Multiply
             | Op::Divide
-            | Op::Modulo
             | Op::PlusAssign
             | Op::MinusAssign
             | Op::MultiplyAssign
-            | Op::DivideAssign
+            | Op::DivideAssign => {
+                if !self
+                    .type_kinds
+                    .get_by_id(left_type.type_kind_id)
+                    .is_numeric()
+                {
+                    type_error!(self, "expected arithmetic types");
+                }
+            }
+            Op::Modulo
             | Op::LeftShiftAssign
             | Op::RightShiftAssign
             | Op::ModuloAssign
@@ -2373,9 +2381,9 @@ impl Typer {
                 if !self
                     .type_kinds
                     .get_by_id(left_type.type_kind_id)
-                    .is_numeric()
+                    .is_int()
                 {
-                    type_error!(self, "expected arithmetic types");
+                    type_error!(self, "expected int types");
                 }
             }
             Op::Less | Op::Greater | Op::LessEqual | Op::GreaterEqual => {
