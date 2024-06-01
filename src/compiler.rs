@@ -215,7 +215,6 @@ fn gen(
             typer.typed_nodes,
             typer.type_kinds,
             typer.namespaces,
-            typer.span_char_type_kind_id,
             typer.main_function_declaration,
             typer.typed_definitions,
             typer.name_generator,

@@ -4,7 +4,7 @@ func Exit() Void
     Internal.abort();
 }
 
-func Error(message Span.<Char>) Void
+func Error(message StringView) Void
 {
     Internal.ErrorTrace(message.data, 3);
 }
@@ -53,12 +53,12 @@ func StackTrace(skipCount Int) Void
 
         var lineString = scope String.Create();
         lineString.PushCString(symbol.name as *val Char);
-        lineString.PushSpan(" > ");
+        lineString.Push.<StringView>(" > ");
         lineString.PushCString(line.fileName);
-        lineString.PushSpan(":");
+        lineString.Push.<StringView>(":");
         lineString.Push.<UInt32>(line.lineNumber);
 
-        Console.WriteLn(lineString.ToSpan());
+        Console.WriteLn(lineString.ToView());
     }
 
     delete symbol;

@@ -43,7 +43,7 @@ func callsMain() Void
     Main(argc, *argv.data);
 }
 
-func useMyString(myCharSpan MyCharSpan) Void
+func useMyString(myStringView MyStringView) Void
 {
 
 }

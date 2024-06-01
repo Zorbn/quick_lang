@@ -1,11 +1,11 @@
 func Main() Int
 {
-    val myCharSpan = "abcdefg";
+    val myCharView = "abcdefg";
 
-    Console.WriteChar(myCharSpan.Get(3));
-    Console.WriteChar(myCharSpan.Get(0));
+    Console.WriteChar(myCharView.Get(3));
+    Console.WriteChar(myCharView.Get(0));
     Console.WriteChar('\n');
-    Console.WriteChar(myCharSpan.Get(7));
+    Console.WriteChar(myCharView.Get(7));
     Console.WriteChar('\n');
 
     return 0;

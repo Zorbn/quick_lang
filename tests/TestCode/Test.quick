@@ -1,10 +1,10 @@
 using QuickCode;
 
-alias MyCharSpan = Span.<Char>;
+alias MyStringView = StringView;
 
 extern func puts(str *val Char) UInt;
 
-func Puts(str Span.<Char>) UInt
+func Puts(str StringView) UInt
 {
     return puts(str.data);
 }
@@ -25,7 +25,7 @@ union SimpleUnion
     a Int;
     b Bool;
     c Int;
-    d Span.<Char>;
+    d StringView;
 }
 
 union GenericUnion.<A, B>
@@ -93,8 +93,8 @@ func Main(argc Int, argv *val *val Char) Int
     var containsFuncPtr = ContainsFuncPtr { funcPtr = *print };
     containsFuncPtr.funcPtr.*();
 
-    val myCharSpan MyCharSpan = "MyString";
-    useMyString(myCharSpan);
+    val myStringView MyStringView = "MyString";
+    useMyString(myStringView);
 
     var uninitializedPoint Point = ?;
     uninitializedPoint = Point { x = 0, y = 0 };
@@ -148,7 +148,7 @@ func Main(argc Int, argv *val *val Char) Int
     var b Int = a * 2;
     val c = b /= b / 4;
 
-    val str Span.<Char> = "hello world";
+    val str StringView = "hello world";
     Puts(str);
 
     var byte UInt8 = 255 as UInt8;
@@ -174,12 +174,12 @@ func Main(argc Int, argv *val *val Char) Int
     var myArrayCopy [3]Int = takeArray(myArray);
     var otherCopy [3]Int = myArrayCopy;
     var repeatArray [400]Int = [1, 2, 3, 4; 100];
-    var repeatStringArray [400]Span.<Char> = ["a", "bb", "ccc", "dddd"; 100];
+    var repeatStringArray [400]StringView = ["a", "bb", "ccc", "dddd"; 100];
     repeatStringArray[0] = "hello";
     Puts(repeatStringArray[377]);
 
-    var multiA [2][3]Span.<Char> = [["a", "b", "ccc"], ["d", "e", "f"]];
-    var multiB [2][3]Span.<Char> = multiA;
+    var multiA [2][3]StringView = [["a", "b", "ccc"], ["d", "e", "f"]];
+    var multiB [2][3]StringView = multiA;
     Puts(multiA[1][2]);
 
     var xy [2]Point = [

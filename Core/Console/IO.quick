@@ -1,21 +1,21 @@
-func Write(span Span.<Char>) Void
+func Write(view StringView) Void
 {
-    Internal.CoreSystemConsoleWrite(span.data);
+    Internal.CoreSystemConsoleWrite(view.data);
 }
 
-func WriteLn(span Span.<Char>) Void
+func WriteLn(view StringView) Void
 {
-    Internal.puts(span.data);
+    Internal.puts(view.data);
 }
 
 func WriteStr(string *val String) Void
 {
-    Console.Write(string.ToSpan());
+    Console.Write(string.ToView());
 }
 
 func WriteStrLn(string *val String) Void
 {
-    Console.WriteLn(string.ToSpan());
+    Console.WriteLn(string.ToView());
 }
 
 func WriteChar(char Char) Void

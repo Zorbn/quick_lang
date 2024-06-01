@@ -1633,7 +1633,7 @@ impl Parser {
                 TokenKind::Percent => Op::Modulo,
                 TokenKind::Ampersand => Op::BitwiseAnd,
                 TokenKind::LessLess => Op::LeftShift,
-                // We can't have a LessLess token because it prevents nested generic specifiers like GenericThing.<Span.<Char>>.
+                // We can't have a LessLess token because it prevents nested generic specifiers like GenericThing.<GenericThing.<Char>>.
                 TokenKind::Greater if *self.peek_token_kind() == TokenKind::Greater => {
                     self.position += 1;
 

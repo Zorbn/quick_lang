@@ -1,0 +1,77 @@
+struct StringView
+{
+    data *val Char;
+    count Int;
+
+    func Get(me *val StringView, index Int) Char
+    {
+        if (index < 0 || index >= me.count)
+        {
+            Runtime.Error("StringView access out of bounds!");
+        }
+
+        val dataStart = me.data as UInt;
+        val dataIndex = dataStart + index as UInt * sizeof Char;
+        val dataPointer = dataIndex as *val Char;
+
+        return dataPointer.*;
+    }
+
+    func Equals(me *val StringView, other *val StringView) Bool
+    {
+        if (me.count != other.count) return false;
+
+        for (val i of 0 < me.count)
+            if (me.Get(i) != other.Get(i))
+                return false;
+
+        return true;
+    }
+
+    func ToString(view StringView, string *var String) Void
+    {
+        string.Reserve(view.count);
+
+        for (val i of 0 < view.count)
+        {
+            var stringChar = (string.data as UInt + string.count as UInt) as *var Char;
+            var viewChar = (view.data as UInt + i as UInt) as *var Char;
+            stringChar.* = viewChar.*;
+            string.count += 1;
+        }
+
+        string.NullTerminate();
+    }
+
+    func ToIterable(me StringView) StringViewIterable
+    {
+        return StringViewIterable.Create(me);
+    }
+}
+
+struct StringViewIterable
+{
+    view StringView;
+    index Int;
+
+    func Create(view StringView) StringViewIterable
+    {
+        return StringViewIterable
+        {
+            view = view,
+            index = -1,
+        };
+    }
+
+    func Next(me *var StringViewIterable) Bool
+    {
+        me.index += 1;
+
+        return me.index < me.view.count;
+    }
+
+    func Get(me *val StringViewIterable) Char
+    {
+        return me.view.Get(me.index);
+    }
+}

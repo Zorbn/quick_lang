@@ -21,10 +21,10 @@ func Main() Int
     delete b;
 
     var string = scope String.Create();
-    string.PushSpan("Hello world! ");
+    string.Push.<StringView>("Hello world! ");
     string.Push.<Float32>(1.346);
 
-    Console.WriteLn(string.ToSpan());
+    Console.WriteLn(string.ToView());
 
     return 0;
 }

@@ -14,11 +14,7 @@ use crate::{
     parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
     position::Position,
     type_kinds::{
-        get_field_index_by_name, Field, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID,
-        CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID,
-        INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID,
-        STRING_TYPE_KIND_ID, UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID,
-        UINT8_TYPE_KIND_ID, UINT_TYPE_KIND_ID,
+        get_field_index_by_name, Field, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID, CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID, INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID, STRING_TYPE_KIND_ID, STRING_VIEW_TYPE_KIND_ID, UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID, UINT8_TYPE_KIND_ID, UINT_TYPE_KIND_ID
     },
 };
 
@@ -134,8 +130,6 @@ pub struct Typer {
     pub namespaces: Vec<Namespace>,
     file_namespace_ids: Vec<usize>,
     file_used_namespace_ids: Vec<Vec<usize>>,
-    pub span_char_type_kind_id: usize,
-    span_char_identifier: Option<Identifier>,
 
     scope_type_kind_environment: Environment<Identifier, usize>,
     scope_environment: Environment<Arc<str>, Type>,
@@ -158,8 +152,6 @@ impl Typer {
             typed_definitions: Vec::new(),
             type_kinds: TypeKinds::new(),
             namespaces: Vec::with_capacity(file_count),
-            span_char_type_kind_id: 0,
-            span_char_identifier: None,
             main_function_declaration: None,
             name_generator: NameGenerator::new(),
             error_bucket: ErrorBucket::new(),
@@ -182,7 +174,7 @@ impl Typer {
     pub fn new_for_file(base_typer: &Typer, file_index: usize) -> Self {
         let mut typer = base_typer.clone();
         typer.file_index = Some(file_index);
-        typer.find_span_char();
+        typer.find_core_types();
 
         typer
     }
@@ -364,12 +356,7 @@ impl Typer {
         };
     }
 
-    fn find_span_char(&mut self) {
-        self.span_char_identifier = Some(Identifier {
-            name: self.name_generator.reuse("Span"),
-            generic_arg_type_kind_ids: Some(Arc::new(vec![CHAR_TYPE_KIND_ID])),
-        });
-
+    fn find_core_types(&mut self) {
         self.lookup_core_type("Int");
         self.lookup_core_type("UInt");
         self.lookup_core_type("Int8");
@@ -385,15 +372,7 @@ impl Typer {
         self.lookup_core_type("Char");
         self.lookup_core_type("Bool");
         self.lookup_core_type("String");
-
-        let IdentifierLookupResult::Some(_, _) = self.lookup_identifier(
-            self.span_char_identifier.clone().unwrap(),
-            LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
-            LookupKind::Types,
-            None,
-        ) else {
-            panic!("Span.<Char> type not found");
-        };
+        self.lookup_core_type("StringView");
     }
 
     fn add_node(
@@ -1966,7 +1945,7 @@ impl Typer {
         // var iterable = ...
         // while (iterable.Next())
         // {
-        //     _ iterator = iterable.GetCurrent();
+        //     _ iterator = iterable.Get();
         //     *scoped statement goes here*
         // }
 
@@ -2035,10 +2014,10 @@ impl Typer {
         };
 
         let Some(TypeKind::Function {
-            param_type_kind_ids: get_current_param_type_kind_ids,
-            return_type_kind_id: get_current_return_type_kind_id,
+            param_type_kind_ids: get_param_type_kind_ids,
+            return_type_kind_id: get_return_type_kind_id,
         }) = self.type_kinds.get_method(
-            self.name_generator.reuse("GetCurrent"),
+            self.name_generator.reuse("Get"),
             expression_type.type_kind_id,
             &self.namespaces,
         )
@@ -2063,17 +2042,17 @@ impl Typer {
             );
         }
 
-        if get_current_param_type_kind_ids.len() != 1
+        if get_param_type_kind_ids.len() != 1
             || self
                 .type_kinds
-                .is_method_call_valid(get_current_param_type_kind_ids[0], &expression_type)
+                .is_method_call_valid(get_param_type_kind_ids[0], &expression_type)
                 .is_none()
         {
-            type_error_at_parser_node!(self, "expression is not iterable, GetCurrent method must take the iterable as its only argument", expression);
+            type_error_at_parser_node!(self, "expression is not iterable, Get method must take the iterable as its only argument", expression);
         }
 
         if let Some(type_name_type_kind_id) = type_name_type_kind_id {
-            if type_name_type_kind_id != get_current_return_type_kind_id {
+            if type_name_type_kind_id != get_return_type_kind_id {
                 type_error_at_parser_node!(
                     self,
                     "expression's type does not match the iterator's type",
@@ -2108,27 +2087,27 @@ impl Typer {
             end,
         });
 
-        let get_current_text = self.name_generator.reuse("GetCurrent");
-        let get_current = self.lower_node(Node {
+        let get_text = self.name_generator.reuse("Get");
+        let get = self.lower_node(Node {
             kind: NodeKind::Name {
-                text: get_current_text,
+                text: get_text,
             },
             start,
             end,
         });
 
-        let get_current_access = self.lower_node(Node {
+        let get_access = self.lower_node(Node {
             kind: NodeKind::FieldAccess {
                 left: iterable,
-                name: get_current,
+                name: get,
             },
             start,
             end,
         });
 
-        let get_current_call = self.lower_node(Node {
+        let get_call = self.lower_node(Node {
             kind: NodeKind::Call {
-                left: get_current_access,
+                left: get_access,
                 args: vec![].into(),
                 method_kind: MethodKind::Unknown,
             },
@@ -2141,7 +2120,7 @@ impl Typer {
                 declaration_kind,
                 name: iterator,
                 type_name: None,
-                expression: Some(get_current_call),
+                expression: Some(get_call),
                 is_shallow: false,
             },
             start,
@@ -3202,7 +3181,7 @@ impl Typer {
         self.add_node(
             NodeKind::StringLiteral { text },
             Some(Type {
-                type_kind_id: self.span_char_type_kind_id,
+                type_kind_id: STRING_VIEW_TYPE_KIND_ID,
                 instance_kind: InstanceKind::Literal,
             }),
             None,
@@ -3248,15 +3227,6 @@ impl Typer {
             end,
         });
 
-        let push_span_text = self.name_generator.reuse("PushSpan");
-        let push_span_name = self.lower_node(Node {
-            kind: NodeKind::Name {
-                text: push_span_text,
-            },
-            start,
-            end,
-        });
-
         let generic_arg_text = self.name_generator.reuse("LOWERED");
         let generic_arg_name = self.lower_node(Node {
             kind: NodeKind::Name {
@@ -3285,30 +3255,6 @@ impl Typer {
         for chunk in chunks.iter() {
             let typed_chunk = self.check_node(*chunk);
             let chunk_type = assert_typed!(self, typed_chunk);
-
-            // TODO: Once string literals become type StringView again, this special case won't be necessary.
-            if chunk_type.type_kind_id == self.span_char_type_kind_id {
-                let push_access = self.lower_node(Node {
-                    kind: NodeKind::FieldAccess {
-                        left: expression,
-                        name: push_span_name,
-                    },
-                    start,
-                    end,
-                });
-
-                expression = self.lower_node(Node {
-                    kind: NodeKind::Call {
-                        left: push_access,
-                        args: vec![typed_chunk].into(),
-                        method_kind: MethodKind::Unknown,
-                    },
-                    start,
-                    end,
-                });
-
-                continue;
-            }
 
             let Some(TypeKind::Function {
                 param_type_kind_ids: to_string_param_type_kind_ids,
@@ -3813,12 +3759,9 @@ impl Typer {
             "Char" => (CHAR_TYPE_KIND_ID, PrimitiveType::Char),
             "Bool" => (BOOL_TYPE_KIND_ID, PrimitiveType::Bool),
             "String" => (STRING_TYPE_KIND_ID, PrimitiveType::None),
+            "StringView" => (STRING_VIEW_TYPE_KIND_ID, PrimitiveType::None),
             _ => (self.type_kinds.add_placeholder(), PrimitiveType::None),
         };
-
-        if Some(&identifier) == self.span_char_identifier.as_ref() {
-            self.span_char_type_kind_id = type_kind_id;
-        }
 
         self.get_file_namespace(file_index)
             .define(identifier, Definition::TypeKind { type_kind_id });

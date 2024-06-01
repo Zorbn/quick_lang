@@ -28,17 +28,17 @@ struct String
         Internal.free(me.data as *var Void);
     }
 
-    func FromSpan(span Span.<Char>) String
+    func FromView(view StringView) String
     {
         var string = String.Create();
-        string.PushSpan(span);
+        string.Push.<StringView>(view);
 
         return string;
     }
 
-    func ToSpan(me *val String) Span.<Char>
+    func ToView(me *val String) StringView
     {
-        return Span.<Char>
+        return StringView
         {
             data = me.data,
             count = me.count,
@@ -79,23 +79,6 @@ struct String
     func Push.<T>(me *var String, value T) *var String
     {
         value.ToString(me);
-
-        return me;
-    }
-
-    func PushSpan(me *var String, span Span.<Char>) *var String
-    {
-        me.Reserve(span.count);
-
-        for (val i of 0 < span.count)
-        {
-            var stringChar = (me.data as UInt + me.count as UInt) as *var Char;
-            var spanChar = (span.data as UInt + i as UInt) as *var Char;
-            stringChar.* = spanChar.*;
-            me.count += 1;
-        }
-
-        me.NullTerminate();
 
         return me;
     }

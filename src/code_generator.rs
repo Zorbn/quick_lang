@@ -14,11 +14,7 @@ use crate::{
     namespace::Namespace,
     parser::{DeclarationKind, MethodKind, NodeIndex, NodeKind, Op},
     type_kinds::{
-        get_field_index_by_name, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID,
-        CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID,
-        INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID,
-        UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID, UINT8_TYPE_KIND_ID,
-        UINT_TYPE_KIND_ID,
+        get_field_index_by_name, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID, CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID, INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID, STRING_VIEW_TYPE_KIND_ID, UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID, UINT8_TYPE_KIND_ID, UINT_TYPE_KIND_ID
     },
     typer::{InstanceKind, Type, TypedNode, GLOBAL_NAMESPACE_ID},
 };
@@ -116,7 +112,6 @@ pub struct CodeGenerator {
     typed_nodes: Vec<TypedNode>,
     type_kinds: TypeKinds,
     namespaces: Vec<Namespace>,
-    span_char_type_kind_id: usize,
     main_function_declaration: Option<NodeIndex>,
     typed_definitions: Vec<NodeIndex>,
     name_generator: NameGenerator,
@@ -142,7 +137,6 @@ impl CodeGenerator {
         typed_nodes: Vec<TypedNode>,
         type_kinds: TypeKinds,
         namespaces: Vec<Namespace>,
-        span_char_type_kind_id: usize,
         main_function_declaration: Option<NodeIndex>,
         typed_definitions: Vec<NodeIndex>,
         name_generator: NameGenerator,
@@ -154,7 +148,6 @@ impl CodeGenerator {
             typed_nodes,
             type_kinds,
             namespaces,
-            span_char_type_kind_id,
             main_function_declaration,
             typed_definitions,
             name_generator,
@@ -1770,7 +1763,7 @@ impl CodeGenerator {
 
     fn string_literal(&mut self, text: Arc<String>, emitter_kind: EmitterKind) {
         self.emit("(struct ", emitter_kind);
-        self.emit_struct_name(self.span_char_type_kind_id, emitter_kind);
+        self.emit_struct_name(STRING_VIEW_TYPE_KIND_ID, emitter_kind);
         self.emitln(") {", emitter_kind);
         self.indent(emitter_kind);
         self.emit(".count = ", emitter_kind);

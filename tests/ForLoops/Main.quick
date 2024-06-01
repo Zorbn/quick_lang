@@ -9,7 +9,7 @@ struct Iterable
         return me.index <= 10;
     }
 
-    func GetCurrent(me *val Iterable) Int
+    func Get(me *val Iterable) Int
     {
         return me.index;
     }
@@ -26,7 +26,7 @@ struct Iterable
 //         return me.index <= 10;
 //     }
 //
-//     func GetCurrent(me *val NonIterable) Int
+//     func Get(me *val NonIterable) Int
 //     {
 //         return me.index;
 //     }
@@ -79,10 +79,10 @@ func Main() Int
     for (var a in iterable1)
     {
         val string = scope String.Create();
-        string.PushSpan("Iterable1: ");
+        string.Push.<StringView>("Iterable1: ");
         string.Push.<Int>(a);
 
-        Console.WriteLn(string.ToSpan());
+        Console.WriteLn(string.ToView());
     }
 
     var iterable2 = Iterable { index = 0 };
@@ -91,13 +91,13 @@ func Main() Int
 
     while (iterable2.Next())
     {
-        val a = iterable2.GetCurrent();
+        val a = iterable2.Get();
 
         val string = scope String.Create();
-        string.PushSpan("Iterable2: ");
+        string.Push.<StringView>("Iterable2: ");
         string.Push.<Int>(a);
 
-        Console.WriteLn(string.ToSpan());
+        Console.WriteLn(string.ToView());
     }
 
     return 0;

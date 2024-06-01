@@ -21,9 +21,7 @@
 - Default parameters.
 - Possibly generic type inference, so specifiers aren't required?
 - Conditional compilation (#if DEBUG, #if UNSAFE, etc)
-- Add back StringView in place of Span.<Char>, then update Spans to have both Set/Get, and wrap a *var like in C#.
 - The compiler should probably handle .ToString for pointers, arrays, maybe tags too.
-
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.
