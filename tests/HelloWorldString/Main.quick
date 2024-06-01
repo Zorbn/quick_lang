@@ -1,8 +1,8 @@
 func Main() Int
 {
     var helloString = String.FromSpan("Hello World, here's a number: ");
-    helloString.PushFloat32(777.777);
-    helloString.PushChar('\n');
+    helloString.Push.<Float32>(777.777);
+    helloString.Push.<Char>('\n');
 
     Console.Write(helloString.ToSpan());
 

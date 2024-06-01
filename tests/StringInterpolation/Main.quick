@@ -1,24 +1,12 @@
-struct Test.<T>
-{
-    func DoThing(me *val Test.<T>) Void
-    {
-
-    }
-}
-
 func Main() Int
 {
-    var test = Test.<Int> {};
-    test.DoThing();
-
     Console.WriteStrLn(scope $"The answer to 5 * 32 is: {5 * 32}");
     Console.WriteStrLn(scope $"My string is: { scope $"The answer to 5 * 32 is: {5 * 32}" }");
+    Console.WriteStrLn(scope $"My string is: \{{ scope $"The answer to 5 * 32 is: {5 * 32}" }}");
+    Console.WriteLn("Hello \{}");
 
-    // TODO: Test complex interpolations.
-    // TODO: Test nested interpolations.
-    // TODO: Test errors in interpolations.
-    // TODO: Test errors by unterminated string interpolations.
-    // TODO: Test \{ escape sequence in normal strings and string interpolations.
+    var a = 5;
+    Console.WriteStrLn(scope $"Hello {a}");
 
     return 0;
 }

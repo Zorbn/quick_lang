@@ -428,21 +428,9 @@ impl Lexer {
         });
 
         loop {
-            if self.char() == '\0' {
-                self.tokens.push(Token {
-                    kind: TokenKind::Error,
-                    start,
-                    end: self.position,
-                });
-                self.error("reached end of file during string literal");
-                self.position.advance();
-
-                return;
-            }
-
             let did_string_end = self.handle_string_literal(true);
 
-            if did_string_end {
+            if did_string_end || self.char() == '\0' {
                break;
             }
 

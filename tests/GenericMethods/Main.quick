@@ -18,7 +18,7 @@ func Main() Int
     myImmutableGenericStruct.DoStuff("Hello");
 
     var string = String.Create();
-    string.PushUInt8(explicitInt);
+    string.Push.<UInt8>(explicitInt);
 
     Console.WriteLn(string.ToSpan());
 

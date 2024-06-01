@@ -22,12 +22,7 @@
 - Possibly generic type inference, so specifiers aren't required?
 - Conditional compilation (#if DEBUG, #if UNSAFE, etc)
 - Add back StringView in place of Span.<Char>, then update Spans to have both Set/Get, and wrap a *var like in C#.
-- String interpolation $"Hello! {myInt}"
-  Should support the \{ escape sequence.
-
-  String interpolation should work on anything with a ToString(me, *var string) method. String.Push_
-  functions should be removed in favor of calling to string and passing in the destination string.
-  The compiler should probably handle .ToString for pointers, arrays, maybe tags too.
+- The compiler should probably handle .ToString for pointers, arrays, maybe tags too.
 
 
 #### Missing Things and Bug Fixes

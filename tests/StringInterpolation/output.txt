@@ -1,0 +1,5 @@
+The answer to 5 * 32 is: 160
+My string is: The answer to 5 * 32 is: 160
+My string is: {The answer to 5 * 32 is: 160}
+Hello {}
+Hello 5

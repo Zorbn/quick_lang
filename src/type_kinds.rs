@@ -68,6 +68,7 @@ pub const FLOAT32_TYPE_KIND_ID: usize = 10;
 pub const FLOAT64_TYPE_KIND_ID: usize = 11;
 pub const CHAR_TYPE_KIND_ID: usize = 12;
 pub const BOOL_TYPE_KIND_ID: usize = 13;
+pub const STRING_TYPE_KIND_ID: usize = 14;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeKind {
@@ -181,6 +182,7 @@ impl TypeKinds {
         type_kinds.add_placeholder(); // Float64
         type_kinds.add_placeholder(); // Char
         type_kinds.add_placeholder(); // Bool
+        type_kinds.add_placeholder(); // String
 
         type_kinds
     }

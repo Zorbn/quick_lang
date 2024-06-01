@@ -73,8 +73,8 @@ func Main(argc Int, argv *val *val Char) Int
     var testString = String.Create();
     testString
         .PushCString(stringWithEscape.data)
-        .PushFloat32(137.43);
-        // .PushChar('\n')
+        .Push.<Float32>(137.43);
+        // .Push.<Char>('\n')
         // .PushPointer.<Point>(allocatedPoint);
     puts(testString.data);
     testString.Destroy();

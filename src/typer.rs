@@ -17,8 +17,8 @@ use crate::{
         get_field_index_by_name, Field, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID,
         CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID,
         INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID,
-        UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID, UINT8_TYPE_KIND_ID,
-        UINT_TYPE_KIND_ID,
+        STRING_TYPE_KIND_ID, UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID,
+        UINT8_TYPE_KIND_ID, UINT_TYPE_KIND_ID,
     },
 };
 
@@ -353,7 +353,7 @@ impl Typer {
         );
     }
 
-    fn lookup_primitive_type(&mut self, name: &str) {
+    fn lookup_core_type(&mut self, name: &str) {
         let IdentifierLookupResult::Some(_, _) = self.lookup_identifier(
             Identifier::new(name),
             LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
@@ -370,20 +370,21 @@ impl Typer {
             generic_arg_type_kind_ids: Some(Arc::new(vec![CHAR_TYPE_KIND_ID])),
         });
 
-        self.lookup_primitive_type("Int");
-        self.lookup_primitive_type("UInt");
-        self.lookup_primitive_type("Int8");
-        self.lookup_primitive_type("UInt8");
-        self.lookup_primitive_type("Int16");
-        self.lookup_primitive_type("UInt16");
-        self.lookup_primitive_type("Int32");
-        self.lookup_primitive_type("UInt32");
-        self.lookup_primitive_type("Int64");
-        self.lookup_primitive_type("UInt64");
-        self.lookup_primitive_type("Float32");
-        self.lookup_primitive_type("Float64");
-        self.lookup_primitive_type("Char");
-        self.lookup_primitive_type("Bool");
+        self.lookup_core_type("Int");
+        self.lookup_core_type("UInt");
+        self.lookup_core_type("Int8");
+        self.lookup_core_type("UInt8");
+        self.lookup_core_type("Int16");
+        self.lookup_core_type("UInt16");
+        self.lookup_core_type("Int32");
+        self.lookup_core_type("UInt32");
+        self.lookup_core_type("Int64");
+        self.lookup_core_type("UInt64");
+        self.lookup_core_type("Float32");
+        self.lookup_core_type("Float64");
+        self.lookup_core_type("Char");
+        self.lookup_core_type("Bool");
+        self.lookup_core_type("String");
 
         let IdentifierLookupResult::Some(_, _) = self.lookup_identifier(
             self.span_char_identifier.clone().unwrap(),
@@ -1106,11 +1107,14 @@ impl Typer {
             return;
         };
 
-        assert_matches!(NodeKind::Function {
-            declaration,
-            scoped_statement,
-            ..
-        }, self.get_parser_node(function).kind);
+        assert_matches!(
+            NodeKind::Function {
+                declaration,
+                scoped_statement,
+                ..
+            },
+            self.get_parser_node(function).kind
+        );
 
         self.function(
             declaration,
@@ -1145,11 +1149,19 @@ impl Typer {
 
             let typed_definition = &self.typed_definitions[i];
 
-            let TypedNode { node_kind: NodeKind::StructDefinition { functions, .. }, node_type, .. } = self.get_typer_node(*typed_definition).clone() else {
+            let TypedNode {
+                node_kind: NodeKind::StructDefinition { functions, .. },
+                node_type,
+                ..
+            } = self.get_typer_node(*typed_definition).clone()
+            else {
                 continue;
             };
 
-            assert_matches!(TypeKind::Struct { namespace_id, .. }, self.type_kinds.get_by_id(node_type.unwrap().type_kind_id));
+            assert_matches!(
+                TypeKind::Struct { namespace_id, .. },
+                self.type_kinds.get_by_id(node_type.unwrap().type_kind_id)
+            );
 
             for function in functions.iter() {
                 if self.get_checkable_top_level_name(*function).is_none() {
@@ -1159,7 +1171,6 @@ impl Typer {
                 // self.check_top_level_node(*function, namespace_id);
                 self.check_node_with_namespace(*function, namespace_id);
             }
-
         }
 
         self.add_node(
@@ -3208,7 +3219,11 @@ impl Typer {
             end,
         });
 
-        let string_identifier = self.lower_node(Node { kind: NodeKind::Identifier { name: string_name }, start, end });
+        let string_identifier = self.lower_node(Node {
+            kind: NodeKind::Identifier { name: string_name },
+            start,
+            end,
+        });
 
         let create_text = self.name_generator.reuse("Create");
         let create_name = self.lower_node(Node {
@@ -3217,18 +3232,55 @@ impl Typer {
             end,
         });
 
-        let create_access = self.lower_node(Node { kind: NodeKind::FieldAccess { left: string_identifier, name: create_name }, start, end });
+        let create_access = self.lower_node(Node {
+            kind: NodeKind::FieldAccess {
+                left: string_identifier,
+                name: create_name,
+            },
+            start,
+            end,
+        });
 
         let push_text = self.name_generator.reuse("Push");
-        let push_name = self.lower_node(Node { kind: NodeKind::Name { text: push_text }, start, end });
+        let push_name = self.lower_node(Node {
+            kind: NodeKind::Name { text: push_text },
+            start,
+            end,
+        });
 
         let push_span_text = self.name_generator.reuse("PushSpan");
-        let push_span_name = self.lower_node(Node { kind: NodeKind::Name { text: push_span_text }, start, end });
+        let push_span_name = self.lower_node(Node {
+            kind: NodeKind::Name {
+                text: push_span_text,
+            },
+            start,
+            end,
+        });
 
         let generic_arg_text = self.name_generator.reuse("LOWERED");
-        let generic_arg_name = self.lower_node(Node { kind: NodeKind::Name { text: generic_arg_text }, start, end });
+        let generic_arg_name = self.lower_node(Node {
+            kind: NodeKind::Name {
+                text: generic_arg_text,
+            },
+            start,
+            end,
+        });
 
-        let mut expression = self.lower_node(Node { kind: NodeKind::Call { left: create_access, args: vec![].into(), method_kind: MethodKind::Unknown }, start, end });
+        let to_string_text = self.name_generator.reuse("ToString");
+        let var_string_pointer = self.type_kinds.add_or_get(TypeKind::Pointer {
+            inner_type_kind_id: STRING_TYPE_KIND_ID,
+            is_inner_mutable: true,
+        });
+
+        let mut expression = self.lower_node(Node {
+            kind: NodeKind::Call {
+                left: create_access,
+                args: vec![].into(),
+                method_kind: MethodKind::Unknown,
+            },
+            start,
+            end,
+        });
 
         for chunk in chunks.iter() {
             let typed_chunk = self.check_node(*chunk);
@@ -3236,32 +3288,117 @@ impl Typer {
 
             // TODO: Once string literals become type StringView again, this special case won't be necessary.
             if chunk_type.type_kind_id == self.span_char_type_kind_id {
-                let push_access = self.lower_node(Node { kind: NodeKind::FieldAccess { left: expression, name: push_span_name }, start, end });
+                let push_access = self.lower_node(Node {
+                    kind: NodeKind::FieldAccess {
+                        left: expression,
+                        name: push_span_name,
+                    },
+                    start,
+                    end,
+                });
 
-                expression = self.lower_node(Node { kind: NodeKind::Call { left: push_access, args: vec![typed_chunk].into(), method_kind: MethodKind::Unknown }, start, end });
+                expression = self.lower_node(Node {
+                    kind: NodeKind::Call {
+                        left: push_access,
+                        args: vec![typed_chunk].into(),
+                        method_kind: MethodKind::Unknown,
+                    },
+                    start,
+                    end,
+                });
 
                 continue;
             }
 
-//             let Some(chunk_to_string) = self.type_kinds.get_method("ToString", chunk_type.type_kind_id, &self.namespaces) else {
-//                 type_error!(self, "only values with a ToString method can be included in string interpolations");
-//             };
+            let Some(TypeKind::Function {
+                param_type_kind_ids: to_string_param_type_kind_ids,
+                return_type_kind_id: to_string_return_type_kind_id,
+            }) = self.type_kinds.get_method(
+                to_string_text.clone(),
+                chunk_type.type_kind_id,
+                &self.namespaces,
+            )
+            else {
+                type_error_at_parser_node!(
+                    self,
+                    "only values with a ToString method can be included in string interpolations",
+                    *chunk
+                );
+            };
 
-            // TODO: check signature
+            if self.type_kinds.get_by_id(to_string_return_type_kind_id) != TypeKind::Void {
+                type_error_at_parser_node!(
+                    self,
+                    "ToString method used in string interpolation must return Void",
+                    *chunk
+                );
+            }
+            if to_string_param_type_kind_ids.len() != 2
+                || to_string_param_type_kind_ids[1] != var_string_pointer
+            {
+                type_error_at_parser_node!(self, "ToString method used in string interpolation must take a *var String as its second parameter", *chunk);
+            }
 
-            let push_access = self.lower_node(Node { kind: NodeKind::FieldAccess { left: expression, name: push_name }, start, end });
+            if self
+                .type_kinds
+                .is_method_call_valid(to_string_param_type_kind_ids[0], &chunk_type)
+                .is_none()
+            {
+                type_error_at_parser_node!(
+                    self,
+                    "ToString method cannot be called on this expression",
+                    *chunk
+                );
+            }
 
-            let typed_chunk_type_name = self.add_node(NodeKind::TypeName { name: generic_arg_name }, Some(Type {
-                type_kind_id: chunk_type.type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }), None);
+            let push_access = self.lower_node(Node {
+                kind: NodeKind::FieldAccess {
+                    left: expression,
+                    name: push_name,
+                },
+                start,
+                end,
+            });
 
-            let push_generic_specifier = self.lower_node(Node { kind: NodeKind::GenericSpecifier { left: push_access, generic_arg_type_names: vec![typed_chunk_type_name].into() }, start, end });
+            let typed_chunk_type_name = self.add_node(
+                NodeKind::TypeName {
+                    name: generic_arg_name,
+                },
+                Some(Type {
+                    type_kind_id: chunk_type.type_kind_id,
+                    instance_kind: InstanceKind::Name,
+                }),
+                None,
+            );
 
-            expression = self.lower_node(Node { kind: NodeKind::Call { left: push_generic_specifier, args: vec![typed_chunk].into(), method_kind: MethodKind::Unknown }, start, end });
+            let push_generic_specifier = self.lower_node(Node {
+                kind: NodeKind::GenericSpecifier {
+                    left: push_access,
+                    generic_arg_type_names: vec![typed_chunk_type_name].into(),
+                },
+                start,
+                end,
+            });
+
+            expression = self.lower_node(Node {
+                kind: NodeKind::Call {
+                    left: push_generic_specifier,
+                    args: vec![typed_chunk].into(),
+                    method_kind: MethodKind::Unknown,
+                },
+                start,
+                end,
+            });
         }
 
-        let dereferenced_expression = self.lower_node(Node { kind: NodeKind::UnarySuffix { left: expression, op: Op::Dereference }, start, end });
+        let dereferenced_expression = self.lower_node(Node {
+            kind: NodeKind::UnarySuffix {
+                left: expression,
+                op: Op::Dereference,
+            },
+            start,
+            end,
+        });
 
         self.check_node(dereferenced_expression)
     }
@@ -3675,6 +3812,7 @@ impl Typer {
             "Float64" => (FLOAT64_TYPE_KIND_ID, PrimitiveType::Float64),
             "Char" => (CHAR_TYPE_KIND_ID, PrimitiveType::Char),
             "Bool" => (BOOL_TYPE_KIND_ID, PrimitiveType::Bool),
+            "String" => (STRING_TYPE_KIND_ID, PrimitiveType::None),
             _ => (self.type_kinds.add_placeholder(), PrimitiveType::None),
         };
 

@@ -80,7 +80,7 @@ func Main() Int
     {
         val string = scope String.Create();
         string.PushSpan("Iterable1: ");
-        string.PushInt(a);
+        string.Push.<Int>(a);
 
         Console.WriteLn(string.ToSpan());
     }
@@ -95,7 +95,7 @@ func Main() Int
 
         val string = scope String.Create();
         string.PushSpan("Iterable2: ");
-        string.PushInt(a);
+        string.Push.<Int>(a);
 
         Console.WriteLn(string.ToSpan());
     }
