@@ -1291,14 +1291,7 @@ impl CodeGenerator {
             }
         }
 
-        let needs_increased_precedence = matches!(
-            op,
-            Op::BitwiseOr | Op::Xor | Op::BitwiseAnd | Op::LeftShift | Op::RightShift
-        );
-
-        if needs_increased_precedence {
-            self.emit("(", emitter_kind)
-        }
+        self.emit("(", emitter_kind);
 
         if matches!(op, Op::Equal | Op::NotEqual) {
             self.emit_equality(
@@ -1316,9 +1309,7 @@ impl CodeGenerator {
             self.gen_node_with_emitter(right, emitter_kind);
         }
 
-        if needs_increased_precedence {
-            self.emit(")", emitter_kind)
-        }
+        self.emit(")", emitter_kind);
     }
 
     fn unary_prefix(
