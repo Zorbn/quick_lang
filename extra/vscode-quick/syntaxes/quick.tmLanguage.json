@@ -3,67 +3,74 @@
 	"name": "Quick",
 	"patterns": [
 		{
-			"include": "#function-declaration"
-		},
-		{
-			"include": "#struct-declaration"
-		},
-		{
-			"include": "#enum-declaration"
-		},
-		{
-			"include": "#alias-declaration"
-		},
-		{
-			"include": "#keyword"
-		},
-		{
-			"include": "#string"
-		},
-		{
-			"include": "#string-interpolation"
-		},
-		{
-			"include": "#char"
-		},
-		{
-			"include": "#single-line-comment"
-		},
-		{
-			"include": "#multi-line-comment"
-		},
-		{
-			"include": "#decimal-literal"
-		},
-		{
-			"include": "#hexadecimal-literal"
-		},
-		{
-			"include": "#function-call"
-		},
-		{
-			"include": "#type"
-		},
-		{
-			"include": "#variable"
-		},
-		{
-			"include": "#operator"
-		},
-		{
-			"include": "#curly-brackets"
-		},
-		{
-			"include": "#round-brackets"
-		},
-		{
-			"include": "#square-brackets"
-		},
-		{
-			"include": "#punctuation"
+			"include": "#all"
 		}
 	],
 	"repository": {
+		"all": {
+			"patterns": [
+				{
+					"include": "#function-declaration"
+				},
+				{
+					"include": "#struct-declaration"
+				},
+				{
+					"include": "#enum-declaration"
+				},
+				{
+					"include": "#alias-declaration"
+				},
+				{
+					"include": "#keyword"
+				},
+				{
+					"include": "#string"
+				},
+				{
+					"include": "#string-interpolation"
+				},
+				{
+					"include": "#char"
+				},
+				{
+					"include": "#single-line-comment"
+				},
+				{
+					"include": "#multi-line-comment"
+				},
+				{
+					"include": "#decimal-literal"
+				},
+				{
+					"include": "#hexadecimal-literal"
+				},
+				{
+					"include": "#function-call"
+				},
+				{
+					"include": "#type"
+				},
+				{
+					"include": "#variable"
+				},
+				{
+					"include": "#operator"
+				},
+				{
+					"include": "#curly-brackets"
+				},
+				{
+					"include": "#round-brackets"
+				},
+				{
+					"include": "#square-brackets"
+				},
+				{
+					"include": "#punctuation"
+				}
+			]
+		},
 		"function-declaration": {
 			"match": "\\b(func)\\b\\s*(\\w+)(\\.<[\\w\\s\\.,<>]*>)?",
 			"captures": {
@@ -160,8 +167,20 @@
 					"include": "#string-interpolation"
 				},
 				{
+					"include": "#string-interpolation-expression"
+				},
+				{
 					"name": "constant.character.escape.quick",
 					"match": "\\\\."
+				}
+			]
+		},
+		"string-interpolation-expression": {
+			"begin": "{",
+			"end": "}",
+			"patterns": [
+				{
+					"include": "#all"
 				}
 			]
 		},
