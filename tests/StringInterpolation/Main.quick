@@ -6,7 +6,9 @@ func Main() Int
     Console.WriteLn("Hello \{}");
 
     var a = 5;
+    var aPtr = *a;
     Console.WriteStrLn(scope $"Hello {a}");
+    Console.WriteStrLn(scope $"a has the value {a} and is stored at {aPtr}");
 
     return 0;
 }

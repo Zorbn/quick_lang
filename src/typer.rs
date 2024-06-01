@@ -14,7 +14,11 @@ use crate::{
     parser::{DeclarationKind, MethodKind, Node, NodeIndex, NodeKind, Op},
     position::Position,
     type_kinds::{
-        get_field_index_by_name, Field, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID, CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID, INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID, STRING_TYPE_KIND_ID, STRING_VIEW_TYPE_KIND_ID, UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID, UINT8_TYPE_KIND_ID, UINT_TYPE_KIND_ID
+        get_field_index_by_name, Field, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID,
+        CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID,
+        INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID,
+        STRING_TYPE_KIND_ID, STRING_VIEW_TYPE_KIND_ID, UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID,
+        UINT64_TYPE_KIND_ID, UINT8_TYPE_KIND_ID, UINT_TYPE_KIND_ID,
     },
 };
 
@@ -2089,9 +2093,7 @@ impl Typer {
 
         let get_text = self.name_generator.reuse("Get");
         let get = self.lower_node(Node {
-            kind: NodeKind::Name {
-                text: get_text,
-            },
+            kind: NodeKind::Name { text: get_text },
             start,
             end,
         });
@@ -3188,6 +3190,56 @@ impl Typer {
         )
     }
 
+    fn lower_push_method_call(
+        &mut self,
+        push_name: NodeIndex,
+        generic_arg_name: NodeIndex,
+        generic_arg_type_kind_id: usize,
+        string: NodeIndex,
+        argument: NodeIndex,
+        start: Position,
+        end: Position,
+    ) -> NodeIndex {
+        let push_access = self.lower_node(Node {
+            kind: NodeKind::FieldAccess {
+                left: string,
+                name: push_name,
+            },
+            start,
+            end,
+        });
+
+        let typed_chunk_type_name = self.add_node(
+            NodeKind::TypeName {
+                name: generic_arg_name,
+            },
+            Some(Type {
+                type_kind_id: generic_arg_type_kind_id,
+                instance_kind: InstanceKind::Name,
+            }),
+            None,
+        );
+
+        let push_generic_specifier = self.lower_node(Node {
+            kind: NodeKind::GenericSpecifier {
+                left: push_access,
+                generic_arg_type_names: vec![typed_chunk_type_name].into(),
+            },
+            start,
+            end,
+        });
+
+        self.lower_node(Node {
+            kind: NodeKind::Call {
+                left: push_generic_specifier,
+                args: vec![argument].into(),
+                method_kind: MethodKind::Unknown,
+            },
+            start,
+            end,
+        })
+    }
+
     fn string_interpolation(&mut self, chunks: Arc<Vec<NodeIndex>>) -> NodeIndex {
         let Node { start, end, .. } = *self.get_current_parser_node();
 
@@ -3297,44 +3349,15 @@ impl Typer {
                 );
             }
 
-            let push_access = self.lower_node(Node {
-                kind: NodeKind::FieldAccess {
-                    left: expression,
-                    name: push_name,
-                },
+            expression = self.lower_push_method_call(
+                push_name,
+                generic_arg_name,
+                chunk_type.type_kind_id,
+                expression,
+                typed_chunk,
                 start,
                 end,
-            });
-
-            let typed_chunk_type_name = self.add_node(
-                NodeKind::TypeName {
-                    name: generic_arg_name,
-                },
-                Some(Type {
-                    type_kind_id: chunk_type.type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                }),
-                None,
             );
-
-            let push_generic_specifier = self.lower_node(Node {
-                kind: NodeKind::GenericSpecifier {
-                    left: push_access,
-                    generic_arg_type_names: vec![typed_chunk_type_name].into(),
-                },
-                start,
-                end,
-            });
-
-            expression = self.lower_node(Node {
-                kind: NodeKind::Call {
-                    left: push_generic_specifier,
-                    args: vec![typed_chunk].into(),
-                    method_kind: MethodKind::Unknown,
-                },
-                start,
-                end,
-            });
         }
 
         let dereferenced_expression = self.lower_node(Node {
