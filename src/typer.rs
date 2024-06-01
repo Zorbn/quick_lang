@@ -776,6 +776,7 @@ impl Typer {
             NodeKind::IntLiteral { text } => self.int_literal(text, None),
             NodeKind::FloatLiteral { text } => self.float_literal(text, None),
             NodeKind::StringLiteral { text } => self.string_literal(text),
+            NodeKind::StringInterpolation { chunks } => self.string_interpolation(chunks),
             NodeKind::BoolLiteral { value } => self.bool_literal(value),
             NodeKind::CharLiteral { value } => self.char_literal(value),
             NodeKind::ArrayLiteral {
@@ -838,6 +839,7 @@ impl Typer {
                 None,
                 file_namespace_id,
                 file_index,
+                false,
             ),
             NodeKind::GenericSpecifier {
                 left,
@@ -914,6 +916,7 @@ impl Typer {
                 usage_index,
                 namespace_id,
                 file_index,
+                false,
             )),
             _ if generic_arg_type_kind_ids.is_none() => {
                 Some(self.check_node_with_namespace(index, namespace_id))
@@ -993,6 +996,7 @@ impl Typer {
                 None,
                 namespace_id,
                 file_index,
+                false,
             ),
             NodeKind::VariableDeclaration {
                 declaration_kind,
@@ -1097,6 +1101,28 @@ impl Typer {
         self.check_node_with_namespace(top_level_node, namespace_id);
     }
 
+    fn check_function_prototype(&mut self, function: NodeIndex, namespace_id: usize) {
+        if self.get_checkable_top_level_name(function).is_none() {
+            return;
+        };
+
+        assert_matches!(NodeKind::Function {
+            declaration,
+            scoped_statement,
+            ..
+        }, self.get_parser_node(function).kind);
+
+        self.function(
+            declaration,
+            scoped_statement,
+            None,
+            None,
+            namespace_id,
+            function.file_index,
+            true,
+        );
+    }
+
     fn top_level(
         &mut self,
         usings: Arc<Vec<NodeIndex>>,
@@ -1107,6 +1133,33 @@ impl Typer {
 
         for (_, top_level_node) in definition_indices.iter() {
             self.check_top_level_node(*top_level_node, namespace_id);
+        }
+
+        // In the first loop, method bodies are skipped to prevent issues with circular
+        // dependencies between structs. So, now that we have typed all of the structs,
+        // we can go back and check the method bodies.
+        for i in 0..self.typed_definitions.len() {
+            // if self.get_checkable_top_level_name(*top_level_node).is_none() {
+            //     continue;
+            // };
+
+            let typed_definition = &self.typed_definitions[i];
+
+            let TypedNode { node_kind: NodeKind::StructDefinition { functions, .. }, node_type, .. } = self.get_typer_node(*typed_definition).clone() else {
+                continue;
+            };
+
+            assert_matches!(TypeKind::Struct { namespace_id, .. }, self.type_kinds.get_by_id(node_type.unwrap().type_kind_id));
+
+            for function in functions.iter() {
+                if self.get_checkable_top_level_name(*function).is_none() {
+                    continue;
+                }
+
+                // self.check_top_level_node(*function, namespace_id);
+                self.check_node_with_namespace(*function, namespace_id);
+            }
+
         }
 
         self.add_node(
@@ -1591,7 +1644,6 @@ impl Typer {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn for_of_loop(
         &mut self,
         declaration_kind: DeclarationKind,
@@ -2481,9 +2533,13 @@ impl Typer {
             Op::Reference => {
                 let is_mutable = match right_type.instance_kind {
                     InstanceKind::Val => false,
-                    InstanceKind::Var => true,
+                    InstanceKind::Var | InstanceKind::Literal => true,
                     _ => type_error!(self, "references must refer to a variable"),
                 };
+
+                if right_type.instance_kind == InstanceKind::Literal {
+                    self.lookup_alloc_into(right_type.type_kind_id);
+                }
 
                 let type_kind_id = self.type_kinds.add_or_get(TypeKind::Pointer {
                     inner_type_kind_id: right_type.type_kind_id,
@@ -2527,17 +2583,7 @@ impl Typer {
                 )
             }
             Op::Scope => {
-                let alloc_into_text = self.name_generator.reuse("AllocInto");
-
-                self.lookup_identifier(
-                    Identifier {
-                        name: alloc_into_text,
-                        generic_arg_type_kind_ids: Some(vec![right_type.type_kind_id].into()),
-                    },
-                    LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
-                    LookupKind::All,
-                    None,
-                );
+                self.lookup_alloc_into(right_type.type_kind_id);
 
                 let type_kind_id = self.type_kinds.add_or_get(TypeKind::Pointer {
                     inner_type_kind_id: right_type.type_kind_id,
@@ -2682,6 +2728,10 @@ impl Typer {
                         "type mismatch, instance cannot be used as the first parameter of this method"
                     );
                 };
+
+                if left_type.instance_kind == InstanceKind::Literal {
+                    self.lookup_alloc_into(left_type.type_kind_id);
+                }
 
                 method_kind = validated_method_kind;
             }
@@ -3148,6 +3198,74 @@ impl Typer {
         )
     }
 
+    fn string_interpolation(&mut self, chunks: Arc<Vec<NodeIndex>>) -> NodeIndex {
+        let Node { start, end, .. } = *self.get_current_parser_node();
+
+        let string_text = self.name_generator.reuse("String");
+        let string_name = self.lower_node(Node {
+            kind: NodeKind::Name { text: string_text },
+            start,
+            end,
+        });
+
+        let string_identifier = self.lower_node(Node { kind: NodeKind::Identifier { name: string_name }, start, end });
+
+        let create_text = self.name_generator.reuse("Create");
+        let create_name = self.lower_node(Node {
+            kind: NodeKind::Name { text: create_text },
+            start,
+            end,
+        });
+
+        let create_access = self.lower_node(Node { kind: NodeKind::FieldAccess { left: string_identifier, name: create_name }, start, end });
+
+        let push_text = self.name_generator.reuse("Push");
+        let push_name = self.lower_node(Node { kind: NodeKind::Name { text: push_text }, start, end });
+
+        let push_span_text = self.name_generator.reuse("PushSpan");
+        let push_span_name = self.lower_node(Node { kind: NodeKind::Name { text: push_span_text }, start, end });
+
+        let generic_arg_text = self.name_generator.reuse("LOWERED");
+        let generic_arg_name = self.lower_node(Node { kind: NodeKind::Name { text: generic_arg_text }, start, end });
+
+        let mut expression = self.lower_node(Node { kind: NodeKind::Call { left: create_access, args: vec![].into(), method_kind: MethodKind::Unknown }, start, end });
+
+        for chunk in chunks.iter() {
+            let typed_chunk = self.check_node(*chunk);
+            let chunk_type = assert_typed!(self, typed_chunk);
+
+            // TODO: Once string literals become type StringView again, this special case won't be necessary.
+            if chunk_type.type_kind_id == self.span_char_type_kind_id {
+                let push_access = self.lower_node(Node { kind: NodeKind::FieldAccess { left: expression, name: push_span_name }, start, end });
+
+                expression = self.lower_node(Node { kind: NodeKind::Call { left: push_access, args: vec![typed_chunk].into(), method_kind: MethodKind::Unknown }, start, end });
+
+                continue;
+            }
+
+//             let Some(chunk_to_string) = self.type_kinds.get_method("ToString", chunk_type.type_kind_id, &self.namespaces) else {
+//                 type_error!(self, "only values with a ToString method can be included in string interpolations");
+//             };
+
+            // TODO: check signature
+
+            let push_access = self.lower_node(Node { kind: NodeKind::FieldAccess { left: expression, name: push_name }, start, end });
+
+            let typed_chunk_type_name = self.add_node(NodeKind::TypeName { name: generic_arg_name }, Some(Type {
+                type_kind_id: chunk_type.type_kind_id,
+                instance_kind: InstanceKind::Name,
+            }), None);
+
+            let push_generic_specifier = self.lower_node(Node { kind: NodeKind::GenericSpecifier { left: push_access, generic_arg_type_names: vec![typed_chunk_type_name].into() }, start, end });
+
+            expression = self.lower_node(Node { kind: NodeKind::Call { left: push_generic_specifier, args: vec![typed_chunk].into(), method_kind: MethodKind::Unknown }, start, end });
+        }
+
+        let dereferenced_expression = self.lower_node(Node { kind: NodeKind::UnarySuffix { left: expression, op: Op::Dereference }, start, end });
+
+        self.check_node(dereferenced_expression)
+    }
+
     fn const_string_literal(&mut self, text: Arc<String>, index: NodeIndex) -> NodeIndex {
         let typed_const = self.check_node(index);
         let const_type = assert_typed!(self, typed_const);
@@ -3511,7 +3629,6 @@ impl Typer {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn struct_definition(
         &mut self,
         name: NodeIndex,
@@ -3659,7 +3776,7 @@ impl Typer {
         );
 
         for function in functions.iter() {
-            self.check_top_level_node(*function, namespace_id);
+            self.check_function_prototype(*function, namespace_id);
         }
 
         let index = self.add_node(
@@ -3751,7 +3868,6 @@ impl Typer {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn function_declaration(
         &mut self,
         name: NodeIndex,
@@ -3881,6 +3997,7 @@ impl Typer {
         usage_index: Option<NodeIndex>,
         namespace_id: usize,
         file_index: usize,
+        do_prototype_only: bool,
     ) -> NodeIndex {
         let pre_error_count = self.error_bucket.len();
 
@@ -3893,6 +4010,7 @@ impl Typer {
             usage_index,
             namespace_id,
             file_index,
+            do_prototype_only,
         );
 
         if self.error_bucket.len() <= pre_error_count || !is_generic {
@@ -3916,6 +4034,7 @@ impl Typer {
         usage_index: Option<NodeIndex>,
         namespace_id: usize,
         file_index: usize,
+        do_prototype_only: bool,
     ) -> NodeIndex {
         assert_matches!(
             NodeKind::FunctionDeclaration {
@@ -3983,9 +4102,13 @@ impl Typer {
             },
         );
 
-        let is_deep_check = Some(file_index) == self.file_index
-            || generic_arg_type_kind_ids.is_some()
-            || !self.namespaces[namespace_id].generic_args.is_empty();
+        let mut is_deep_check = false;
+
+        if !do_prototype_only {
+            is_deep_check = Some(file_index) == self.file_index
+                || generic_arg_type_kind_ids.is_some()
+                || !self.namespaces[namespace_id].generic_args.is_empty();
+        }
 
         let typed_scoped_statement = if is_deep_check {
             let TypeKind::Function {
@@ -4038,7 +4161,9 @@ impl Typer {
             Some(namespace_id),
         );
 
-        self.typed_definitions.push(index);
+        if !do_prototype_only {
+            self.typed_definitions.push(index);
+        }
 
         index
     }
@@ -4496,5 +4621,21 @@ impl Typer {
             self.get_parser_node(index).kind,
             NodeKind::IntLiteral { .. } | NodeKind::FloatLiteral { .. }
         )
+    }
+
+    // Called when a piece of code will require a call to AllocInto during
+    // code generation, to make sure it will be available at that point.
+    fn lookup_alloc_into(&mut self, type_kind_id: usize) {
+        let alloc_into_text = self.name_generator.reuse("AllocInto");
+
+        self.lookup_identifier(
+            Identifier {
+                name: alloc_into_text,
+                generic_arg_type_kind_ids: Some(vec![type_kind_id].into()),
+            },
+            LookupLocation::Namespace(GLOBAL_NAMESPACE_ID),
+            LookupKind::All,
+            None,
+        );
     }
 }

@@ -8,6 +8,15 @@ struct Int
 
     func Max(x Int, y Int) Int
         return (x >= y) as Int * x + (y > x) as Int * y;
+
+    func ToString(x Int, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemIntToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct UInt
@@ -17,6 +26,15 @@ struct UInt
 
     func Max(x UInt, y UInt) UInt
         return (x >= y) as UInt * x + (y > x) as UInt * y;
+
+    func ToString(x UInt, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUIntToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct Int8
@@ -29,6 +47,15 @@ struct Int8
 
     func Max(x Int8, y Int8) Int8
         return (x >= y) as Int8 * x + (y > x) as Int8 * y;
+
+    func ToString(x Int8, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemInt8ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct UInt8
@@ -38,6 +65,15 @@ struct UInt8
 
     func Max(x UInt8, y UInt8) UInt8
         return (x >= y) as UInt8 * x + (y > x) as UInt8 * y;
+
+    func ToString(x UInt8, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUInt8ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct Int16
@@ -50,6 +86,15 @@ struct Int16
 
     func Max(x Int16, y Int16) Int16
         return (x >= y) as Int16 * x + (y > x) as Int16 * y;
+
+    func ToString(x Int16, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemInt16ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct UInt16
@@ -59,6 +104,15 @@ struct UInt16
 
     func Max(x UInt16, y UInt16) UInt16
         return (x >= y) as UInt16 * x + (y > x) as UInt16 * y;
+
+    func ToString(x UInt16, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUInt16ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct Int32
@@ -71,6 +125,15 @@ struct Int32
 
     func Max(x Int32, y Int32) Int32
         return (x >= y) as Int32 * x + (y > x) as Int32 * y;
+
+    func ToString(x Int32, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemInt32ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct UInt32
@@ -80,6 +143,15 @@ struct UInt32
 
     func Max(x UInt32, y UInt32) UInt32
         return (x >= y) as UInt32 * x + (y > x) as UInt32 * y;
+
+    func ToString(x UInt32, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUInt32ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct Int64
@@ -92,6 +164,15 @@ struct Int64
 
     func Max(x Int64, y Int64) Int64
         return (x >= y) as Int64 * x + (y > x) as Int64 * y;
+
+    func ToString(x Int64, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemInt64ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct UInt64
@@ -101,6 +182,15 @@ struct UInt64
 
     func Max(x UInt64, y UInt64) UInt64
         return (x >= y) as UInt64 * x + (y > x) as UInt64 * y;
+
+    func ToString(x UInt64, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemUInt64ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct Float32
@@ -182,6 +272,15 @@ struct Float32
 
     func Trunc(x Float32) Float32
         return Internal.truncf(x);
+
+    func ToString(x Float32, string *var String) Void
+    {
+        const bufferCount = 128;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemFloat32ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct Float64
@@ -263,6 +362,15 @@ struct Float64
 
     func Trunc(x Float64) Float64
         return Internal.trunc(x);
+
+    func ToString(x Float64, string *var String) Void
+    {
+        const bufferCount = 128;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemFloat64ToString(buffer as *var Char, bufferCount, x);
+        string.PushCString(buffer as *val Char);
+    }
 }
 
 struct Char
@@ -302,8 +410,27 @@ struct Char
 
     func IsHexDigit(me Char) Bool
         return Internal.isxdigit(me as Int32) as Bool;
+
+    func ToString(me Char, string *var String) Void
+    {
+        string.Reserve(1);
+
+        var stringChar = (string.data as UInt + string.count as UInt) as *var Char;
+        stringChar.* = me;
+        string.count += 1;
+
+        string.NullTerminate();
+    }
 }
 
 struct Bool
 {
+    func ToString(me Bool, string *var String) Void
+    {
+        const bufferCount = 32;
+        var buffer [bufferCount]Char = ?;
+
+        Internal.CoreSystemBoolToString(buffer as *var Char, bufferCount, me);
+        string.PushCString(buffer as *val Char);
+    }
 }

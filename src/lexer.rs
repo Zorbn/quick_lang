@@ -85,6 +85,8 @@ pub enum TokenKind {
     CharLiteral { value: char },
     StringLiteral { text: Arc<String> },
     Identifier { text: Arc<str> },
+    StringInterpolationStart,
+    StringInterpolationEnd,
     Eof,
     Error,
 }
@@ -171,6 +173,8 @@ impl Display for TokenKind {
             TokenKind::CharLiteral { value } => value.encode_utf8(&mut char_buffer),
             TokenKind::StringLiteral { text } => text,
             TokenKind::Identifier { text } => text,
+            TokenKind::StringInterpolationStart => "$\"",
+            TokenKind::StringInterpolationEnd => "\"",
             TokenKind::Eof => "EOF",
             TokenKind::Error => "error",
         };
@@ -349,6 +353,7 @@ impl Lexer {
             'n' => '\n',
             'r' => '\r',
             't' => '\t',
+            '{' => '{',
             _ => {
                 self.error("unexpected escape sequence in string literal");
                 '\\'
@@ -356,11 +361,11 @@ impl Lexer {
         }
     }
 
-    fn handle_string_literal(&mut self) {
-        self.position.advance();
+    fn handle_string_literal(&mut self, is_interpolated: bool) -> bool {
         let mut c = self.char();
         let start = self.position;
         let mut text = String::new();
+        let mut did_string_end = false;
 
         loop {
             match c {
@@ -373,9 +378,16 @@ impl Lexer {
                     self.error("reached end of file during string literal");
                     self.position.advance();
 
-                    return;
+                    return false;
                 }
-                '\"' => break,
+                '\"' => {
+                    did_string_end = true;
+
+                    break
+                },
+                '{' if is_interpolated => {
+                    break;
+                }
                 '\n' => {
                     text.push('\n');
                     self.position.newline()
@@ -402,6 +414,76 @@ impl Lexer {
             end,
         });
         self.position.advance();
+
+        did_string_end
+    }
+
+    fn handle_string_interpolation(&mut self) {
+        let start = self.position;
+
+        self.tokens.push(Token {
+            kind: TokenKind::StringInterpolationStart,
+            start,
+            end: self.position,
+        });
+
+        loop {
+            if self.char() == '\0' {
+                self.tokens.push(Token {
+                    kind: TokenKind::Error,
+                    start,
+                    end: self.position,
+                });
+                self.error("reached end of file during string literal");
+                self.position.advance();
+
+                return;
+            }
+
+            let did_string_end = self.handle_string_literal(true);
+
+            if did_string_end {
+               break;
+            }
+
+            let mut open_bracket_count = 1;
+
+            loop {
+                if self.char() == '\0' {
+                    self.tokens.push(Token {
+                        kind: TokenKind::Error,
+                        start,
+                        end: self.position,
+                    });
+                    self.error("reached end of file during string literal");
+                    self.position.advance();
+
+                    return;
+                }
+
+                self.lex_token();
+
+                match self.tokens.last() {
+                    Some(Token { kind: TokenKind::LBrace, .. }) => {
+                        open_bracket_count += 1;
+                    }
+                    Some(Token { kind: TokenKind::RBrace, .. }) => {
+                        open_bracket_count -= 1;
+
+                        if open_bracket_count <= 0 {
+                            break
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        self.tokens.push(Token {
+            kind: TokenKind::StringInterpolationEnd,
+            start,
+            end: self.position,
+        });
     }
 
     fn is_char_valid_in_identifier(c: char) -> bool {
@@ -421,125 +503,159 @@ impl Lexer {
         )
     }
 
-    pub fn lex(&mut self) {
+    fn lex_token(&mut self) {
         let mut two_chars = [0u8; 8];
 
-        while self.position.index < self.chars().len() {
-            let first_char_len = self.char().encode_utf8(&mut two_chars).len();
-            let second_char_len = self
-                .peek_char()
-                .encode_utf8(&mut two_chars[first_char_len..])
-                .len();
-            let two_chars_str =
-                std::str::from_utf8(&two_chars[..(first_char_len + second_char_len)]).unwrap();
+        let first_char_len = self.char().encode_utf8(&mut two_chars).len();
+        let second_char_len = self
+            .peek_char()
+            .encode_utf8(&mut two_chars[first_char_len..])
+            .len();
+        let two_chars_str =
+            std::str::from_utf8(&two_chars[..(first_char_len + second_char_len)]).unwrap();
 
-            if let Some(kind) = two_char_ops().get(two_chars_str) {
-                let start = self.position;
-                self.position.advance_by(2);
-                let end = self.position;
-
-                self.tokens.push(Token {
-                    kind: kind.clone(),
-                    start,
-                    end,
-                });
-                continue;
-            }
-
-            if self.try_consume_string("//") {
-                self.handle_single_line_comment();
-                continue;
-            }
-
-            if self.try_consume_string("/*") {
-                self.handle_multi_line_comment();
-                continue;
-            }
-
+        if let Some(kind) = two_char_ops().get(two_chars_str) {
             let start = self.position;
+            self.position.advance_by(2);
+            let end = self.position;
 
-            if self.try_consume_string("<<=") {
-                self.tokens.push(Token {
-                    kind: TokenKind::LessLessEqual,
-                    start,
-                    end: self.position,
-                });
+            self.tokens.push(Token {
+                kind: kind.clone(),
+                start,
+                end,
+            });
+            return;
+        }
 
-                continue;
+        if self.try_consume_string("//") {
+            self.handle_single_line_comment();
+            return;
+        }
+
+        if self.try_consume_string("/*") {
+            self.handle_multi_line_comment();
+            return;
+        }
+
+        if self.try_consume_string("$\"") {
+            self.handle_string_interpolation();
+            return;
+        }
+
+        let start = self.position;
+
+        if self.try_consume_string("<<=") {
+            self.tokens.push(Token {
+                kind: TokenKind::LessLessEqual,
+                start,
+                end: self.position,
+            });
+
+            return;
+        }
+
+        if self.try_consume_string(">>=") {
+            self.tokens.push(Token {
+                kind: TokenKind::GreaterGreaterEqual,
+                start,
+                end: self.position,
+            });
+
+            return;
+        }
+
+        if self.char().is_alphabetic() || self.char() == '_' {
+            let mut c = self.char();
+
+            while Lexer::is_char_valid_in_identifier(c) {
+                self.position.advance();
+                c = self.char();
             }
 
-            if self.try_consume_string(">>=") {
+            let end = self.position;
+            let text = self.collect_chars(start, end);
+
+            if let Some(keyword_kind) = keywords().get(&text) {
                 self.tokens.push(Token {
-                    kind: TokenKind::GreaterGreaterEqual,
-                    start,
-                    end: self.position,
-                });
-
-                continue;
-            }
-
-            if self.char().is_alphabetic() || self.char() == '_' {
-                let mut c = self.char();
-
-                while Lexer::is_char_valid_in_identifier(c) {
-                    self.position.advance();
-                    c = self.char();
-                }
-
-                let end = self.position;
-                let text = self.collect_chars(start, end);
-
-                if let Some(keyword_kind) = keywords().get(&text) {
-                    self.tokens.push(Token {
-                        kind: keyword_kind.clone(),
-                        start,
-                        end,
-                    });
-                    continue;
-                }
-
-                self.tokens.push(Token {
-                    kind: TokenKind::Identifier { text },
+                    kind: keyword_kind.clone(),
                     start,
                     end,
                 });
-
-                continue;
+                return;
             }
 
-            if self.char() == '0' && self.peek_char() == 'x' {
-                self.position.advance_by(2);
+            self.tokens.push(Token {
+                kind: TokenKind::Identifier { text },
+                start,
+                end,
+            });
 
-                let mut has_contents = false;
+            return;
+        }
 
-                loop {
-                    match self.char() {
-                        'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' => {}
-                        _ => {
-                            if !self.char().is_numeric() {
-                                break;
-                            }
+        if self.char() == '0' && self.peek_char() == 'x' {
+            self.position.advance_by(2);
+
+            let mut has_contents = false;
+
+            loop {
+                match self.char() {
+                    'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' => {}
+                    _ => {
+                        if !self.char().is_numeric() {
+                            break;
                         }
                     }
-
-                    has_contents = true;
-                    self.position.advance();
                 }
 
-                let end = self.position;
+                has_contents = true;
+                self.position.advance();
+            }
 
-                if !has_contents {
-                    self.error("malformed hex literal");
-                    self.tokens.push(Token {
-                        kind: TokenKind::Error,
-                        start,
-                        end: self.position,
-                    });
-                    continue;
+            let end = self.position;
+
+            if !has_contents {
+                self.error("malformed hex literal");
+                self.tokens.push(Token {
+                    kind: TokenKind::Error,
+                    start,
+                    end: self.position,
+                });
+                return;
+            }
+
+            let text = self.collect_chars(start, end);
+
+            self.tokens.push(Token {
+                kind: TokenKind::IntLiteral { text },
+                start,
+                end,
+            });
+        }
+
+        if self.char().is_numeric() {
+            let mut c = self.char();
+            let mut has_decimal_point = false;
+
+            while c.is_numeric() || (c == '.' && !has_decimal_point) {
+                if c == '.' {
+                    has_decimal_point = true;
                 }
 
-                let text = self.collect_chars(start, end);
+                self.position.advance();
+                c = self.char();
+            }
 
+            let end = self.position;
+            let text = self.collect_chars(start, end);
+
+            if has_decimal_point {
+                self.tokens.push(Token {
+                    kind: TokenKind::Float32Literal { text },
+                    start,
+                    end,
+                });
+            } else {
                 self.tokens.push(Token {
                     kind: TokenKind::IntLiteral { text },
                     start,
@@ -547,120 +663,96 @@ impl Lexer {
                 });
             }
 
-            if self.char().is_numeric() {
-                let mut c = self.char();
-                let mut has_decimal_point = false;
+            return;
+        }
 
-                while c.is_numeric() || (c == '.' && !has_decimal_point) {
-                    if c == '.' {
-                        has_decimal_point = true;
-                    }
-
-                    self.position.advance();
-                    c = self.char();
-                }
-
-                let end = self.position;
-                let text = self.collect_chars(start, end);
-
-                if has_decimal_point {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Float32Literal { text },
-                        start,
-                        end,
-                    });
-                } else {
-                    self.tokens.push(Token {
-                        kind: TokenKind::IntLiteral { text },
-                        start,
-                        end,
-                    });
-                }
-
-                continue;
+        if self.char().is_whitespace() {
+            if self.char() == '\n' {
+                self.position.newline();
+            } else {
+                self.position.advance();
             }
 
-            if self.char().is_whitespace() {
-                if self.char() == '\n' {
-                    self.position.newline();
-                } else {
-                    self.position.advance();
+            return;
+        }
+
+        let kind = match self.char() {
+            '(' => TokenKind::LParen,
+            ')' => TokenKind::RParen,
+            '{' => TokenKind::LBrace,
+            '}' => TokenKind::RBrace,
+            '[' => TokenKind::LBracket,
+            ']' => TokenKind::RBracket,
+            ',' => TokenKind::Comma,
+            ';' => TokenKind::Semicolon,
+            '.' => TokenKind::Period,
+            '+' => TokenKind::Plus,
+            '-' => TokenKind::Minus,
+            '*' => TokenKind::Asterisk,
+            '&' => TokenKind::Ampersand,
+            '/' => TokenKind::Divide,
+            '=' => TokenKind::Equal,
+            '<' => TokenKind::Less,
+            '>' => TokenKind::Greater,
+            '!' => TokenKind::Not,
+            '^' => TokenKind::Caret,
+            '~' => TokenKind::Tilde,
+            '%' => TokenKind::Percent,
+            '|' => TokenKind::Pipe,
+            '?' => TokenKind::QuestionMark,
+            '\'' => {
+                let start = self.position;
+                self.position.advance();
+
+                let mut value = self.char();
+                if value == '\\' {
+                    value = self.handle_escape_sequence();
                 }
 
-                continue;
-            }
+                self.position.advance();
 
-            let kind = match self.char() {
-                '(' => TokenKind::LParen,
-                ')' => TokenKind::RParen,
-                '{' => TokenKind::LBrace,
-                '}' => TokenKind::RBrace,
-                '[' => TokenKind::LBracket,
-                ']' => TokenKind::RBracket,
-                ',' => TokenKind::Comma,
-                ';' => TokenKind::Semicolon,
-                '.' => TokenKind::Period,
-                '+' => TokenKind::Plus,
-                '-' => TokenKind::Minus,
-                '*' => TokenKind::Asterisk,
-                '&' => TokenKind::Ampersand,
-                '/' => TokenKind::Divide,
-                '=' => TokenKind::Equal,
-                '<' => TokenKind::Less,
-                '>' => TokenKind::Greater,
-                '!' => TokenKind::Not,
-                '^' => TokenKind::Caret,
-                '~' => TokenKind::Tilde,
-                '%' => TokenKind::Percent,
-                '|' => TokenKind::Pipe,
-                '?' => TokenKind::QuestionMark,
-                '\'' => {
-                    let start = self.position;
-                    self.position.advance();
-
-                    let mut value = self.char();
-                    if value == '\\' {
-                        value = self.handle_escape_sequence();
-                    }
-
-                    self.position.advance();
-
-                    if self.char() != '\'' {
-                        self.error("expected end of char literal");
-                        self.tokens.push(Token {
-                            kind: TokenKind::Error,
-                            start,
-                            end: self.position,
-                        });
-                        continue;
-                    }
-
-                    self.position.advance();
-
+                if self.char() != '\'' {
+                    self.error("expected end of char literal");
                     self.tokens.push(Token {
-                        kind: TokenKind::CharLiteral { value },
+                        kind: TokenKind::Error,
                         start,
                         end: self.position,
                     });
+                    return;
+                }
 
-                    continue;
-                }
-                '"' => {
-                    self.handle_string_literal();
-                    continue;
-                }
-                _ => {
-                    self.error(&format!("unexpected character \"{}\"", self.char()));
-                    TokenKind::Error
-                }
-            };
+                self.position.advance();
 
-            self.tokens.push(Token {
-                kind,
-                start: self.position,
-                end: self.position,
-            });
-            self.position.advance();
+                self.tokens.push(Token {
+                    kind: TokenKind::CharLiteral { value },
+                    start,
+                    end: self.position,
+                });
+
+                return;
+            }
+            '"' => {
+                self.position.advance();
+                self.handle_string_literal(false);
+                return;
+            }
+            _ => {
+                self.error(&format!("unexpected character \"{}\"", self.char()));
+                TokenKind::Error
+            }
+        };
+
+        self.tokens.push(Token {
+            kind,
+            start: self.position,
+            end: self.position,
+        });
+        self.position.advance();
+    }
+
+    pub fn lex(&mut self) {
+        while self.position.index < self.chars().len() {
+            self.lex_token();
         }
     }
 }

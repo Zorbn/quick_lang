@@ -138,7 +138,6 @@ pub struct CodeGenerator {
 }
 
 impl CodeGenerator {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         typed_nodes: Vec<TypedNode>,
         type_kinds: TypeKinds,
@@ -400,6 +399,7 @@ impl CodeGenerator {
             }
             NodeKind::CharLiteral { value } => self.char_literal(value, EmitterKind::Body),
             NodeKind::StringLiteral { text } => self.string_literal(text, EmitterKind::Body),
+            NodeKind::StringInterpolation { .. } => panic!("cannot generate string interpolation"),
             NodeKind::BoolLiteral { value } => self.bool_literal(value, EmitterKind::Body),
             NodeKind::ArrayLiteral { elements, .. } => {
                 self.array_literal(elements, node_type, EmitterKind::Body)
@@ -868,7 +868,6 @@ impl CodeGenerator {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn variable_declaration(
         &mut self,
         declaration_kind: DeclarationKind,
@@ -1005,32 +1004,6 @@ impl CodeGenerator {
         self.body_emitters.push(0);
         self.gen_node(statement);
         self.body_emitters.pop_to_bottom();
-    }
-
-    fn emit_destructor(
-        &mut self,
-        subject_name: &str,
-        type_kind_id: usize,
-        emitter_kind: EmitterKind,
-        method_kind: MethodKind,
-    ) {
-        let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
-
-        assert_matches!(
-            TypeKind::Struct { namespace_id, .. },
-            self.type_kinds.get_by_id(dereferenced_type_kind_id)
-        );
-        self.emit_namespace(namespace_id, emitter_kind);
-        self.emit("Destroy(", emitter_kind);
-
-        match method_kind {
-            MethodKind::ByReference => self.emit("&", emitter_kind),
-            MethodKind::ByDereference => self.emit("*", emitter_kind),
-            _ => {}
-        }
-
-        self.emit(subject_name, emitter_kind);
-        self.emitln(");", emitter_kind);
     }
 
     fn delete_statement(&mut self, expression: NodeIndex) {
@@ -1180,7 +1153,6 @@ impl CodeGenerator {
         self.emit_break_label_if_used(index, loop_depth)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn for_loop(
         &mut self,
         iterator: NodeIndex,
@@ -1363,9 +1335,12 @@ impl CodeGenerator {
         node_type: Option<Type>,
         emitter_kind: EmitterKind,
     ) {
+        let node_type = node_type.unwrap();
+        let mut needs_closing_paren = false;
+
         match op {
             Op::New => {
-                let type_kind_id = node_type.unwrap().type_kind_id;
+                let type_kind_id = node_type.type_kind_id;
                 let (dereferenced_type_kind_id, _) =
                     self.type_kinds.dereference_type_kind_id(type_kind_id);
 
@@ -1376,9 +1351,10 @@ impl CodeGenerator {
 
                 self.emit_function_name_string("Alloc", function_type_kind_id, true, emitter_kind);
                 self.emit("(", emitter_kind);
+
+                needs_closing_paren = true;
             }
             Op::Scope => {
-                let node_type = node_type.unwrap();
                 let type_kind_id = node_type.type_kind_id;
 
                 let (dereferenced_type_kind_id, _) =
@@ -1386,31 +1362,11 @@ impl CodeGenerator {
 
                 let dereferenced_node_type = Type {
                     type_kind_id: dereferenced_type_kind_id,
-                    // The expression will always be assigned to scopeResult, a var.
+                    // The expression will always be assigned to a temporary var.
                     instance_kind: InstanceKind::Var,
                 };
 
-                let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
-                    param_type_kind_ids: vec![type_kind_id, dereferenced_type_kind_id].into(),
-                    return_type_kind_id: type_kind_id,
-                });
-
-                let scope_result = self.name_generator.temp_name("scopeResult");
-
-                self.emit_type_kind_left(dereferenced_type_kind_id, EmitterKind::Top, false, true);
-                self.emit(&scope_result, EmitterKind::Top);
-                self.emit_type_kind_right(dereferenced_type_kind_id, EmitterKind::Top, false);
-                self.emitln(";", EmitterKind::Top);
-
-                self.emit_function_name_string(
-                    "AllocInto",
-                    function_type_kind_id,
-                    true,
-                    emitter_kind,
-                );
-                self.emit("(&", emitter_kind);
-                self.emit(&scope_result, emitter_kind);
-                self.emit(", ", emitter_kind);
+                let scope_result = self.emit_stack_allocation(&dereferenced_node_type, emitter_kind);
 
                 self.body_emitters.push(0);
 
@@ -1427,6 +1383,18 @@ impl CodeGenerator {
                 }
 
                 self.body_emitters.pop_to_bottom();
+
+                needs_closing_paren = true;
+            }
+            Op::Reference => {
+                let right_type = self.get_typer_node(right).node_type.as_ref().unwrap();
+
+                if right_type.instance_kind == InstanceKind::Literal {
+                    self.emit_stack_allocation(&node_type, emitter_kind);
+                    needs_closing_paren = true;
+                } else {
+                    self.emit("&", emitter_kind)
+                }
             }
             _ => {
                 self.emit(
@@ -1434,7 +1402,6 @@ impl CodeGenerator {
                         Op::Plus => "+",
                         Op::Minus => "-",
                         Op::Not => "!",
-                        Op::Reference => "&",
                         _ => panic!("expected unary prefix operator"),
                     },
                     emitter_kind,
@@ -1444,10 +1411,8 @@ impl CodeGenerator {
 
         self.gen_node_with_emitter(right, emitter_kind);
 
-        match op {
-            Op::New => self.emit(")", emitter_kind),
-            Op::Scope => self.emit(")", emitter_kind),
-            _ => {}
+        if needs_closing_paren {
+            self.emit(")", emitter_kind);
         }
     }
 
@@ -1488,13 +1453,28 @@ impl CodeGenerator {
                 self.get_typer_node(caller).node_kind
             );
 
+            let left_type = self.get_typer_node(left).node_type.clone().unwrap();
+
+            let mut needs_closing_paren = false;
+
             match method_kind {
-                MethodKind::ByReference => self.emit("&", emitter_kind),
+                MethodKind::ByReference => {
+                    if left_type.instance_kind == InstanceKind::Literal {
+                        self.emit_stack_allocation(&left_type, emitter_kind);
+                        needs_closing_paren = true;
+                    } else {
+                        self.emit("&", emitter_kind)
+                    }
+                },
                 MethodKind::ByDereference => self.emit("*", emitter_kind),
                 _ => {}
             }
 
             self.gen_node_with_emitter(left, emitter_kind);
+
+            if needs_closing_paren {
+                self.emit(")", emitter_kind);
+            }
 
             if !args.is_empty() {
                 self.emit(", ", emitter_kind);
@@ -1510,6 +1490,7 @@ impl CodeGenerator {
         }
 
         let type_kind_id = node_type.unwrap().type_kind_id;
+
         if matches!(
             &self.type_kinds.get_by_id(type_kind_id),
             TypeKind::Array { .. }
@@ -1939,6 +1920,65 @@ impl CodeGenerator {
             type_name_type_kind.as_ref().unwrap().type_kind_id,
             emitter_kind,
         );
+    }
+
+    fn emit_stack_allocation(&mut self, node_type: &Type, emitter_kind: EmitterKind) -> String {
+        let type_kind_id = node_type.type_kind_id;
+
+        let pointer_type_kind_id = self.type_kinds.add_or_get(TypeKind::Pointer {
+            inner_type_kind_id: type_kind_id,
+            is_inner_mutable: true,
+        });
+
+        let function_type_kind_id = self.type_kinds.add_or_get(TypeKind::Function {
+            param_type_kind_ids: vec![pointer_type_kind_id, type_kind_id].into(),
+            return_type_kind_id: pointer_type_kind_id,
+        });
+
+        let stack_var = self.name_generator.temp_name("stackVar");
+
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Top, false, true);
+        self.emit(&stack_var, EmitterKind::Top);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Top, false);
+        self.emitln(";", EmitterKind::Top);
+
+        self.emit_function_name_string(
+            "AllocInto",
+            function_type_kind_id,
+            true,
+            emitter_kind,
+        );
+        self.emit("(&", emitter_kind);
+        self.emit(&stack_var, emitter_kind);
+        self.emit(", ", emitter_kind);
+
+        stack_var
+    }
+
+    fn emit_destructor(
+        &mut self,
+        subject_name: &str,
+        type_kind_id: usize,
+        emitter_kind: EmitterKind,
+        method_kind: MethodKind,
+    ) {
+        let (dereferenced_type_kind_id, _) = self.type_kinds.dereference_type_kind_id(type_kind_id);
+
+        assert_matches!(
+            TypeKind::Struct { namespace_id, .. },
+            self.type_kinds.get_by_id(dereferenced_type_kind_id)
+        );
+        self.emit_namespace(namespace_id, emitter_kind);
+        self.emit("Destroy(", emitter_kind);
+
+        match method_kind {
+            MethodKind::ByReference => self.emit("&", emitter_kind),
+            MethodKind::ByDereference => self.emit("*", emitter_kind),
+            _ => {}
+        }
+
+        self.emit(subject_name, emitter_kind);
+        self.emitln(");", emitter_kind);
     }
 
     fn emit_memmove_expression_to_variable(
@@ -2530,7 +2570,6 @@ impl CodeGenerator {
         self.newline(EmitterKind::Body);
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn emit_union_check_tag_usage(
         &mut self,
         dereferenced_left_type_kind_id: usize,
@@ -2639,7 +2678,6 @@ impl CodeGenerator {
         self.gen_node_with_emitter(name, emitter_kind);
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn emit_equality(
         &mut self,
         type_kind_id: usize,

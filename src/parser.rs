@@ -218,6 +218,9 @@ pub enum NodeKind {
     StringLiteral {
         text: Arc<String>,
     },
+    StringInterpolation {
+        chunks: Arc<Vec<NodeIndex>>,
+    },
     BoolLiteral {
         value: bool,
     },
@@ -1869,6 +1872,7 @@ impl Parser {
             TokenKind::Float32Literal { .. } => self.float_literal(),
             TokenKind::CharLiteral { .. } => self.char_literal(),
             TokenKind::StringLiteral { .. } => self.string_literal(),
+            TokenKind::StringInterpolationStart => self.string_interpolation(),
             TokenKind::True | TokenKind::False => self.bool_literal(),
             TokenKind::LBracket { .. } => self.array_literal(),
             TokenKind::Sizeof { .. } => self.type_size(),
@@ -1965,6 +1969,48 @@ impl Parser {
 
         self.add_node(Node {
             kind: NodeKind::StringLiteral { text },
+            start,
+            end,
+        })
+    }
+
+    fn string_interpolation(&mut self) -> NodeIndex {
+        let start = self.token_start();
+
+        assert_token!(self, TokenKind::StringInterpolationStart, start, self.token_end());
+        self.position += 1;
+
+        let mut chunks = Vec::new();
+
+        while *self.token_kind() != TokenKind::StringInterpolationEnd {
+            if let TokenKind::StringLiteral { text } = self.token_kind() {
+                let string_literal = self.add_node(Node {
+                    kind: NodeKind::StringLiteral { text: text.clone() },
+                    start: self.token_start(),
+                    end: self.token_end(),
+                });
+
+                self.position += 1;
+
+                chunks.push(string_literal);
+
+                continue;
+            }
+
+            let expression = self.expression();
+
+            assert_token!(self, TokenKind::RBrace, start, self.token_end());
+            self.position += 1;
+
+            chunks.push(expression);
+        }
+
+        self.position += 1;
+
+        let end = self.token_end();
+
+        self.add_node(Node {
+            kind: NodeKind::StringInterpolation { chunks: Arc::new(chunks) },
             start,
             end,
         })

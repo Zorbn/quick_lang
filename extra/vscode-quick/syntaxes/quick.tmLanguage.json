@@ -21,6 +21,9 @@
 			"include": "#string"
 		},
 		{
+			"include": "#string-interpolation"
+		},
+		{
 			"include": "#char"
 		},
 		{
@@ -142,6 +145,20 @@
 			"begin": "\"",
 			"end": "\"",
 			"patterns": [
+				{
+					"name": "constant.character.escape.quick",
+					"match": "\\\\."
+				}
+			]
+		},
+		"string-interpolation": {
+			"name": "string.quoted.double.quick",
+			"begin": "\\$\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"include": "#string-interpolation"
+				},
 				{
 					"name": "constant.character.escape.quick",
 					"match": "\\\\."
