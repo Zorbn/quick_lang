@@ -1714,10 +1714,10 @@ impl CodeGenerator {
             return;
         }
 
-        self.emit("((", emitter_kind);
+        self.emit("(", emitter_kind);
         self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
         self.emit_type_kind_right(type_kind_id, emitter_kind, false);
-        self.emit(")", emitter_kind);
+        self.emit(")(", emitter_kind);
         self.gen_node_with_emitter(left, emitter_kind);
         self.emit(")", emitter_kind);
     }
@@ -1853,21 +1853,6 @@ impl CodeGenerator {
         emitter_kind: EmitterKind,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
-
-        let mut is_in_array_literal = false;
-
-        // C compilers don't seem to like adding explicit casts to array literals that
-        // are nested inside other array literals, so we avoid doing that.
-        if let Some(node_index) = self.node_index_stack.get(self.node_index_stack.len() - 2) {
-            is_in_array_literal = matches!(self.get_typer_node(*node_index).node_kind, NodeKind::ArrayLiteral { .. });
-        }
-
-        if !is_in_array_literal {
-            self.emit("(", emitter_kind);
-            self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
-            self.emit_type_kind_right(type_kind_id, emitter_kind, false);
-            self.emit(") ", emitter_kind);
-        }
 
         assert_matches!(
             TypeKind::Array { element_count, .. },
@@ -2058,6 +2043,14 @@ impl CodeGenerator {
         self.emit("memmove(", emitter_kind);
         self.gen_node_with_emitter(destination, emitter_kind);
         self.emit(", ", emitter_kind);
+
+        if let TypeKind::Array { .. } = self.type_kinds.get_by_id(type_kind_id) {
+            self.emit("(", emitter_kind);
+            self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
+            self.emit_type_kind_right(type_kind_id, emitter_kind, false);
+            self.emit(") ", emitter_kind);
+        }
+
         self.gen_node_with_emitter(source, emitter_kind);
         self.emit(", ", emitter_kind);
         self.emit_type_size(type_kind_id, emitter_kind);
@@ -2074,6 +2067,14 @@ impl CodeGenerator {
         self.emit("memmove(", emitter_kind);
         self.emit(destination, emitter_kind);
         self.emit(", ", emitter_kind);
+
+        if let TypeKind::Array { .. } = self.type_kinds.get_by_id(type_kind_id) {
+            self.emit("(", emitter_kind);
+            self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
+            self.emit_type_kind_right(type_kind_id, emitter_kind, false);
+            self.emit(") ", emitter_kind);
+        }
+
         self.gen_node_with_emitter(source, emitter_kind);
         self.emit(", ", emitter_kind);
         self.emit_type_size(type_kind_id, emitter_kind);

@@ -71,7 +71,7 @@ pub fn compile(
         return ExitCode::FAILURE;
     };
 
-    let output_paths = get_output_paths(&files);
+    let output_paths = get_output_paths(&files, do_use_msvc);
 
     gen(typers, &files, &output_paths, is_debug_mode, is_unsafe_mode);
 
@@ -247,12 +247,27 @@ fn gen(
     }
 }
 
-fn get_output_paths(files: &Arc<Vec<FileData>>) -> Vec<PathBuf> {
+fn get_output_paths(files: &Arc<Vec<FileData>>, do_use_msvc: bool) -> Vec<PathBuf> {
     let mut output_paths = Vec::new();
 
     for file in files.iter() {
         let mut output_path = Path::new("build/").join(&file.path);
+
+        if do_use_msvc {
+            // MSVC puts all object files into the same directory, so we need
+            // to make sure all source files have distinct names.
+            let output_file_name: String = file
+                .path
+                .to_str()
+                .unwrap()
+                .to_string()
+                .replace(['/', '\\'], "");
+
+            output_path = output_path.with_file_name(output_file_name);
+        }
+
         output_path.set_extension("c");
+
         output_paths.push(output_path);
     }
 
@@ -313,14 +328,14 @@ fn read_chars_at_path(path: &Path) -> Vec<char> {
 
 fn create_compiler_command(
     is_debug_mode: bool,
-    use_msvc: bool,
+    do_use_msvc: bool,
     c_flags: &[String],
     output_paths: &[PathBuf],
     core_system_path: PathBuf,
 ) -> Command {
     let core_system_path_str = core_system_path.to_str().unwrap();
 
-    if use_msvc {
+    if do_use_msvc {
         let mut compiler_command = Command::new("cl");
 
         if is_debug_mode {
