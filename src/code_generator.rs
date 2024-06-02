@@ -827,6 +827,7 @@ impl CodeGenerator {
         name: NodeIndex,
         expression: NodeIndex,
         node_type: Option<Type>,
+        is_global_variable: bool,
         emitter_kind: EmitterKind,
     ) {
         let type_kind_id = node_type.unwrap().type_kind_id;
@@ -836,8 +837,10 @@ impl CodeGenerator {
             TypeKind::Array { .. }
         );
 
-        if is_array && !self.is_typed_expression_array_literal(expression) {
-            self.emitln(";", emitter_kind);
+        if is_array && (is_global_variable || !self.is_typed_expression_array_literal(expression)) {
+            if !is_global_variable {
+                self.emitln(";", emitter_kind);
+            }
 
             assert_matches!(
                 NodeKind::Name { text: name_text },
@@ -902,7 +905,7 @@ impl CodeGenerator {
             return;
         };
 
-        self.emit_variable_declaration_initializer(name, expression, node_type, emitter_kind);
+        self.emit_variable_declaration_initializer(name, expression, node_type, false, emitter_kind);
     }
 
     fn return_statement(&mut self, expression: Option<NodeIndex>) {
@@ -1849,9 +1852,26 @@ impl CodeGenerator {
         node_type: Option<Type>,
         emitter_kind: EmitterKind,
     ) {
+        let type_kind_id = node_type.unwrap().type_kind_id;
+
+        let mut is_in_array_literal = false;
+
+        // C compilers don't seem to like adding explicit casts to array literals that
+        // are nested inside other array literals, so we avoid doing that.
+        if let Some(node_index) = self.node_index_stack.get(self.node_index_stack.len() - 2) {
+            is_in_array_literal = matches!(self.get_typer_node(*node_index).node_kind, NodeKind::ArrayLiteral { .. });
+        }
+
+        if !is_in_array_literal {
+            self.emit("(", emitter_kind);
+            self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
+            self.emit_type_kind_right(type_kind_id, emitter_kind, false);
+            self.emit(") ", emitter_kind);
+        }
+
         assert_matches!(
             TypeKind::Array { element_count, .. },
-            self.type_kinds.get_by_id(node_type.unwrap().type_kind_id)
+            self.type_kinds.get_by_id(type_kind_id)
         );
 
         let repeat_count = element_count / elements.len();
@@ -2493,16 +2513,22 @@ impl CodeGenerator {
                 name, expression, ..
             } = node_kind
             {
-                if let Some(namespace_id) = namespace_id {
-                    self.emit_namespace(namespace_id, EmitterKind::Body);
-                }
+                let type_kind_id = node_type.as_ref().unwrap().type_kind_id;
+                let is_array = matches!(self.type_kinds.get_by_id(type_kind_id), TypeKind::Array { .. });
 
-                self.gen_node_with_emitter(name, EmitterKind::Body);
+                if !is_array {
+                    if let Some(namespace_id) = namespace_id {
+                        self.emit_namespace(namespace_id, EmitterKind::Body);
+                    }
+
+                    self.gen_node_with_emitter(name, EmitterKind::Body);
+                }
 
                 self.emit_variable_declaration_initializer(
                     name,
                     expression.unwrap(),
                     node_type,
+                    true,
                     EmitterKind::Body,
                 );
                 self.emitln(";", EmitterKind::Body);

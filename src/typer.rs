@@ -3450,11 +3450,17 @@ impl Typer {
         repeat_count_const_expression: Option<NodeIndex>,
         hint: Option<usize>,
     ) -> NodeIndex {
+        let mut element_hint = hint;
+
+        if let Some(TypeKind::Array { element_type_kind_id, .. }) = hint.map(|type_kind_id| self.type_kinds.get_by_id(type_kind_id)) {
+            element_hint = Some(element_type_kind_id);
+        }
+
         let mut typed_elements = Vec::new();
         let mut element_type: Option<Type> = None;
 
         for element in elements.iter() {
-            let typed_element = self.check_node_with_hint(*element, hint);
+            let typed_element = self.check_node_with_hint(*element, element_hint);
             let current_element_type = assert_typed!(self, typed_element);
 
             if let Some(element_type) = &element_type {
