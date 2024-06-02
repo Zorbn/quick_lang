@@ -2445,7 +2445,7 @@ impl CodeGenerator {
         self.indent(EmitterKind::Body);
 
         self.emitln(
-            "Internal__ErrorTrace(\"Array access out of bounds!\", 3);",
+            "Internal__ErrorTrace(\"Array access out of bounds!\", 2);",
             EmitterKind::Body,
         );
 
@@ -2631,7 +2631,7 @@ impl CodeGenerator {
         self.indent(EmitterKind::Body);
 
         self.emitln(
-            "Internal__ErrorTrace(\"Accessed wrong union variant!\", 3);",
+            "Internal__ErrorTrace(\"Accessed wrong union variant!\", 2);",
             EmitterKind::Body,
         );
 
