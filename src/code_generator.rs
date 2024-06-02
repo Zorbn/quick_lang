@@ -558,24 +558,19 @@ impl CodeGenerator {
     fn enum_definition(&mut self, name: NodeIndex, variant_names: Arc<Vec<NodeIndex>>) {
         self.emit("enum ", EmitterKind::TypePrototype);
         self.gen_node_with_emitter(name, EmitterKind::TypePrototype);
-        self.emitln(";", EmitterKind::TypePrototype);
-        self.newline(EmitterKind::TypePrototype);
-
-        self.emit("enum ", EmitterKind::TypeDefinition);
-        self.gen_node_with_emitter(name, EmitterKind::TypeDefinition);
-        self.emitln(" {", EmitterKind::TypeDefinition);
-        self.indent(EmitterKind::TypeDefinition);
+        self.emitln(" {", EmitterKind::TypePrototype);
+        self.indent(EmitterKind::TypePrototype);
 
         for variant_name in variant_names.iter() {
-            self.emit("__", EmitterKind::TypeDefinition);
-            self.gen_node_with_emitter(name, EmitterKind::TypeDefinition);
-            self.gen_node_with_emitter(*variant_name, EmitterKind::TypeDefinition);
-            self.emitln(",", EmitterKind::TypeDefinition);
+            self.emit("__", EmitterKind::TypePrototype);
+            self.gen_node_with_emitter(name, EmitterKind::TypePrototype);
+            self.gen_node_with_emitter(*variant_name, EmitterKind::TypePrototype);
+            self.emitln(",", EmitterKind::TypePrototype);
         }
 
-        self.unindent(EmitterKind::TypeDefinition);
-        self.emitln("};", EmitterKind::TypeDefinition);
-        self.newline(EmitterKind::TypeDefinition);
+        self.unindent(EmitterKind::TypePrototype);
+        self.emitln("};", EmitterKind::TypePrototype);
+        self.newline(EmitterKind::TypePrototype);
     }
 
     fn field(&mut self, name: NodeIndex, node_type: Option<Type>) {
@@ -1227,6 +1222,56 @@ impl CodeGenerator {
         }
     }
 
+    // The precedence that the operator will have in generated (C) code.
+    // https://en.cppreference.com/w/c/language/operator_precedence
+    fn get_op_generated_precedence(op: Op) -> usize {
+        match op {
+            Op::New => 1,
+            Op::Scope => 1,
+            Op::Reference => 2,
+            Op::Dereference => 2,
+            Op::Not => 2,
+            Op::BitwiseNot => 2,
+            Op::Multiply => 3,
+            Op::Divide => 3,
+            Op::Modulo => 3,
+            Op::Plus => 4,
+            Op::Minus => 4,
+            Op::LeftShift => 5,
+            Op::RightShift => 5,
+            Op::Less => 6,
+            Op::Greater => 6,
+            Op::LessEqual => 6,
+            Op::GreaterEqual => 6,
+            Op::Equal => 7,
+            Op::NotEqual => 7,
+            Op::BitwiseAnd => 8,
+            Op::Xor => 9,
+            Op::BitwiseOr => 10,
+            Op::And => 11,
+            Op::Or => 12,
+            Op::Assign => 14,
+            Op::PlusAssign => 14,
+            Op::MinusAssign => 14,
+            Op::MultiplyAssign => 14,
+            Op::DivideAssign => 14,
+            Op::LeftShiftAssign => 14,
+            Op::RightShiftAssign => 14,
+            Op::ModuloAssign => 14,
+            Op::BitwiseAndAssign => 14,
+            Op::BitwiseOrAssign => 14,
+            Op::XorAssign => 14,
+        }
+    }
+
+    fn does_child_need_parens(&self, parent_op: Op, child: NodeIndex) -> bool {
+        let NodeKind::Binary { op, .. } = self.get_typer_node(child).node_kind else {
+            return false;
+        };
+
+        CodeGenerator::get_op_generated_precedence(parent_op) < CodeGenerator::get_op_generated_precedence(op)
+    }
+
     fn binary(
         &mut self,
         left: NodeIndex,
@@ -1291,8 +1336,6 @@ impl CodeGenerator {
             }
         }
 
-        self.emit("(", emitter_kind);
-
         if matches!(op, Op::Equal | Op::NotEqual) {
             self.emit_equality(
                 left_type_kind_id,
@@ -1304,12 +1347,32 @@ impl CodeGenerator {
                 emitter_kind,
             );
         } else {
-            self.gen_node_with_emitter(left, emitter_kind);
-            self.emit_binary_op(op, emitter_kind);
-            self.gen_node_with_emitter(right, emitter_kind);
-        }
+            let does_left_need_parens = self.does_child_need_parens(op, left);
 
-        self.emit(")", emitter_kind);
+            if does_left_need_parens {
+                self.emit("(", emitter_kind)
+            }
+
+            self.gen_node_with_emitter(left, emitter_kind);
+
+            if does_left_need_parens {
+                self.emit(")", emitter_kind)
+            }
+
+            self.emit_binary_op(op, emitter_kind);
+
+            let does_right_need_parens = self.does_child_need_parens(op, right);
+
+            if does_right_need_parens {
+                self.emit("(", emitter_kind)
+            }
+
+            self.gen_node_with_emitter(right, emitter_kind);
+
+            if does_right_need_parens {
+                self.emit(")", emitter_kind)
+            }
+        }
     }
 
     fn unary_prefix(
@@ -2716,11 +2779,27 @@ impl CodeGenerator {
                 self.emit(")", emitter_kind);
             }
             _ => {
+                let op = if is_equal {
+                    Op::Equal
+                } else {
+                    Op::NotEqual
+                };
+
+                let does_left_need_parens = self.does_child_need_parens(op, left);
+
+                if does_left_need_parens {
+                    self.emit("(", emitter_kind);
+                }
+
                 if let Some(left_prefix) = left_prefix {
                     self.emit(left_prefix, emitter_kind);
                 }
 
                 self.gen_node_with_emitter(left, emitter_kind);
+
+                if does_left_need_parens {
+                    self.emit(")", emitter_kind)
+                }
 
                 if is_equal {
                     self.emit(" == ", emitter_kind);
@@ -2728,11 +2807,21 @@ impl CodeGenerator {
                     self.emit(" != ", emitter_kind);
                 }
 
+                let does_right_need_parens = self.does_child_need_parens(op, right);
+
+                if does_right_need_parens {
+                    self.emit("(", emitter_kind)
+                }
+
                 if let Some(right_prefix) = right_prefix {
                     self.emit(right_prefix, emitter_kind);
                 }
 
                 self.gen_node_with_emitter(right, emitter_kind);
+
+                if does_right_need_parens {
+                    self.emit(")", emitter_kind)
+                }
             }
         }
     }

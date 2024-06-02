@@ -1,0 +1,9 @@
+func Main() Int
+{
+    var sum = 5 * 32 + (18 - 23) * 16;
+    var bitwise = 17 & 1 == 1;
+
+    Console.WriteStrLn(scope $"{sum}, {bitwise}");
+
+    return 0;
+}
