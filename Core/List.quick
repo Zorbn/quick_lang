@@ -1,0 +1,105 @@
+struct List.<T>
+{
+    data *var T;
+    count Int;
+    capacity Int;
+
+    func Create(capacity Int) List.<T>
+    {
+        return List.<T>
+        {
+            data = 0 as *var T,
+            count = 0,
+            capacity = capacity.Max(1),
+        };
+    }
+
+    func Destroy(me *var List.<T>) Void
+    {
+        Internal.free(me.data as *var Void);
+    }
+
+    func Reserve(me *var List.<T>, count Int) Void
+    {
+        var desiredCapacity = me.count + count;
+
+        if (me.capacity <= desiredCapacity && me.data != 0 as *var T)
+        {
+            return;
+        }
+
+        while (me.capacity < desiredCapacity)
+        {
+            me.capacity *= 2;
+        }
+
+        me.data = Internal.realloc(me.data as *var Void, (me.capacity * sizeof T) as UInt) as *var T;
+
+        if (me.data == 0 as *var T)
+        {
+            Runtime.Error("Failed to reallocate List");
+        }
+    }
+
+    func Set(me *var List.<T>, index Int, value T) Void
+    {
+        if (index < 0 || index >= me.count)
+        {
+            Runtime.Error("List access out of bounds!");
+        }
+
+        val dataStart = me.data as UInt;
+        val dataIndex = dataStart + index as UInt * sizeof T;
+        val dataPointer = dataIndex as *var T;
+
+        dataPointer.* = value;
+    }
+
+    func Get(me *var List.<T>, index Int) T
+    {
+        if (index < 0 || index >= me.count)
+        {
+            Runtime.Error("List access out of bounds!");
+        }
+
+        val dataStart = me.data as UInt;
+        val dataIndex = dataStart + index as UInt * sizeof T;
+        val dataPointer = dataIndex as *var T;
+
+        return dataPointer.*;
+    }
+
+    func Add(me *var List.<T>, value T) Void
+    {
+        me.Reserve(1);
+        me.count += 1;
+        me.Set(me.count - 1, value);
+    }
+
+    func Pop(me *var List.<T>) T
+    {
+        val value = me.Get(me.count - 1);
+        me.count -= 1;
+
+        return value;
+    }
+
+    func Fill(me *var List.<T>, value T, count Int) Void
+    {
+        for (val i of 0 < count)
+        {
+            if (i >= me.count)
+            {
+                me.Add(value);
+                continue;
+            }
+
+            me.Set(i, value);
+        }
+    }
+
+    func Clear(me *var List.<T>) Void
+    {
+        me.count = 0;
+    }
+}
