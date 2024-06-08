@@ -2044,7 +2044,7 @@ impl CodeGenerator {
         self.gen_node_with_emitter(destination, emitter_kind);
         self.emit(", ", emitter_kind);
 
-        if let TypeKind::Array { .. } = self.type_kinds.get_by_id(type_kind_id) {
+        if let NodeKind::ArrayLiteral { .. } = self.get_typer_node(source).node_kind {
             self.emit("(", emitter_kind);
             self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
             self.emit_type_kind_right(type_kind_id, emitter_kind, false);
@@ -2068,7 +2068,7 @@ impl CodeGenerator {
         self.emit(destination, emitter_kind);
         self.emit(", ", emitter_kind);
 
-        if let TypeKind::Array { .. } = self.type_kinds.get_by_id(type_kind_id) {
+        if let NodeKind::ArrayLiteral { .. } = self.get_typer_node(source).node_kind {
             self.emit("(", emitter_kind);
             self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
             self.emit_type_kind_right(type_kind_id, emitter_kind, false);
@@ -2167,7 +2167,7 @@ impl CodeGenerator {
                         true,
                     );
                     if do_arrays_as_pointers {
-                        self.emit("*", emitter_kind);
+                        self.emit("(*", emitter_kind);
                     }
                 }
                 TypeKind::Pointer {
@@ -2192,7 +2192,7 @@ impl CodeGenerator {
                         self.emit("const ", emitter_kind);
                     }
 
-                    self.emit("*", emitter_kind);
+                    self.emit("(*", emitter_kind);
                 }
                 TypeKind::Placeholder { .. } => {
                     panic!("can't emit placeholder type: {:?}", type_kind)
@@ -2231,7 +2231,10 @@ impl CodeGenerator {
                     self.emit("[", emitter_kind);
                     self.emit(&element_count.to_string(), emitter_kind);
                     self.emit("]", emitter_kind);
+                } else {
+                    self.emit(")", emitter_kind);
                 }
+
                 self.emit_type_kind_right(
                     element_type_kind_id,
                     emitter_kind,
@@ -2241,6 +2244,7 @@ impl CodeGenerator {
             TypeKind::Pointer {
                 inner_type_kind_id, ..
             } => {
+                self.emit(")", emitter_kind);
                 self.emit_type_kind_right(inner_type_kind_id, emitter_kind, do_arrays_as_pointers);
             }
             TypeKind::Function {
