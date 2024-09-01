@@ -128,6 +128,8 @@ pub struct Typer {
     pub name_generator: NameGenerator,
     pub error_bucket: ErrorBucket,
 
+    deeply_typed_structs: Vec<NodeIndex>,
+
     file_index: Option<usize>,
     files: Arc<Vec<FileData>>,
 
@@ -159,6 +161,8 @@ impl Typer {
             main_function_declaration: None,
             name_generator: NameGenerator::new(),
             error_bucket: ErrorBucket::new(),
+
+            deeply_typed_structs: Vec::new(),
 
             file_index: None,
             files,
@@ -1125,21 +1129,17 @@ impl Typer {
         // In the first loop, method bodies are skipped to prevent issues with circular
         // dependencies between structs. So, now that we have typed all of the structs,
         // we can go back and check the method bodies.
-        for i in 0..self.typed_definitions.len() {
-            // if self.get_checkable_top_level_name(*top_level_node).is_none() {
-            //     continue;
-            // };
+        for i in 0..self.deeply_typed_structs.len() {
+            let typed_definition = &self.deeply_typed_structs[i];
 
-            let typed_definition = &self.typed_definitions[i];
-
-            let TypedNode {
-                node_kind: NodeKind::StructDefinition { functions, .. },
-                node_type,
-                ..
-            } = self.get_typer_node(*typed_definition).clone()
-            else {
-                continue;
-            };
+            assert_matches!(
+                TypedNode {
+                    node_kind: NodeKind::StructDefinition { functions, .. },
+                    node_type,
+                    ..
+                },
+                self.get_typer_node(*typed_definition).clone()
+            );
 
             assert_matches!(
                 TypeKind::Struct { namespace_id, .. },
@@ -1151,7 +1151,6 @@ impl Typer {
                     continue;
                 }
 
-                // self.check_top_level_node(*function, namespace_id);
                 self.check_node_with_namespace(*function, namespace_id);
             }
         }
@@ -1500,6 +1499,8 @@ impl Typer {
         if !is_inner_mutable {
             type_error!(self, "only pointers to vars can be deleted");
         }
+
+        self.lookup_destroy(dereferenced_type_kind_id);
 
         let free_text = self.name_generator.reuse("Free");
 
@@ -2008,11 +2009,7 @@ impl Typer {
         let Some(TypeKind::Function {
             param_type_kind_ids: next_param_type_kind_ids,
             return_type_kind_id: next_return_type_kind_id,
-        }) = self.type_kinds.get_method(
-            self.name_generator.reuse("Next"),
-            expression_type.type_kind_id,
-            &self.namespaces,
-        )
+        }) = self.get_method_from_str("Next", expression_type.type_kind_id)
         else {
             type_error_at_parser_node!(self, "expression is not iterable", expression);
         };
@@ -2020,11 +2017,7 @@ impl Typer {
         let Some(TypeKind::Function {
             param_type_kind_ids: get_param_type_kind_ids,
             return_type_kind_id: get_return_type_kind_id,
-        }) = self.type_kinds.get_method(
-            self.name_generator.reuse("Get"),
-            expression_type.type_kind_id,
-            &self.namespaces,
-        )
+        }) = self.get_method_from_str("Get", expression_type.type_kind_id)
         else {
             type_error_at_parser_node!(self, "expression is not iterable", expression);
         };
@@ -2223,11 +2216,8 @@ impl Typer {
         if let Some(TypeKind::Function {
             param_type_kind_ids,
             ..
-        }) = self.type_kinds.get_method(
-            self.name_generator.reuse("ToIterable"),
-            expression_type.type_kind_id,
-            &self.namespaces,
-        ) {
+        }) = self.get_method_from_str("ToIterable", expression_type.type_kind_id)
+        {
             if param_type_kind_ids.len() == 1
                 && self
                     .type_kinds
@@ -2378,11 +2368,7 @@ impl Typer {
             | Op::BitwiseOr
             | Op::BitwiseNot
             | Op::Xor => {
-                if !self
-                    .type_kinds
-                    .get_by_id(left_type.type_kind_id)
-                    .is_int()
-                {
+                if !self.type_kinds.get_by_id(left_type.type_kind_id).is_int() {
                     type_error!(self, "expected int types");
                 }
             }
@@ -2583,6 +2569,7 @@ impl Typer {
                 )
             }
             Op::Scope => {
+                self.lookup_destroy(right_type.type_kind_id);
                 self.lookup_alloc_into(right_type.type_kind_id);
 
                 let type_kind_id = self.type_kinds.add_or_get(TypeKind::Pointer {
@@ -3319,11 +3306,7 @@ impl Typer {
             let Some(TypeKind::Function {
                 param_type_kind_ids: to_string_param_type_kind_ids,
                 return_type_kind_id: to_string_return_type_kind_id,
-            }) = self.type_kinds.get_method(
-                to_string_text.clone(),
-                chunk_type.type_kind_id,
-                &self.namespaces,
-            )
+            }) = self.get_method(to_string_text.clone(), chunk_type.type_kind_id)
             else {
                 type_error_at_parser_node!(
                     self,
@@ -3452,7 +3435,11 @@ impl Typer {
     ) -> NodeIndex {
         let mut element_hint = hint;
 
-        if let Some(TypeKind::Array { element_type_kind_id, .. }) = hint.map(|type_kind_id| self.type_kinds.get_by_id(type_kind_id)) {
+        if let Some(TypeKind::Array {
+            element_type_kind_id,
+            ..
+        }) = hint.map(|type_kind_id| self.type_kinds.get_by_id(type_kind_id))
+        {
             element_hint = Some(element_type_kind_id);
         }
 
@@ -3893,8 +3880,13 @@ impl Typer {
             },
         );
 
-        for function in functions.iter() {
-            self.check_function_prototype(*function, namespace_id);
+        let is_deep_check =
+            Some(file_index) == self.file_index || generic_arg_type_kind_ids.is_some();
+
+        if is_deep_check {
+            for function in functions.iter() {
+                self.check_function_prototype(*function, namespace_id);
+            }
         }
 
         let index = self.add_node(
@@ -3914,6 +3906,10 @@ impl Typer {
         );
 
         self.typed_definitions[typed_definition_index] = index;
+
+        if is_deep_check {
+            self.deeply_typed_structs.push(index)
+        }
 
         index
     }
@@ -4739,6 +4735,57 @@ impl Typer {
             self.get_parser_node(index).kind,
             NodeKind::IntLiteral { .. } | NodeKind::FloatLiteral { .. }
         )
+    }
+
+    fn get_method_from_str(&mut self, method_name: &str, type_kind_id: usize) -> Option<TypeKind> {
+        let method_name = self.name_generator.reuse(method_name);
+
+        self.get_method(method_name, type_kind_id)
+    }
+
+    fn get_method(&mut self, method_name: Arc<str>, type_kind_id: usize) -> Option<TypeKind> {
+        let (mut result, namespace_id) =
+            self.type_kinds
+                .lookup(method_name.clone(), type_kind_id, &self.namespaces);
+
+        if let NamespaceLookupResult::DefinitionIndex(definition_index) = result {
+            self.check_node_with_namespace(definition_index, namespace_id);
+
+            (result, _) = self
+                .type_kinds
+                .lookup(method_name, type_kind_id, &self.namespaces)
+        }
+
+        if let NamespaceLookupResult::Definition(Definition::Function {
+            type_kind_id: method_type_kind_id,
+            ..
+        }) = result
+        {
+            let method = self.type_kinds.get_by_id(method_type_kind_id);
+            return Some(method);
+        }
+
+        None
+    }
+
+    // Called when a piece of code would like to call Destroy during
+    // code generation, to make sure it will be available at that point if it exists.
+    fn lookup_destroy(&mut self, type_kind_id: usize) {
+        let TypeKind::Struct { namespace_id, .. } = self.type_kinds.get_by_id(type_kind_id) else {
+            return;
+        };
+
+        let destroy_text = self.name_generator.reuse("Destroy");
+
+        self.lookup_identifier(
+            Identifier {
+                name: destroy_text,
+                generic_arg_type_kind_ids: None,
+            },
+            LookupLocation::Namespace(namespace_id),
+            LookupKind::All,
+            None,
+        );
     }
 
     // Called when a piece of code will require a call to AllocInto during

@@ -4,7 +4,7 @@ use crate::{
     assert_matches,
     namespace::{Definition, Identifier, Namespace, NamespaceLookupResult},
     parser::{MethodKind, NodeIndex, NodeKind},
-    typer::{InstanceKind, Type, TypedNode},
+    typer::{InstanceKind, Type, TypedNode, GLOBAL_NAMESPACE_ID},
 };
 
 #[derive(Debug, PartialEq)]
@@ -291,7 +291,10 @@ impl TypeKinds {
             is_inner_mutable,
         } = self.get_by_id(param_type_kind_id)
         {
-            if is_inner_mutable && (instance_type.instance_kind != InstanceKind::Var && instance_type.instance_kind != InstanceKind::Literal) {
+            if is_inner_mutable
+                && (instance_type.instance_kind != InstanceKind::Var
+                    && instance_type.instance_kind != InstanceKind::Literal)
+            {
                 return None;
             }
 
@@ -312,34 +315,53 @@ impl TypeKinds {
         None
     }
 
+    pub fn lookup(
+        &self,
+        method_name: Arc<str>,
+        type_kind_id: usize,
+        namespaces: &[Namespace],
+    ) -> (NamespaceLookupResult, usize) {
+        let (dereferenced_type_kind_id, _) = self.dereference_type_kind_id(type_kind_id);
+
+        let TypeKind::Struct { namespace_id, .. } = self.get_by_id(dereferenced_type_kind_id)
+        else {
+            return (NamespaceLookupResult::None, GLOBAL_NAMESPACE_ID);
+        };
+
+        let namespace = &namespaces[namespace_id];
+
+        (
+            namespace.lookup(&Identifier::new(method_name)),
+            namespace_id,
+        )
+    }
+
     pub fn get_method(
         &self,
         method_name: Arc<str>,
         type_kind_id: usize,
         namespaces: &[Namespace],
     ) -> Option<TypeKind> {
-        let (dereferenced_type_kind_id, _) = self.dereference_type_kind_id(type_kind_id);
+        let (result, _) = self.lookup(method_name.clone(), type_kind_id, namespaces);
 
-        let TypeKind::Struct { namespace_id, .. } = self.get_by_id(dereferenced_type_kind_id)
-        else {
-            return None;
-        };
+        match result {
+            NamespaceLookupResult::Definition(Definition::Function {
+                type_kind_id: method_type_kind_id,
+                ..
+            }) => {
+                let method = self.get_by_id(method_type_kind_id);
 
-        let namespace = &namespaces[namespace_id];
-
-        let NamespaceLookupResult::Definition(Definition::Function { type_kind_id, .. }) =
-            namespace.lookup(&Identifier::new(method_name))
-        else {
-            return None;
-        };
-
-        let method = self.get_by_id(type_kind_id);
-
-        let TypeKind::Function { .. } = &method else {
-            return None;
-        };
-
-        Some(method)
+                Some(method)
+            }
+            NamespaceLookupResult::DefinitionIndex(..) => {
+                // If we get here we forgot to type check the method.
+                panic!(
+                    "Method \"{}\" has a definition but it wasn't typed!",
+                    method_name
+                )
+            }
+            _ => None,
+        }
     }
 
     pub fn is_destructor_call_valid(
