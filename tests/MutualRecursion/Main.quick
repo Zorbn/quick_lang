@@ -1,0 +1,18 @@
+func Main() Int
+{
+    RecurseA(25);
+
+    return 0;
+}
+
+func RecurseA(x Int) Void
+{
+    Console.WriteLn("A");
+    if (x > 0) RecurseB(x - 1);
+}
+
+func RecurseB(x Int) Void
+{
+    Console.WriteLn("B");
+    if (x > 0) RecurseA(x - 1);
+}
