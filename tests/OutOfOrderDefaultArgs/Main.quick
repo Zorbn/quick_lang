@@ -1,0 +1,9 @@
+func Main() Int
+{
+    return 0;
+}
+
+func OutOfOrderDefaults(a Int, b Int, c Int = 3, d Int) Int
+{
+    return a + b + c + d;
+}

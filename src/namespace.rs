@@ -83,6 +83,7 @@ pub enum Definition {
     Function {
         type_kind_id: usize,
         is_extern: bool,
+        default_args: Arc<Vec<NodeIndex>>,
     },
     TypeKind {
         type_kind_id: usize,

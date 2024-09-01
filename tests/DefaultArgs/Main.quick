@@ -1,0 +1,72 @@
+func Main() Int
+{
+    InferredDefaultArg();
+
+    val customString = $"Hello world";
+    TakesAString(customString);
+    TakesAString();
+
+    var customStruct = MyStruct
+    {
+        a = 34,
+        b = true,
+    };
+
+    customStruct.MyMethod();
+    customStruct.MyMethod($"My custom info");
+
+    MyStruct.MyMethodDefaultMe();
+    customStruct.MyMethodDefaultMe();
+
+    return 0;
+}
+
+func InferredDefaultArg(value Int8 = 7) Void
+{
+
+}
+
+// Takes a string, prints it, then destroys it.
+func TakesAString(str String = $"Default string") Void
+{
+    Console.WriteStrLn(*str);
+    str.Destroy();
+}
+
+struct MyStruct
+{
+    a Int;
+    b Bool;
+
+    func MyMethod(me *var MyStruct, otherInfo String = $"Default other info") Void
+    {
+        defer otherInfo.Destroy();
+
+        Console.WriteStrLn(*otherInfo);
+
+        me.MyMethodDefaultMe();
+
+        me.b = false;
+    }
+
+    func MyMethodDefaultMe(me *val MyStruct = *defaultMyStruct) Void
+    {
+        if (me.b)
+        {
+            var myString = scope String.Create();
+            myString.Push.<Int>(me.a);
+
+            Console.WriteStrLn(myString);
+        }
+        else
+        {
+            Console.WriteLn("Nothing to do here!");
+        }
+    }
+}
+
+val defaultMyStruct = MyStruct
+{
+    a = 77,
+    b = true,
+};

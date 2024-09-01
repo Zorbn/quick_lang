@@ -1,0 +1,2 @@
+Syntax error at Main.quick:6:55: default argument cannot be followed by arguments without a default
+Syntax error at Main.quick:6:57: expected ";" but got "Int"

@@ -18,11 +18,10 @@
 - Maybe parallel compilation too?
 
 #### Features
-- Default parameters.
 - Possibly generic type inference, so specifiers aren't required?
 - Conditional compilation (#if DEBUG, #if UNSAFE, etc)
-- Allocators for new/delete, eg. new(myalloc) where myalloc has a malloc/free method.
-    - Probably needs default args first to not be annoying (eg. assume String.Create takes an optional allocator)
+- Allocators for new/delete, eg. new(myalloc) where myalloc has alloc/free methods.
+    - Then use allocators in Core, eg. String.Create takes an optional allocator.
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.

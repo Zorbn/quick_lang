@@ -1,0 +1,8 @@
+Hello world
+Default string
+Default other info
+34
+My custom info
+Nothing to do here!
+77
+Nothing to do here!

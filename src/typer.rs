@@ -41,9 +41,27 @@ pub enum InstanceKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum TypeMetaData {
+    None,
+    // A function that was referred to by name rather than a function pointer.
+    DirectFunction { default_args: Arc<Vec<NodeIndex>> },
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Type {
     pub type_kind_id: usize,
     pub instance_kind: InstanceKind,
+    pub meta_data: TypeMetaData,
+}
+
+impl Type {
+    pub fn new(type_kind_id: usize, instance_kind: InstanceKind) -> Self {
+        Self {
+            type_kind_id,
+            instance_kind,
+            meta_data: TypeMetaData::None,
+        }
+    }
 }
 
 macro_rules! type_error {
@@ -546,6 +564,7 @@ impl Typer {
             Definition::Function {
                 type_kind_id,
                 is_extern,
+                default_args,
             } if kind == LookupKind::All => {
                 let function_namespace_id = if is_extern {
                     GLOBAL_NAMESPACE_ID
@@ -558,6 +577,7 @@ impl Typer {
                     Type {
                         type_kind_id,
                         instance_kind: InstanceKind::Val,
+                        meta_data: TypeMetaData::DirectFunction { default_args },
                     },
                 )
             }
@@ -570,10 +590,7 @@ impl Typer {
             }
             Definition::TypeKind { type_kind_id } => IdentifierLookupResult::Some(
                 namespace_id,
-                Type {
-                    type_kind_id,
-                    instance_kind: InstanceKind::Name,
-                },
+                Type::new(type_kind_id, InstanceKind::Name),
             ),
             _ => IdentifierLookupResult::None,
         }
@@ -805,11 +822,13 @@ impl Typer {
             NodeKind::FunctionDeclaration {
                 name,
                 params,
+                default_args,
                 generic_params,
                 return_type_name,
             } => self.function_declaration(
                 name,
                 params,
+                default_args,
                 generic_params,
                 return_type_name,
                 false,
@@ -962,11 +981,13 @@ impl Typer {
             NodeKind::FunctionDeclaration {
                 name,
                 params,
+                default_args,
                 generic_params,
                 return_type_name,
             } => self.function_declaration(
                 name,
                 params,
+                default_args,
                 generic_params,
                 return_type_name,
                 false,
@@ -1170,6 +1191,7 @@ impl Typer {
             NodeKind::FunctionDeclaration {
                 name,
                 params,
+                default_args,
                 generic_params,
                 return_type_name,
                 ..
@@ -1192,6 +1214,7 @@ impl Typer {
         let typed_declaration = self.function_declaration(
             name,
             params,
+            default_args.clone(),
             generic_params,
             return_type_name,
             true,
@@ -1209,13 +1232,11 @@ impl Typer {
             Definition::Function {
                 type_kind_id,
                 is_extern: true,
+                default_args,
             },
         );
 
-        let node_type = Some(Type {
-            type_kind_id,
-            instance_kind: InstanceKind::Val,
-        });
+        let node_type = Some(Type::new(type_kind_id, InstanceKind::Val));
 
         let index = self.add_node(
             NodeKind::ExternFunction {
@@ -1279,16 +1300,7 @@ impl Typer {
             type_error!(self, "field cannot be of type func");
         }
 
-        assert_matches!(
-            NodeKind::Name { text: name_text },
-            self.get_parser_node(name).kind.clone()
-        );
-
-        let node_type = Type {
-            type_kind_id: type_name_type.type_kind_id,
-            instance_kind: InstanceKind::Var,
-        };
-        self.scope_environment.insert(name_text, node_type.clone());
+        let node_type = Type::new(type_name_type.type_kind_id, InstanceKind::Var);
 
         self.add_node(
             NodeKind::Param {
@@ -1741,10 +1753,7 @@ impl Typer {
             InstanceKind::Val
         };
 
-        let node_type = Type {
-            type_kind_id: from_type.type_kind_id,
-            instance_kind: iterator_instance_kind,
-        };
+        let node_type = Type::new(from_type.type_kind_id, iterator_instance_kind);
         self.scope_environment
             .insert(iterator_text, node_type.clone());
 
@@ -2383,20 +2392,14 @@ impl Typer {
 
                 return self.add_node(
                     node_kind,
-                    Some(Type {
-                        type_kind_id: BOOL_TYPE_KIND_ID,
-                        instance_kind: InstanceKind::Literal,
-                    }),
+                    Some(Type::new(BOOL_TYPE_KIND_ID, InstanceKind::Literal)),
                     None,
                 );
             }
             Op::Equal | Op::NotEqual => {
                 return self.add_node(
                     node_kind,
-                    Some(Type {
-                        type_kind_id: BOOL_TYPE_KIND_ID,
-                        instance_kind: InstanceKind::Literal,
-                    }),
+                    Some(Type::new(BOOL_TYPE_KIND_ID, InstanceKind::Literal)),
                     None,
                 );
             }
@@ -2410,10 +2413,7 @@ impl Typer {
 
         self.add_node(
             node_kind,
-            Some(Type {
-                type_kind_id: left_type.type_kind_id,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(left_type.type_kind_id, InstanceKind::Literal)),
             None,
         )
     }
@@ -2471,10 +2471,10 @@ impl Typer {
                 op,
                 right: typed_right,
             },
-            Some(Type {
-                type_kind_id: binary_type.type_kind_id,
-                instance_kind: InstanceKind::Const(result_value),
-            }),
+            Some(Type::new(
+                binary_type.type_kind_id,
+                InstanceKind::Const(result_value),
+            )),
             None,
         )
     }
@@ -2534,10 +2534,7 @@ impl Typer {
 
                 self.add_node(
                     node_kind,
-                    Some(Type {
-                        type_kind_id,
-                        instance_kind: InstanceKind::Literal,
-                    }),
+                    Some(Type::new(type_kind_id, InstanceKind::Literal)),
                     None,
                 )
             }
@@ -2561,10 +2558,7 @@ impl Typer {
 
                 self.add_node(
                     node_kind,
-                    Some(Type {
-                        type_kind_id,
-                        instance_kind: InstanceKind::Literal,
-                    }),
+                    Some(Type::new(type_kind_id, InstanceKind::Literal)),
                     None,
                 )
             }
@@ -2579,10 +2573,7 @@ impl Typer {
 
                 self.add_node(
                     node_kind,
-                    Some(Type {
-                        type_kind_id,
-                        instance_kind: InstanceKind::Literal,
-                    }),
+                    Some(Type::new(type_kind_id, InstanceKind::Literal)),
                     None,
                 )
             }
@@ -2625,10 +2616,10 @@ impl Typer {
                 op,
                 right: typed_right,
             },
-            Some(Type {
-                type_kind_id: unary_type.type_kind_id,
-                instance_kind: InstanceKind::Const(result_value),
-            }),
+            Some(Type::new(
+                unary_type.type_kind_id,
+                InstanceKind::Const(result_value),
+            )),
             None,
         )
     }
@@ -2661,10 +2652,7 @@ impl Typer {
                     left: typed_left,
                     op,
                 },
-                Some(Type {
-                    type_kind_id: *inner_type_kind_id,
-                    instance_kind,
-                }),
+                Some(Type::new(*inner_type_kind_id, instance_kind)),
                 None,
             )
         } else {
@@ -2675,6 +2663,13 @@ impl Typer {
     fn call(&mut self, left: NodeIndex, args: Arc<Vec<NodeIndex>>) -> NodeIndex {
         let typed_left = self.check_node(left);
         let left_type = assert_typed!(self, typed_left);
+
+        let default_args =
+            if let TypeMetaData::DirectFunction { default_args } = left_type.meta_data {
+                Some(default_args.clone())
+            } else {
+                None
+            };
 
         let TypeKind::Function {
             return_type_kind_id,
@@ -2724,7 +2719,21 @@ impl Typer {
             }
         }
 
-        let implicit_arg_count = if is_method_call { 1 } else { 0 };
+        let mut implicit_arg_count = 0;
+
+        let me_arg_count = if is_method_call { 1 } else { 0 };
+
+        implicit_arg_count += me_arg_count;
+
+        let used_default_arg_count = if let Some(default_args) = &default_args {
+            let supplied_arg_count = (me_arg_count + args.len()) as i32;
+            let needed_default_arg_count = param_type_kind_ids.len() as i32 - supplied_arg_count;
+            needed_default_arg_count.min(default_args.len() as i32) as usize
+        } else {
+            0
+        };
+
+        implicit_arg_count += used_default_arg_count;
 
         if args.len() + implicit_arg_count != param_type_kind_ids.len() {
             type_error!(self, "wrong number of arguments");
@@ -2733,7 +2742,7 @@ impl Typer {
         let mut typed_args = Vec::new();
         for (arg, param_type_kind_id) in args
             .iter()
-            .zip(param_type_kind_ids.iter().skip(implicit_arg_count))
+            .zip(param_type_kind_ids.iter().skip(me_arg_count))
         {
             let typed_arg = self.check_node_with_hint(*arg, Some(*param_type_kind_id));
             typed_args.push(typed_arg);
@@ -2748,16 +2757,22 @@ impl Typer {
             }
         }
 
+        if let Some(default_args) = &default_args {
+            for default_arg in default_args
+                .iter()
+                .skip(default_args.len() - used_default_arg_count)
+            {
+                typed_args.push(*default_arg);
+            }
+        }
+
         self.add_node(
             NodeKind::Call {
                 left: typed_left,
                 args: Arc::new(typed_args),
                 method_kind,
             },
-            Some(Type {
-                type_kind_id: return_type_kind_id,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(return_type_kind_id, InstanceKind::Literal)),
             None,
         )
     }
@@ -2799,10 +2814,7 @@ impl Typer {
                 left: typed_left,
                 expression: typed_expression,
             },
-            Some(Type {
-                type_kind_id: element_type_kind_id,
-                instance_kind: left_type.instance_kind,
-            }),
+            Some(Type::new(element_type_kind_id, left_type.instance_kind)),
             None,
         )
     }
@@ -2855,10 +2867,7 @@ impl Typer {
                     if *variant_name_text == *name_text {
                         return self.add_node(
                             node_kind,
-                            Some(Type {
-                                type_kind_id: left_type.type_kind_id,
-                                instance_kind: InstanceKind::Literal,
-                            }),
+                            Some(Type::new(left_type.type_kind_id, InstanceKind::Literal)),
                             None,
                         );
                     }
@@ -2873,10 +2882,7 @@ impl Typer {
 
                 return self.add_node(
                     node_kind,
-                    Some(Type {
-                        type_kind_id: UINT_TYPE_KIND_ID,
-                        instance_kind: InstanceKind::Literal,
-                    }),
+                    Some(Type::new(UINT_TYPE_KIND_ID, InstanceKind::Literal)),
                     None,
                 );
             }
@@ -2932,20 +2938,14 @@ impl Typer {
                     let type_kind_id = self.type_kinds.add_or_get(TypeKind::Tag);
                     return self.add_node(
                         node_kind,
-                        Some(Type {
-                            type_kind_id,
-                            instance_kind: InstanceKind::Literal,
-                        }),
+                        Some(Type::new(type_kind_id, InstanceKind::Literal)),
                         None,
                     );
                 }
 
                 return self.add_node(
                     node_kind,
-                    Some(Type {
-                        type_kind_id: *field_kind_id,
-                        instance_kind: field_instance_kind,
-                    }),
+                    Some(Type::new(*field_kind_id, field_instance_kind)),
                     None,
                 );
             }
@@ -2977,10 +2977,10 @@ impl Typer {
                 left: typed_left,
                 type_name: typed_type_name,
             },
-            Some(Type {
-                type_kind_id: type_name_type.type_kind_id,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(
+                type_name_type.type_kind_id,
+                InstanceKind::Literal,
+            )),
             None,
         )
     }
@@ -3018,10 +3018,10 @@ impl Typer {
                 left: typed_left,
                 type_name: typed_type_name,
             },
-            Some(Type {
-                type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(result_value),
-            }),
+            Some(Type::new(
+                const_type.type_kind_id,
+                InstanceKind::Const(result_value),
+            )),
             None,
         )
     }
@@ -3072,10 +3072,7 @@ impl Typer {
 
         self.add_node(
             NodeKind::IntLiteral { text },
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(type_kind_id, InstanceKind::Literal)),
             None,
         )
     }
@@ -3125,10 +3122,10 @@ impl Typer {
 
         self.add_node(
             NodeKind::IntLiteral { text },
-            Some(Type {
-                type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(value),
-            }),
+            Some(Type::new(
+                const_type.type_kind_id,
+                InstanceKind::Const(value),
+            )),
             None,
         )
     }
@@ -3144,10 +3141,7 @@ impl Typer {
 
         self.add_node(
             NodeKind::FloatLiteral { text },
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(type_kind_id, InstanceKind::Literal)),
             None,
         )
     }
@@ -3166,10 +3160,10 @@ impl Typer {
 
         self.add_node(
             NodeKind::FloatLiteral { text },
-            Some(Type {
-                type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(ConstValue::Float { value }),
-            }),
+            Some(Type::new(
+                const_type.type_kind_id,
+                InstanceKind::Const(ConstValue::Float { value }),
+            )),
             None,
         )
     }
@@ -3177,10 +3171,7 @@ impl Typer {
     fn string_literal(&mut self, text: Arc<String>) -> NodeIndex {
         self.add_node(
             NodeKind::StringLiteral { text },
-            Some(Type {
-                type_kind_id: STRING_VIEW_TYPE_KIND_ID,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(STRING_VIEW_TYPE_KIND_ID, InstanceKind::Literal)),
             None,
         )
     }
@@ -3208,10 +3199,7 @@ impl Typer {
             NodeKind::TypeName {
                 name: generic_arg_name,
             },
-            Some(Type {
-                type_kind_id: generic_arg_type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
+            Some(Type::new(generic_arg_type_kind_id, InstanceKind::Name)),
             None,
         );
 
@@ -3369,10 +3357,10 @@ impl Typer {
 
         self.add_node(
             NodeKind::StringLiteral { text: text.clone() },
-            Some(Type {
-                type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(ConstValue::String { value: text }),
-            }),
+            Some(Type::new(
+                const_type.type_kind_id,
+                InstanceKind::Const(ConstValue::String { value: text }),
+            )),
             None,
         )
     }
@@ -3380,10 +3368,7 @@ impl Typer {
     fn bool_literal(&mut self, value: bool) -> NodeIndex {
         self.add_node(
             NodeKind::BoolLiteral { value },
-            Some(Type {
-                type_kind_id: BOOL_TYPE_KIND_ID,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(BOOL_TYPE_KIND_ID, InstanceKind::Literal)),
             None,
         )
     }
@@ -3394,10 +3379,10 @@ impl Typer {
 
         self.add_node(
             NodeKind::BoolLiteral { value },
-            Some(Type {
-                type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(ConstValue::Bool { value }),
-            }),
+            Some(Type::new(
+                const_type.type_kind_id,
+                InstanceKind::Const(ConstValue::Bool { value }),
+            )),
             None,
         )
     }
@@ -3405,10 +3390,7 @@ impl Typer {
     fn char_literal(&mut self, value: char) -> NodeIndex {
         self.add_node(
             NodeKind::CharLiteral { value },
-            Some(Type {
-                type_kind_id: CHAR_TYPE_KIND_ID,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(CHAR_TYPE_KIND_ID, InstanceKind::Literal)),
             None,
         )
     }
@@ -3419,10 +3401,10 @@ impl Typer {
 
         self.add_node(
             NodeKind::CharLiteral { value },
-            Some(Type {
-                type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(ConstValue::Char { value }),
-            }),
+            Some(Type::new(
+                const_type.type_kind_id,
+                InstanceKind::Const(ConstValue::Char { value }),
+            )),
             None,
         )
     }
@@ -3480,10 +3462,7 @@ impl Typer {
                 element_count: elements.len() * repeat_count,
             });
 
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Literal,
-            })
+            Some(Type::new(type_kind_id, InstanceKind::Literal))
         } else {
             type_error!(self, "array literal must contain at least one element");
         };
@@ -3626,10 +3605,7 @@ impl Typer {
                 left: typed_left,
                 field_literals: Arc::new(typed_field_literals),
             },
-            Some(Type {
-                type_kind_id: struct_type.type_kind_id,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(struct_type.type_kind_id, InstanceKind::Literal)),
             None,
         )
     }
@@ -3668,10 +3644,7 @@ impl Typer {
             NodeKind::TypeSize {
                 type_name: typed_type_name,
             },
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Literal,
-            }),
+            Some(Type::new(type_kind_id, InstanceKind::Literal)),
             None,
         )
     }
@@ -3728,10 +3701,10 @@ impl Typer {
             NodeKind::TypeSize {
                 type_name: typed_type_name,
             },
-            Some(Type {
-                type_kind_id: const_type.type_kind_id,
-                instance_kind: InstanceKind::Const(const_value),
-            }),
+            Some(Type::new(
+                const_type.type_kind_id,
+                InstanceKind::Const(const_value),
+            )),
             None,
         )
     }
@@ -3898,10 +3871,7 @@ impl Typer {
                 definition_indices,
                 is_union,
             },
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
+            Some(Type::new(type_kind_id, InstanceKind::Name)),
             Some(self.file_namespace_ids[file_index]),
         );
 
@@ -3947,10 +3917,7 @@ impl Typer {
                 name: typed_name,
                 variant_names: typed_variant_names,
             },
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
+            Some(Type::new(type_kind_id, InstanceKind::Name)),
             Some(self.file_namespace_ids[file_index]),
         );
 
@@ -3986,6 +3953,7 @@ impl Typer {
         &mut self,
         name: NodeIndex,
         params: Arc<Vec<NodeIndex>>,
+        default_args: Arc<Vec<NodeIndex>>,
         generic_params: Arc<Vec<NodeIndex>>,
         return_type_name: NodeIndex,
         is_extern: bool,
@@ -3994,23 +3962,61 @@ impl Typer {
     ) -> NodeIndex {
         let typed_name = self.check_node_with_namespace(name, namespace_id);
 
-        let mut typed_params = Vec::new();
-        let mut param_type_kind_ids = Vec::new();
-        for param in params.iter() {
-            let typed_param = self.check_node(*param);
-            typed_params.push(typed_param);
-
-            let param_type = assert_typed!(self, typed_param);
-            param_type_kind_ids.push(param_type.type_kind_id);
-        }
-        let typed_params = Arc::new(typed_params);
-        let param_type_kind_ids = Arc::new(param_type_kind_ids);
-
         let mut typed_generic_params = Vec::new();
         for generic_param in generic_params.iter() {
             let typed_generic_param = self.check_node(*generic_param);
             typed_generic_params.push(typed_generic_param);
         }
+
+        let mut typed_params = Vec::new();
+        for param in params.iter() {
+            let typed_param = self.check_node(*param);
+            typed_params.push(typed_param);
+        }
+
+        // Default args are typed before the parameters are added to the scope
+        // because parameter names shouldn't be used in default values, (they're not
+        // defined yet when the function is called, which is where default args are inserted).
+        let mut typed_default_args = Vec::new();
+        for (i, default_arg) in default_args.iter().enumerate() {
+            let param_i = typed_params.len() - default_args.len() + i;
+            let param_type = assert_typed!(self, typed_params[param_i]);
+
+            let typed_default_arg =
+                self.check_node_with_hint(*default_arg, Some(param_type.type_kind_id));
+            let default_arg_type = assert_typed!(self, typed_default_arg);
+
+            if default_arg_type.instance_kind == InstanceKind::Name {
+                type_error!(self, "expected value for default argument");
+            }
+
+            if default_arg_type.type_kind_id != param_type.type_kind_id {
+                type_error!(self, "type mismatch with default argument");
+            }
+
+            typed_default_args.push(typed_default_arg)
+        }
+
+        let mut param_type_kind_ids = Vec::new();
+        for typed_param in &typed_params {
+            assert_matches!(
+                NodeKind::Param { name, .. },
+                self.get_typer_node(*typed_param).node_kind
+            );
+
+            assert_matches!(
+                NodeKind::Name { text: name_text },
+                self.get_typer_node(name).node_kind.clone()
+            );
+
+            let param_type = assert_typed!(self, *typed_param);
+            param_type_kind_ids.push(param_type.type_kind_id);
+
+            self.scope_environment.insert(name_text, param_type.clone());
+        }
+
+        let typed_params = Arc::new(typed_params);
+        let param_type_kind_ids = Arc::new(param_type_kind_ids);
 
         let typed_return_type_name = self.check_node(return_type_name);
         let return_type = assert_typed!(self, typed_return_type_name);
@@ -4028,13 +4034,11 @@ impl Typer {
             NodeKind::FunctionDeclaration {
                 name: typed_name,
                 params: typed_params,
+                default_args: Arc::new(typed_default_args),
                 generic_params: Arc::new(typed_generic_params),
                 return_type_name: typed_return_type_name,
             },
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
+            Some(Type::new(type_kind_id, InstanceKind::Name)),
             Some(namespace_id),
         );
 
@@ -4204,15 +4208,23 @@ impl Typer {
 
         let typed_declaration = self.check_node_with_namespace(declaration, namespace_id);
         let declaration_type = assert_typed!(self, typed_declaration);
+
+        assert_matches!(
+            NodeKind::FunctionDeclaration { default_args, .. },
+            self.get_typer_node(typed_declaration).node_kind.clone()
+        );
+
         let identifier = Identifier {
             name: name_text.clone(),
             generic_arg_type_kind_ids: generic_arg_type_kind_ids.clone(),
         };
+
         self.namespaces[namespace_id].define(
             identifier,
             Definition::Function {
                 type_kind_id: declaration_type.type_kind_id,
                 is_extern: false,
+                default_args,
             },
         );
 
@@ -4268,10 +4280,7 @@ impl Typer {
                 scoped_statement: typed_scoped_statement,
                 is_shallow: !is_deep_check,
             },
-            Some(Type {
-                type_kind_id: declaration_type.type_kind_id,
-                instance_kind: InstanceKind::Val,
-            }),
+            Some(Type::new(declaration_type.type_kind_id, InstanceKind::Val)),
             Some(namespace_id),
         );
 
@@ -4402,10 +4411,7 @@ impl Typer {
                 inner: typed_inner,
                 is_inner_mutable,
             },
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
+            Some(Type::new(type_kind_id, InstanceKind::Name)),
             None,
         )
     }
@@ -4444,10 +4450,7 @@ impl Typer {
                 inner: typed_inner,
                 element_count_const_expression: typed_element_count_const_expression,
             },
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
+            Some(Type::new(type_kind_id, InstanceKind::Name)),
             None,
         )
     }
@@ -4485,10 +4488,7 @@ impl Typer {
                 param_type_names: Arc::new(Vec::new()),
                 return_type_name: typed_return_type_name,
             },
-            Some(Type {
-                type_kind_id,
-                instance_kind: InstanceKind::Name,
-            }),
+            Some(Type::new(type_kind_id, InstanceKind::Name)),
             None,
         )
     }

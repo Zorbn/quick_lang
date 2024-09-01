@@ -14,7 +14,11 @@ use crate::{
     namespace::Namespace,
     parser::{DeclarationKind, MethodKind, NodeIndex, NodeKind, Op},
     type_kinds::{
-        get_field_index_by_name, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID, CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID, INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID, STRING_VIEW_TYPE_KIND_ID, UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID, UINT8_TYPE_KIND_ID, UINT_TYPE_KIND_ID
+        get_field_index_by_name, PrimitiveType, TypeKind, TypeKinds, BOOL_TYPE_KIND_ID,
+        CHAR_TYPE_KIND_ID, FLOAT32_TYPE_KIND_ID, FLOAT64_TYPE_KIND_ID, INT16_TYPE_KIND_ID,
+        INT32_TYPE_KIND_ID, INT64_TYPE_KIND_ID, INT8_TYPE_KIND_ID, INT_TYPE_KIND_ID,
+        STRING_VIEW_TYPE_KIND_ID, UINT16_TYPE_KIND_ID, UINT32_TYPE_KIND_ID, UINT64_TYPE_KIND_ID,
+        UINT8_TYPE_KIND_ID, UINT_TYPE_KIND_ID,
     },
     typer::{InstanceKind, Type, TypedNode, GLOBAL_NAMESPACE_ID},
 };
@@ -905,7 +909,13 @@ impl CodeGenerator {
             return;
         };
 
-        self.emit_variable_declaration_initializer(name, expression, node_type, false, emitter_kind);
+        self.emit_variable_declaration_initializer(
+            name,
+            expression,
+            node_type,
+            false,
+            emitter_kind,
+        );
     }
 
     fn return_statement(&mut self, expression: Option<NodeIndex>) {
@@ -1009,10 +1019,7 @@ impl CodeGenerator {
         });
 
         // The expression will always be assigned to a var before the destructor is called on it.
-        let expression_type_for_destructor = Type {
-            type_kind_id: expression_type_kind_id,
-            instance_kind: InstanceKind::Var,
-        };
+        let expression_type_for_destructor = Type::new(expression_type_kind_id, InstanceKind::Var);
 
         if let Some(method_kind) = self
             .type_kinds
@@ -1272,7 +1279,8 @@ impl CodeGenerator {
             return false;
         };
 
-        CodeGenerator::get_op_generated_precedence(parent_op) < CodeGenerator::get_op_generated_precedence(op)
+        CodeGenerator::get_op_generated_precedence(parent_op)
+            < CodeGenerator::get_op_generated_precedence(op)
     }
 
     fn binary(
@@ -1410,13 +1418,14 @@ impl CodeGenerator {
                 let (dereferenced_type_kind_id, _) =
                     self.type_kinds.dereference_type_kind_id(type_kind_id);
 
-                let dereferenced_node_type = Type {
-                    type_kind_id: dereferenced_type_kind_id,
+                let dereferenced_node_type = Type::new(
+                    dereferenced_type_kind_id,
                     // The expression will always be assigned to a temporary var.
-                    instance_kind: InstanceKind::Var,
-                };
+                    InstanceKind::Var,
+                );
 
-                let scope_result = self.emit_stack_allocation(&dereferenced_node_type, emitter_kind);
+                let scope_result =
+                    self.emit_stack_allocation(&dereferenced_node_type, emitter_kind);
 
                 self.body_emitters.push(0);
 
@@ -1515,7 +1524,7 @@ impl CodeGenerator {
                     } else {
                         self.emit("&", emitter_kind)
                     }
-                },
+                }
                 MethodKind::ByDereference => self.emit("*", emitter_kind),
                 _ => {}
             }
@@ -1994,12 +2003,7 @@ impl CodeGenerator {
         self.emit_type_kind_right(type_kind_id, EmitterKind::Top, false);
         self.emitln(";", EmitterKind::Top);
 
-        self.emit_function_name_string(
-            "AllocInto",
-            function_type_kind_id,
-            true,
-            emitter_kind,
-        );
+        self.emit_function_name_string("AllocInto", function_type_kind_id, true, emitter_kind);
         self.emit("(&", emitter_kind);
         self.emit(&stack_var, emitter_kind);
         self.emit(", ", emitter_kind);
@@ -2519,7 +2523,10 @@ impl CodeGenerator {
             } = node_kind
             {
                 let type_kind_id = node_type.as_ref().unwrap().type_kind_id;
-                let is_array = matches!(self.type_kinds.get_by_id(type_kind_id), TypeKind::Array { .. });
+                let is_array = matches!(
+                    self.type_kinds.get_by_id(type_kind_id),
+                    TypeKind::Array { .. }
+                );
 
                 if !is_array {
                     if let Some(namespace_id) = namespace_id {
@@ -2810,11 +2817,7 @@ impl CodeGenerator {
                 self.emit(")", emitter_kind);
             }
             _ => {
-                let op = if is_equal {
-                    Op::Equal
-                } else {
-                    Op::NotEqual
-                };
+                let op = if is_equal { Op::Equal } else { Op::NotEqual };
 
                 let does_left_need_parens = self.does_child_need_parens(op, left);
 

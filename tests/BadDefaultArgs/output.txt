@@ -1,0 +1,4 @@
+Type error at Main.quick:14:52: undefined identifier
+Type error at Main.quick:3:5: undefined identifier
+Type error at Main.quick:4:5: undefined identifier
+Type error at Main.quick:9:5: wrong number of arguments

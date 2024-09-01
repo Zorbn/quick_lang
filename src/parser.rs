@@ -91,6 +91,7 @@ pub enum NodeKind {
     FunctionDeclaration {
         name: NodeIndex,
         params: Arc<Vec<NodeIndex>>,
+        default_args: Arc<Vec<NodeIndex>>,
         generic_params: Arc<Vec<NodeIndex>>,
         return_type_name: NodeIndex,
     },
@@ -728,15 +729,37 @@ impl Parser {
         &mut self,
         start: Position,
         params: &mut Vec<NodeIndex>,
+        default_args: &mut Vec<NodeIndex>,
     ) -> Option<NodeIndex> {
         if let Some(error_node) = self.assert_token(TokenKind::LParen, start, self.token_end()) {
             return Some(error_node);
         }
         self.position += 1;
 
+        let mut has_default_arg = false;
+
         while *self.token_kind() != TokenKind::RParen {
             let param = self.param();
             params.push(param);
+
+            if *self.token_kind() == TokenKind::Equal {
+                has_default_arg = true;
+                self.position += 1;
+
+                let expression = self.expression();
+                default_args.push(expression);
+            } else if has_default_arg {
+                self.error(
+                    &format!("default argument cannot be followed by arguments without a default"),
+                    self.token_start(),
+                );
+
+                return Some(self.add_node(Node {
+                    kind: NodeKind::Error,
+                    start,
+                    end: self.token_end(),
+                }));
+            }
 
             if *self.token_kind() != TokenKind::Comma {
                 break;
@@ -806,8 +829,10 @@ impl Parser {
         }
 
         let mut params = Vec::new();
+        let mut default_args = Vec::new();
 
-        if let Some(error_node) = self.parse_function_params(start, &mut params) {
+        if let Some(error_node) = self.parse_function_params(start, &mut params, &mut default_args)
+        {
             return error_node;
         }
 
@@ -818,6 +843,7 @@ impl Parser {
             kind: NodeKind::FunctionDeclaration {
                 name,
                 params: Arc::new(params),
+                default_args: Arc::new(default_args),
                 generic_params: Arc::new(generic_params),
                 return_type_name,
             },
@@ -1977,7 +2003,12 @@ impl Parser {
     fn string_interpolation(&mut self) -> NodeIndex {
         let start = self.token_start();
 
-        assert_token!(self, TokenKind::StringInterpolationStart, start, self.token_end());
+        assert_token!(
+            self,
+            TokenKind::StringInterpolationStart,
+            start,
+            self.token_end()
+        );
         self.position += 1;
 
         let mut chunks = Vec::new();
@@ -2010,7 +2041,9 @@ impl Parser {
         let end = self.token_end();
 
         self.add_node(Node {
-            kind: NodeKind::StringInterpolation { chunks: Arc::new(chunks) },
+            kind: NodeKind::StringInterpolation {
+                chunks: Arc::new(chunks),
+            },
             start,
             end,
         })

@@ -1,0 +1,22 @@
+func Main() Int
+{
+    UndefinedIdentifierDefaultArgs(3);
+    UndefinedIdentifierDefaultArgs(3, 4);
+
+    UsedWithWrongArgCount(1, 2, 3, 4);
+    UsedWithWrongArgCount(1, 2, 3);
+    UsedWithWrongArgCount(1, 2);
+    UsedWithWrongArgCount(1);
+
+    return 0;
+}
+
+func UndefinedIdentifierDefaultArgs(a Int, b Int = a) Bool
+{
+    return a + b;
+}
+
+func UsedWithWrongArgCount(a Int, b Int, c Int = 3, d Int = 4) Int
+{
+    return a + b + c + d;
+}
