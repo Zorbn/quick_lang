@@ -100,5 +100,15 @@ func Main() Int
         Console.WriteLn(string.ToView());
     }
 
+    var iterableArray = [1, 2, 3];
+
+    for (val value in iterableArray)
+    {
+        val string = scope String.Create();
+        string.Push.<Int>(value);
+
+        Console.WriteStrLn(string);
+    }
+
     return 0;
 }

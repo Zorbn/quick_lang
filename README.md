@@ -22,6 +22,7 @@
 - Conditional compilation (#if DEBUG, #if UNSAFE, etc)
 - Allocators for new/delete, eg. new(myalloc) where myalloc has alloc/free methods.
     - Then use allocators in Core, eg. String.Create takes an optional allocator.
+- For in loops: iterate by pointer (for iterators with GetRef)
 
 #### Missing Things and Bug Fixes
 - Allow `sizeof` on complex types at compile time.

@@ -84,6 +84,13 @@ macro_rules! assert_typed {
 
         node_type
     }};
+    ($self:ident, $index:expr, $else_return:expr) => {{
+        let Some(node_type) = $self.get_typer_node($index).node_type.clone() else {
+            return $else_return;
+        };
+
+        node_type
+    }};
 }
 
 pub enum LookupResult {
@@ -1777,6 +1784,82 @@ impl Typer {
         )
     }
 
+    fn for_in_loop_declare_iterable(
+        &mut self,
+        typed_expression: NodeIndex,
+        start: Position,
+        end: Position,
+    ) -> (NodeIndex, NodeIndex) {
+        let expression_type = assert_typed!(
+            self,
+            typed_expression,
+            (
+                self.add_node(NodeKind::Error, None, None),
+                self.add_node(NodeKind::Error, None, None),
+            )
+        );
+
+        let iterable_temp_name = self.name_generator.temp_name("iterable");
+        let iterable_name = self.lower_node(Node {
+            kind: NodeKind::Name {
+                text: iterable_temp_name.into(),
+            },
+            start,
+            end,
+        });
+
+        let mut iterable_expression = typed_expression;
+        let mut iterable = self.lower_node(Node {
+            kind: NodeKind::Identifier {
+                name: iterable_name,
+            },
+            start,
+            end,
+        });
+
+        if expression_type.instance_kind != InstanceKind::Literal {
+            iterable_expression = self.lower_node(Node {
+                kind: NodeKind::UnaryPrefix {
+                    op: Op::Reference,
+                    right: typed_expression,
+                },
+                start,
+                end,
+            });
+
+            iterable = self.lower_node(Node {
+                kind: NodeKind::UnarySuffix {
+                    left: iterable,
+                    op: Op::Dereference,
+                },
+                start,
+                end,
+            })
+        };
+
+        let iterable_declaration = self.lower_node(Node {
+            kind: NodeKind::VariableDeclaration {
+                declaration_kind: DeclarationKind::Var,
+                name: iterable_name,
+                type_name: None,
+                expression: Some(iterable_expression),
+                is_shallow: false,
+            },
+            start,
+            end,
+        });
+
+        let iterable_declaration_statement = self.lower_node(Node {
+            kind: NodeKind::Statement {
+                inner: Some(iterable_declaration),
+            },
+            start,
+            end,
+        });
+
+        (iterable, iterable_declaration_statement)
+    }
+
     fn for_in_loop_lower_array(
         &mut self,
         declaration_kind: DeclarationKind,
@@ -1793,46 +1876,12 @@ impl Typer {
 
         let Node { start, end, .. } = *self.get_current_parser_node();
 
-        let iterable_temp_name = self.name_generator.temp_name("iterable");
-        let iterable_name = self.lower_node(Node {
-            kind: NodeKind::Name {
-                text: iterable_temp_name.into(),
-            },
-            start,
-            end,
-        });
+        let (iterable, iterable_declaration_statement) =
+            self.for_in_loop_declare_iterable(typed_expression, start, end);
 
         let scoped_statement_statement = self.lower_node(Node {
             kind: NodeKind::Statement {
                 inner: Some(scoped_statement),
-            },
-            start,
-            end,
-        });
-
-        let iterable = self.lower_node(Node {
-            kind: NodeKind::Identifier {
-                name: iterable_name,
-            },
-            start,
-            end,
-        });
-
-        let iterable_declaration = self.lower_node(Node {
-            kind: NodeKind::VariableDeclaration {
-                declaration_kind: DeclarationKind::Var,
-                name: iterable_name,
-                type_name: None,
-                expression: Some(typed_expression),
-                is_shallow: false,
-            },
-            start,
-            end,
-        });
-
-        let iterable_declaration_statement = self.lower_node(Node {
-            kind: NodeKind::Statement {
-                inner: Some(iterable_declaration),
             },
             start,
             end,
@@ -1970,46 +2019,9 @@ impl Typer {
 
         let Node { start, end, .. } = *self.get_current_parser_node();
 
-        let iterable_temp_name = self.name_generator.temp_name("iterable");
-        let iterable_name = self.lower_node(Node {
-            kind: NodeKind::Name {
-                text: iterable_temp_name.into(),
-            },
-            start,
-            end,
-        });
-
         let scoped_statement_statement = self.lower_node(Node {
             kind: NodeKind::Statement {
                 inner: Some(scoped_statement),
-            },
-            start,
-            end,
-        });
-
-        let iterable = self.lower_node(Node {
-            kind: NodeKind::Identifier {
-                name: iterable_name,
-            },
-            start,
-            end,
-        });
-
-        let iterable_declaration = self.lower_node(Node {
-            kind: NodeKind::VariableDeclaration {
-                declaration_kind: DeclarationKind::Var,
-                name: iterable_name,
-                type_name: None,
-                expression: Some(typed_expression),
-                is_shallow: false,
-            },
-            start,
-            end,
-        });
-
-        let iterable_declaration_statement = self.lower_node(Node {
-            kind: NodeKind::Statement {
-                inner: Some(iterable_declaration),
             },
             start,
             end,
@@ -2066,6 +2078,9 @@ impl Typer {
                 );
             }
         }
+
+        let (iterable, iterable_declaration_statement) =
+            self.for_in_loop_declare_iterable(typed_expression, start, end);
 
         let next_text = self.name_generator.reuse("Next");
         let next = self.lower_node(Node {
@@ -2821,7 +2836,7 @@ impl Typer {
 
     fn field_access(&mut self, left: NodeIndex, name: NodeIndex) -> NodeIndex {
         let typed_left = self.check_node(left);
-        let left_type = assert_typed!(self, typed_left);
+        let mut left_type = assert_typed!(self, typed_left);
         let typed_name = self.check_node(name);
 
         assert_matches!(
@@ -2834,26 +2849,32 @@ impl Typer {
             name: typed_name,
         };
 
-        let mut is_tag_access = false;
-        let (struct_type_kind_id, field_instance_kind) = match &self
+        if let TypeKind::Pointer {
+            inner_type_kind_id,
+            is_inner_mutable,
+        } = &self.type_kinds.get_by_id(left_type.type_kind_id)
+        {
+            left_type.instance_kind = if *is_inner_mutable {
+                InstanceKind::Var
+            } else {
+                InstanceKind::Val
+            };
+
+            left_type.type_kind_id = *inner_type_kind_id;
+        }
+
+        let (is_tag_access, struct_type_kind_id, field_instance_kind) = match &self
             .type_kinds
             .get_by_id(left_type.type_kind_id)
         {
             TypeKind::Struct { is_union, .. } => {
-                is_tag_access = left_type.instance_kind == InstanceKind::Name && *is_union;
-                (left_type.type_kind_id, left_type.instance_kind.clone())
-            }
-            TypeKind::Pointer {
-                inner_type_kind_id,
-                is_inner_mutable,
-            } => {
-                let field_instance_kind = if *is_inner_mutable {
-                    InstanceKind::Var
-                } else {
-                    InstanceKind::Val
-                };
+                let is_tag_access = left_type.instance_kind == InstanceKind::Name && *is_union;
 
-                (*inner_type_kind_id, field_instance_kind)
+                (
+                    is_tag_access,
+                    left_type.type_kind_id,
+                    left_type.instance_kind.clone(),
+                )
             }
             TypeKind::Enum { variant_names, .. } => {
                 for variant_name in variant_names.iter() {
