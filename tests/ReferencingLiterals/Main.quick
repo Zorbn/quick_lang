@@ -1,0 +1,22 @@
+func Main() Int
+{
+    val intPtr = *999;
+
+    val arrPtr = *[1, 2, 3];
+
+    var string = scope String.Create();
+    string.Push.<Int>(arrPtr.*[2]);
+
+    Console.WriteStrLn(string);
+
+    if (arrPtr.*[2] == 3)
+    {
+        Console.WriteLn("3!");
+    }
+    else
+    {
+        Console.WriteLn("Something's broken!");
+    }
+
+    return 0;
+}

@@ -1,0 +1,9 @@
+func Main() Int
+{
+    var multiA [2][3]StringView = [["a", "b", "ccc"], ["d", "e", "f"]];
+    var multiB [2][3]StringView = multiA;
+    multiB[1][2] = "this shouldn't get printed";
+    Console.WriteLn(multiA[1][2]);
+
+    return 0;
+}

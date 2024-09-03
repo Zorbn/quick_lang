@@ -581,15 +581,10 @@ impl CodeGenerator {
         self.emit_type_kind_left(
             node_type.clone().unwrap().type_kind_id,
             EmitterKind::TypeDefinition,
-            false,
             true,
         );
         self.gen_node_with_emitter(name, EmitterKind::TypeDefinition);
-        self.emit_type_kind_right(
-            node_type.unwrap().type_kind_id,
-            EmitterKind::TypeDefinition,
-            false,
-        );
+        self.emit_type_kind_right(node_type.unwrap().type_kind_id, EmitterKind::TypeDefinition);
         self.emitln(";", EmitterKind::TypeDefinition);
     }
 
@@ -719,19 +714,22 @@ impl CodeGenerator {
                 self.get_typer_node(name).node_kind.clone()
             );
 
-            let copy_name = format!("__{}", &name_text);
+            let temp_array_name = self.emit_array_stack_space(type_kind_id, EmitterKind::Body);
 
-            self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, true);
-            self.emit(&copy_name, EmitterKind::Body);
-            self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
-            self.emitln(";", EmitterKind::Body);
-
-            self.emit_memmove_name_to_name(&copy_name, &name_text, type_kind_id, EmitterKind::Body);
+            self.emit_memmove_name_to_name(
+                &temp_array_name,
+                &name_text,
+                type_kind_id,
+                EmitterKind::Body,
+            );
             self.emitln(";", EmitterKind::Body);
 
             self.gen_node(name);
-            self.emit(" = ", EmitterKind::Body);
-            self.emit(&copy_name, EmitterKind::Body);
+            self.emit_array_stack_space_assignment(
+                &temp_array_name,
+                type_kind_id,
+                EmitterKind::Body,
+            );
             self.emitln(";", EmitterKind::Body);
         }
     }
@@ -841,7 +839,8 @@ impl CodeGenerator {
             TypeKind::Array { .. }
         );
 
-        if is_array && (is_global_variable || !self.is_typed_expression_array_literal(expression)) {
+        if is_array {
+            // TODO: This seems messy, look into it? Do we really need to have some condition like this?
             if !is_global_variable {
                 self.emitln(";", emitter_kind);
             }
@@ -887,7 +886,13 @@ impl CodeGenerator {
             && !is_array
             && emitter_kind != EmitterKind::GlobalVariable;
 
-        self.emit_type_kind_left(type_kind_id, emitter_kind, false, true);
+        let temp_array_name = if is_array {
+            Some(self.emit_array_stack_space(type_kind_id, emitter_kind))
+        } else {
+            None
+        };
+
+        self.emit_type_kind_left(type_kind_id, emitter_kind, true);
 
         if needs_const {
             self.emit("const ", emitter_kind);
@@ -899,7 +904,11 @@ impl CodeGenerator {
 
         self.gen_node_with_emitter(name, emitter_kind);
 
-        self.emit_type_kind_right(type_kind_id, emitter_kind, false);
+        self.emit_type_kind_right(type_kind_id, emitter_kind);
+
+        if let Some(temp_array_name) = temp_array_name {
+            self.emit_array_stack_space_assignment(&temp_array_name, type_kind_id, emitter_kind);
+        }
 
         if is_shallow || emitter_kind == EmitterKind::GlobalVariable {
             return;
@@ -939,32 +948,13 @@ impl CodeGenerator {
             &self.type_kinds.get_by_id(type_kind_id),
             TypeKind::Array { .. }
         ) {
-            if self.is_typed_expression_array_literal(expression) {
-                let temp_name = self.name_generator.temp_name("temp");
-
-                self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, true);
-                self.emit(&temp_name, EmitterKind::Body);
-                self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
-                self.emit(" = ", EmitterKind::Body);
-                self.gen_node(expression);
-                self.emitln(";", EmitterKind::Body);
-
-                self.emit_memmove_name_to_name(
-                    "__return",
-                    &temp_name,
-                    type_kind_id,
-                    EmitterKind::Body,
-                );
-                self.emitln(";", EmitterKind::Body);
-            } else {
-                self.emit_memmove_expression_to_name(
-                    "__return",
-                    expression,
-                    type_kind_id,
-                    EmitterKind::Body,
-                );
-                self.emitln(";", EmitterKind::Body);
-            }
+            self.emit_memmove_expression_to_name(
+                "__return",
+                expression,
+                type_kind_id,
+                EmitterKind::Body,
+            );
+            self.emitln(";", EmitterKind::Body);
 
             self.emit("return __return", EmitterKind::Body);
         } else {
@@ -1029,9 +1019,9 @@ impl CodeGenerator {
             // multiple times (when calling the destructor, and when freeing).
             let free_subject = self.name_generator.temp_name("freeSubject");
 
-            self.emit_type_kind_left(expression_type_kind_id, EmitterKind::Top, false, true);
+            self.emit_type_kind_left(expression_type_kind_id, EmitterKind::Top, true);
             self.emit(&free_subject, EmitterKind::Top);
-            self.emit_type_kind_right(expression_type_kind_id, EmitterKind::Top, false);
+            self.emit_type_kind_right(expression_type_kind_id, EmitterKind::Top);
             self.emitln(" = ", EmitterKind::Top);
             self.gen_node_with_emitter(expression, EmitterKind::Top);
             self.emitln(";", EmitterKind::Top);
@@ -1169,9 +1159,9 @@ impl CodeGenerator {
             .type_kind_id;
 
         self.emit("for (", EmitterKind::Body);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, true);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true);
         self.gen_node(iterator);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Body);
         self.emit(" = ", EmitterKind::Body);
         self.gen_node(from);
         self.emit("; ", EmitterKind::Body);
@@ -1305,7 +1295,7 @@ impl CodeGenerator {
                 TypeKind::Array { .. }
             );
 
-            if is_array && !self.is_typed_expression_array_literal(left) {
+            if is_array {
                 self.emit_memmove_expression_to_variable(left, right, type_kind_id, emitter_kind);
                 return;
             }
@@ -1446,10 +1436,10 @@ impl CodeGenerator {
                 needs_closing_paren = true;
             }
             Op::Reference => {
-                let right_type = self.get_typer_node(right).node_type.as_ref().unwrap();
+                let right_type = self.get_typer_node(right).node_type.clone().unwrap();
 
                 if right_type.instance_kind == InstanceKind::Literal {
-                    self.emit_stack_allocation(&node_type, emitter_kind);
+                    self.emit_stack_allocation(&right_type, emitter_kind);
                     needs_closing_paren = true;
                 } else {
                     self.emit("&", emitter_kind)
@@ -1558,11 +1548,17 @@ impl CodeGenerator {
                 self.emit(", ", emitter_kind);
             }
 
+            let temp_array_name = self.emit_array_stack_space(type_kind_id, EmitterKind::Top);
             let return_array_name = self.name_generator.temp_name("returnArray");
 
-            self.emit_type_kind_left(type_kind_id, EmitterKind::Top, false, true);
+            self.emit_type_kind_left(type_kind_id, EmitterKind::Top, true);
             self.emit(&return_array_name, EmitterKind::Top);
-            self.emit_type_kind_right(type_kind_id, EmitterKind::Top, false);
+            self.emit_type_kind_right(type_kind_id, EmitterKind::Top);
+            self.emit_array_stack_space_assignment(
+                &temp_array_name,
+                type_kind_id,
+                EmitterKind::Top,
+            );
             self.emitln(";", EmitterKind::Top);
 
             self.emit(&return_array_name, emitter_kind);
@@ -1570,13 +1566,16 @@ impl CodeGenerator {
         self.emit(")", emitter_kind);
     }
 
-    fn index_access(&mut self, left: NodeIndex, expression: NodeIndex, emitter_kind: EmitterKind) {
-        self.gen_node_with_emitter(left, emitter_kind);
-        self.emit("[", emitter_kind);
+    fn index_access(
+        &mut self,
+        mut left: NodeIndex,
+        mut expression: NodeIndex,
+        emitter_kind: EmitterKind,
+    ) {
+        self.emit("(*(", emitter_kind);
+        let mut stride = 1;
 
-        if self.is_unsafe_mode {
-            self.gen_node_with_emitter(expression, emitter_kind);
-        } else {
+        loop {
             let left_type = self.get_typer_node(left).node_type.as_ref().unwrap();
 
             assert_matches!(
@@ -1586,14 +1585,44 @@ impl CodeGenerator {
 
             let element_count = *element_count;
 
-            self.emit("__BoundsCheck(", emitter_kind);
-            self.gen_node_with_emitter(expression, emitter_kind);
-            self.emit(", ", emitter_kind);
-            self.emit(&element_count.to_string(), EmitterKind::Body);
+            self.emit("(", emitter_kind);
+
+            if self.is_unsafe_mode {
+                self.gen_node_with_emitter(expression, emitter_kind);
+            } else {
+                self.emit("__BoundsCheck(", emitter_kind);
+                self.gen_node_with_emitter(expression, emitter_kind);
+                self.emit(", ", emitter_kind);
+                self.emit(&element_count.to_string(), emitter_kind);
+                self.emit(")", emitter_kind);
+            }
+
             self.emit(")", emitter_kind);
+
+            if stride > 1 {
+                self.emit(" * ", emitter_kind);
+                self.emit(&stride.to_string(), emitter_kind);
+            }
+
+            self.emit(" + ", emitter_kind);
+
+            stride *= element_count;
+
+            let NodeKind::IndexAccess {
+                left: inner_left,
+                expression: inner_expression,
+            } = self.get_typer_node(left).node_kind
+            else {
+                break;
+            };
+
+            left = inner_left;
+            expression = inner_expression;
         }
 
-        self.emit("]", emitter_kind);
+        self.gen_node_with_emitter(left, emitter_kind);
+
+        self.emit("))", emitter_kind);
     }
 
     fn field_access(
@@ -1724,8 +1753,8 @@ impl CodeGenerator {
         }
 
         self.emit("(", emitter_kind);
-        self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
-        self.emit_type_kind_right(type_kind_id, emitter_kind, false);
+        self.emit_type_kind_left(type_kind_id, emitter_kind, false);
+        self.emit_type_kind_right(type_kind_id, emitter_kind);
         self.emit(")(", emitter_kind);
         self.gen_node_with_emitter(left, emitter_kind);
         self.emit(")", emitter_kind);
@@ -1750,8 +1779,8 @@ impl CodeGenerator {
             let is_generic = !generic_arg_type_names.is_empty();
             self.emit_function_name(name, type_kind_id, is_generic, emitter_kind)
         } else {
-            self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
-            self.emit_type_kind_right(type_kind_id, emitter_kind, false);
+            self.emit_type_kind_left(type_kind_id, emitter_kind, false);
+            self.emit_type_kind_right(type_kind_id, emitter_kind);
         }
     }
 
@@ -1781,8 +1810,8 @@ impl CodeGenerator {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         self.emit("((", emitter_kind);
-        self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
-        self.emit_type_kind_right(type_kind_id, emitter_kind, false);
+        self.emit_type_kind_left(type_kind_id, emitter_kind, false);
+        self.emit_type_kind_right(type_kind_id, emitter_kind);
         self.emit(")", emitter_kind);
 
         self.emit(&text, emitter_kind);
@@ -1868,6 +1897,25 @@ impl CodeGenerator {
             self.type_kinds.get_by_id(type_kind_id)
         );
 
+        let mut needs_cast = true;
+
+        // C compilers prefer that nested arrays aren't explicitly casted to their type.
+        if self.node_index_stack.len() >= 2 {
+            let parent_node_index = self.node_index_stack[self.node_index_stack.len() - 2];
+            let parent_node = self.get_typer_node(parent_node_index);
+
+            if let NodeKind::ArrayLiteral { .. } = parent_node.node_kind {
+                needs_cast = false;
+            }
+        }
+
+        if needs_cast {
+            self.emit("(", emitter_kind);
+            self.emit_type_kind_left_raw_arrays(type_kind_id, emitter_kind, false);
+            self.emit_type_kind_right_raw_arrays(type_kind_id, emitter_kind);
+            self.emit(") ", emitter_kind);
+        }
+
         let repeat_count = element_count / elements.len();
 
         self.emit("{", emitter_kind);
@@ -1895,8 +1943,8 @@ impl CodeGenerator {
         let type_kind_id = node_type.unwrap().type_kind_id;
 
         self.emit("(", emitter_kind);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Body);
         self.emit(") ", emitter_kind);
 
         assert_matches!(
@@ -1983,6 +2031,34 @@ impl CodeGenerator {
         );
     }
 
+    // Arrays are strange types in C that don't work as expected in a lot of scenarios. Instead of using them, we
+    // prefer to just use pointers, however, changing array delarations like "int myArray[3]" to "int *myArray" would
+    // cause not enough stack space to be allocated for "myArray". So, we can declare the array for the sake of allocating
+    // stack space, then declare an alias to the array that is a normal pointer. "int arrayStackSpace[3]; int *myArray = (int*)arrayStackSpace".
+    fn emit_array_stack_space(&mut self, type_kind_id: usize, emitter_kind: EmitterKind) -> String {
+        let temp_name = self.name_generator.temp_name("arrayStackSpace");
+
+        self.emit_type_kind_left_raw_arrays(type_kind_id, emitter_kind, true);
+        self.emit(&temp_name, emitter_kind);
+        self.emit_type_kind_right_raw_arrays(type_kind_id, emitter_kind);
+        self.emitln(";", emitter_kind);
+
+        temp_name
+    }
+
+    fn emit_array_stack_space_assignment(
+        &mut self,
+        temp_array_name: &str,
+        type_kind_id: usize,
+        emitter_kind: EmitterKind,
+    ) {
+        self.emit(" = (", emitter_kind);
+        self.emit_type_kind_left(type_kind_id, emitter_kind, false);
+        self.emit_type_kind_right(type_kind_id, emitter_kind);
+        self.emit(")", emitter_kind);
+        self.emit(temp_array_name, emitter_kind);
+    }
+
     fn emit_stack_allocation(&mut self, node_type: &Type, emitter_kind: EmitterKind) -> String {
         let type_kind_id = node_type.type_kind_id;
 
@@ -1996,11 +2072,27 @@ impl CodeGenerator {
             return_type_kind_id: pointer_type_kind_id,
         });
 
+        let temp_array_name =
+            if let TypeKind::Array { .. } = self.type_kinds.get_by_id(type_kind_id) {
+                Some(self.emit_array_stack_space(type_kind_id, EmitterKind::Top))
+            } else {
+                None
+            };
+
         let stack_var = self.name_generator.temp_name("stackVar");
 
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Top, false, true);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Top, true);
         self.emit(&stack_var, EmitterKind::Top);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::Top, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Top);
+
+        if let Some(temp_array_name) = temp_array_name {
+            self.emit_array_stack_space_assignment(
+                &temp_array_name,
+                type_kind_id,
+                EmitterKind::Top,
+            );
+        }
+
         self.emitln(";", EmitterKind::Top);
 
         self.emit_function_name_string("AllocInto", function_type_kind_id, true, emitter_kind);
@@ -2047,14 +2139,6 @@ impl CodeGenerator {
         self.emit("memmove(", emitter_kind);
         self.gen_node_with_emitter(destination, emitter_kind);
         self.emit(", ", emitter_kind);
-
-        if let NodeKind::ArrayLiteral { .. } = self.get_typer_node(source).node_kind {
-            self.emit("(", emitter_kind);
-            self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
-            self.emit_type_kind_right(type_kind_id, emitter_kind, false);
-            self.emit(") ", emitter_kind);
-        }
-
         self.gen_node_with_emitter(source, emitter_kind);
         self.emit(", ", emitter_kind);
         self.emit_type_size(type_kind_id, emitter_kind);
@@ -2071,14 +2155,6 @@ impl CodeGenerator {
         self.emit("memmove(", emitter_kind);
         self.emit(destination, emitter_kind);
         self.emit(", ", emitter_kind);
-
-        if let NodeKind::ArrayLiteral { .. } = self.get_typer_node(source).node_kind {
-            self.emit("(", emitter_kind);
-            self.emit_type_kind_left(type_kind_id, emitter_kind, false, false);
-            self.emit_type_kind_right(type_kind_id, emitter_kind, false);
-            self.emit(") ", emitter_kind);
-        }
-
         self.gen_node_with_emitter(source, emitter_kind);
         self.emit(", ", emitter_kind);
         self.emit_type_size(type_kind_id, emitter_kind);
@@ -2113,14 +2189,55 @@ impl CodeGenerator {
             }
             _ => {
                 self.emit("sizeof(", emitter_kind);
-                self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
-                self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
+                self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false);
+                self.emit_type_kind_right(type_kind_id, EmitterKind::Body);
                 self.emit(")", emitter_kind);
             }
         };
     }
 
+    // Returns the inner type kind id of a potentially nested array.
+    fn descend_array(&self, type_kind_id: usize) -> usize {
+        let mut inner_type_kind_id = type_kind_id;
+
+        while let TypeKind::Array {
+            element_type_kind_id,
+            ..
+        } = self.type_kinds.get_by_id(inner_type_kind_id)
+        {
+            inner_type_kind_id = element_type_kind_id;
+        }
+
+        inner_type_kind_id
+    }
+
     fn emit_type_kind_left(
+        &mut self,
+        type_kind_id: usize,
+        emitter_kind: EmitterKind,
+        is_prefix: bool,
+    ) {
+        self.emit_type_kind_left_impl(type_kind_id, emitter_kind, true, is_prefix)
+    }
+
+    fn emit_type_kind_right(&mut self, type_kind_id: usize, emitter_kind: EmitterKind) {
+        self.emit_type_kind_right_impl(type_kind_id, emitter_kind, true)
+    }
+
+    fn emit_type_kind_left_raw_arrays(
+        &mut self,
+        type_kind_id: usize,
+        emitter_kind: EmitterKind,
+        is_prefix: bool,
+    ) {
+        self.emit_type_kind_left_impl(type_kind_id, emitter_kind, false, is_prefix)
+    }
+
+    fn emit_type_kind_right_raw_arrays(&mut self, type_kind_id: usize, emitter_kind: EmitterKind) {
+        self.emit_type_kind_right_impl(type_kind_id, emitter_kind, false)
+    }
+
+    fn emit_type_kind_left_impl(
         &mut self,
         type_kind_id: usize,
         emitter_kind: EmitterKind,
@@ -2164,12 +2281,19 @@ impl CodeGenerator {
                     element_type_kind_id,
                     ..
                 } => {
-                    self.emit_type_kind_left(
-                        element_type_kind_id,
+                    let inner_type_kind_id = if do_arrays_as_pointers {
+                        self.descend_array(type_kind_id)
+                    } else {
+                        element_type_kind_id
+                    };
+
+                    self.emit_type_kind_left_impl(
+                        inner_type_kind_id,
                         emitter_kind,
                         do_arrays_as_pointers,
                         true,
                     );
+
                     if do_arrays_as_pointers {
                         self.emit("(*", emitter_kind);
                     }
@@ -2178,7 +2302,7 @@ impl CodeGenerator {
                     inner_type_kind_id,
                     is_inner_mutable,
                 } => {
-                    self.emit_type_kind_left(
+                    self.emit_type_kind_left_impl(
                         inner_type_kind_id,
                         emitter_kind,
                         do_arrays_as_pointers,
@@ -2205,8 +2329,8 @@ impl CodeGenerator {
                     return_type_kind_id,
                     ..
                 } => {
-                    self.emit_type_kind_left(return_type_kind_id, emitter_kind, true, true);
-                    self.emit_type_kind_right(return_type_kind_id, emitter_kind, true);
+                    self.emit_type_kind_left(return_type_kind_id, emitter_kind, true);
+                    self.emit_type_kind_right(return_type_kind_id, emitter_kind);
                     self.emit("(", emitter_kind);
                 }
                 TypeKind::Namespace { .. } => panic!("cannot emit namespace types"),
@@ -2218,29 +2342,33 @@ impl CodeGenerator {
         }
     }
 
-    fn emit_type_kind_right(
+    fn emit_type_kind_right_impl(
         &mut self,
         type_kind_id: usize,
         emitter_kind: EmitterKind,
         do_arrays_as_pointers: bool,
     ) {
-        let type_kind_id = self.type_kinds.get_by_id(type_kind_id).clone();
+        let type_kind = self.type_kinds.get_by_id(type_kind_id).clone();
 
-        match type_kind_id {
+        match type_kind {
             TypeKind::Array {
                 element_type_kind_id,
                 element_count,
             } => {
+                let mut inner_type_kind_id = element_type_kind_id;
+
                 if !do_arrays_as_pointers {
                     self.emit("[", emitter_kind);
                     self.emit(&element_count.to_string(), emitter_kind);
                     self.emit("]", emitter_kind);
                 } else {
+                    inner_type_kind_id = self.descend_array(type_kind_id);
+
                     self.emit(")", emitter_kind);
                 }
 
-                self.emit_type_kind_right(
-                    element_type_kind_id,
+                self.emit_type_kind_right_impl(
+                    inner_type_kind_id,
                     emitter_kind,
                     do_arrays_as_pointers,
                 );
@@ -2249,7 +2377,11 @@ impl CodeGenerator {
                 inner_type_kind_id, ..
             } => {
                 self.emit(")", emitter_kind);
-                self.emit_type_kind_right(inner_type_kind_id, emitter_kind, do_arrays_as_pointers);
+                self.emit_type_kind_right_impl(
+                    inner_type_kind_id,
+                    emitter_kind,
+                    do_arrays_as_pointers,
+                );
             }
             TypeKind::Function {
                 param_type_kind_ids,
@@ -2261,8 +2393,8 @@ impl CodeGenerator {
                         self.emit(", ", emitter_kind);
                     }
 
-                    self.emit_type_kind_left(*param_kind_id, emitter_kind, false, false);
-                    self.emit_type_kind_right(*param_kind_id, emitter_kind, false);
+                    self.emit_type_kind_left(*param_kind_id, emitter_kind, false);
+                    self.emit_type_kind_right(*param_kind_id, emitter_kind);
                 }
                 self.emit(")", emitter_kind);
             }
@@ -2338,7 +2470,7 @@ impl CodeGenerator {
             self.emit("static ", emitter_kind)
         }
 
-        self.emit_type_kind_left(return_type_kind_id, emitter_kind, true, true);
+        self.emit_type_kind_left(return_type_kind_id, emitter_kind, true);
 
         self.emit_function_name(name, type_kind_id, has_generic_params, emitter_kind);
 
@@ -2374,7 +2506,7 @@ impl CodeGenerator {
 
         self.emit(")", emitter_kind);
 
-        self.emit_type_kind_right(return_type_kind_id, emitter_kind, true);
+        self.emit_type_kind_right(return_type_kind_id, emitter_kind);
     }
 
     fn emit_param_node(&mut self, param: NodeIndex, emitter_kind: EmitterKind) {
@@ -2394,15 +2526,15 @@ impl CodeGenerator {
     }
 
     fn emit_param(&mut self, name: NodeIndex, type_kind_id: usize, emitter_kind: EmitterKind) {
-        self.emit_type_kind_left(type_kind_id, emitter_kind, false, true);
+        self.emit_type_kind_left(type_kind_id, emitter_kind, true);
         self.gen_node_with_emitter(name, emitter_kind);
-        self.emit_type_kind_right(type_kind_id, emitter_kind, false);
+        self.emit_type_kind_right(type_kind_id, emitter_kind);
     }
 
     fn emit_param_string(&mut self, name: &str, type_kind_id: usize, emitter_kind: EmitterKind) {
-        self.emit_type_kind_left(type_kind_id, emitter_kind, false, true);
+        self.emit_type_kind_left(type_kind_id, emitter_kind, true);
         self.emit(name, emitter_kind);
-        self.emit_type_kind_right(type_kind_id, emitter_kind, false);
+        self.emit_type_kind_right(type_kind_id, emitter_kind);
     }
 
     fn emit_namespace(&mut self, namespace_id: usize, emitter_kind: EmitterKind) {
@@ -2617,24 +2749,24 @@ impl CodeGenerator {
         }
 
         self.emit("static inline ", EmitterKind::FunctionPrototype);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false);
         self.emit("* __", EmitterKind::FunctionPrototype);
         self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
         self.emit("__CheckTag(", EmitterKind::FunctionPrototype);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false);
         self.emit(" *self", EmitterKind::FunctionPrototype);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype);
         self.emitln(", intptr_t tag);", EmitterKind::FunctionPrototype);
         self.newline(EmitterKind::FunctionPrototype);
 
         self.emit("static inline ", EmitterKind::Body);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false);
         self.emit("* __", EmitterKind::Body);
         self.emit_struct_name(type_kind_id, EmitterKind::Body);
         self.emit("__CheckTag(", EmitterKind::Body);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false);
         self.emit(" *self", EmitterKind::Body);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Body);
         self.emitln(", intptr_t tag) {", EmitterKind::Body);
         self.indent(EmitterKind::Body);
 
@@ -2681,13 +2813,8 @@ impl CodeGenerator {
         self.emit("__", emitter_kind);
         self.emit_struct_name(dereferenced_left_type_kind_id, EmitterKind::Body);
         self.emit("__CheckTag((", emitter_kind);
-        self.emit_type_kind_left(
-            dereferenced_left_type_kind_id,
-            EmitterKind::Body,
-            false,
-            false,
-        );
-        self.emit_type_kind_right(dereferenced_left_type_kind_id, emitter_kind, false);
+        self.emit_type_kind_left(dereferenced_left_type_kind_id, EmitterKind::Body, false);
+        self.emit_type_kind_right(dereferenced_left_type_kind_id, emitter_kind);
         self.emit("*)", emitter_kind);
 
         if !is_left_pointer {
@@ -2705,26 +2832,26 @@ impl CodeGenerator {
 
     fn emit_union_with_tag(&mut self, type_kind_id: usize) {
         self.emit("static inline ", EmitterKind::FunctionPrototype);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, true);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype);
         self.emit("* __", EmitterKind::FunctionPrototype);
         self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
         self.emit("__WithTag(", EmitterKind::FunctionPrototype);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false);
         self.emit(" *self", EmitterKind::FunctionPrototype);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::FunctionPrototype);
         self.emitln(", intptr_t tag);", EmitterKind::FunctionPrototype);
         self.newline(EmitterKind::FunctionPrototype);
 
         self.emit("static inline ", EmitterKind::Body);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, true, false);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, true);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Body);
         self.emit("* __", EmitterKind::Body);
         self.emit_struct_name(type_kind_id, EmitterKind::Body);
         self.emit("__WithTag(", EmitterKind::Body);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false);
         self.emit(" *self", EmitterKind::Body);
-        self.emit_type_kind_right(type_kind_id, EmitterKind::Body, false);
+        self.emit_type_kind_right(type_kind_id, EmitterKind::Body);
         self.emitln(", intptr_t tag) {", EmitterKind::Body);
         self.indent(EmitterKind::Body);
         self.emitln("self->tag = tag;", EmitterKind::Body);
@@ -2746,8 +2873,8 @@ impl CodeGenerator {
         self.emit("__", emitter_kind);
         self.emit_struct_name(dereferenced_left_type_kind_id, emitter_kind);
         self.emit("__WithTag((", emitter_kind);
-        self.emit_type_kind_left(dereferenced_left_type_kind_id, emitter_kind, false, false);
-        self.emit_type_kind_right(dereferenced_left_type_kind_id, emitter_kind, false);
+        self.emit_type_kind_left(dereferenced_left_type_kind_id, emitter_kind, false);
+        self.emit_type_kind_right(dereferenced_left_type_kind_id, emitter_kind);
         self.emit("*)", emitter_kind);
 
         if !is_left_pointer {
@@ -2864,18 +2991,18 @@ impl CodeGenerator {
         self.emit("static inline bool __", EmitterKind::FunctionPrototype);
         self.emit_struct_name(type_kind_id, EmitterKind::FunctionPrototype);
         self.emit("__Equals(", EmitterKind::FunctionPrototype);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false);
         self.emit(" *left, ", EmitterKind::FunctionPrototype);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::FunctionPrototype, false);
         self.emitln(" *right);", EmitterKind::FunctionPrototype);
         self.newline(EmitterKind::FunctionPrototype);
 
         self.emit("static inline bool __", EmitterKind::Body);
         self.emit_struct_name(type_kind_id, EmitterKind::Body);
         self.emit("__Equals(", EmitterKind::Body);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false);
         self.emit(" *left, ", EmitterKind::Body);
-        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false, false);
+        self.emit_type_kind_left(type_kind_id, EmitterKind::Body, false);
         self.emitln(" *right) {", EmitterKind::Body);
         self.indent(EmitterKind::Body);
 
@@ -2972,12 +3099,5 @@ impl CodeGenerator {
         self.gen_node_with_emitter(right, emitter_kind);
 
         self.emit(")", emitter_kind);
-    }
-
-    fn is_typed_expression_array_literal(&self, expression: NodeIndex) -> bool {
-        matches!(
-            self.get_typer_node(expression).node_kind,
-            NodeKind::ArrayLiteral { .. }
-        )
     }
 }
